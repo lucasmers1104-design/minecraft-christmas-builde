@@ -122,7 +122,7 @@ describe('alle Kombinationen aus Größe, Stil, Material, Farbe, Detailgrad', ()
     expect(generateBuilding(spec({ style: 'fairytale' })).dimensions.height).toBeGreaterThan(base.dimensions.height);
   });
 
-  it('die Beschreibung allein verändert die Blockdaten nicht (Freitext wird noch nicht interpretiert)', () => {
+  it('der Generator liest den Freitext nicht selbst (er wirkt nur über Parser bzw. KI-Plan in der Spec)', () => {
     const a = generateBuilding(spec({ description: 'irgendwas' }));
     const b = generateBuilding(spec({ description: 'etwas ganz anderes' }));
     expect(a.hash).toBe(b.hash);

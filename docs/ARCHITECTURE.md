@@ -3,161 +3,184 @@
 ## Datenfluss (verbindlich)
 
 ```text
-Text + Einstellungen
-  -> BuildSpec (Zod-validiert, src/core/schema/buildSpec.ts)
-  -> deterministischer Generator (src/core/generator/*)
-  -> kanonisches VoxelModel (src/core/schema/voxelModel.ts)
-       ├─> 3D-Vorschau        (src/components/preview/buildVoxelMesh.ts -> VoxelScene.tsx)
-       ├─> Materialliste      (src/core/analysis/materialCounts.ts)
-       ├─> Transport/Speichern (src/lib/serialization/voxelTransport.ts)
-       └─> .schem-Encoder     (src/core/export/writeSpongeV3.ts)
+Text ──► Regel-Parser (parseDescription) ─┐
+     └─► optional: lokale KI (Ollama) ────┤  (Wunsch-Patch; KI-Plan ersetzt den Parser nur für genau diesen Text)
+UI-Einstellungen (manuell, Vorrang) ──────┤
+Seed, Minecraft-Version ──────────────────┘
+        ▼ resolveSpec
+BuildSpec (Zod-validiert, inkl. options)
+        ▼ generateBuilding (deterministisch)
+kanonisches VoxelModel ◄──── Editor (setzen/entfernen/ersetzen, Undo/Redo) ───┐
+   ├─► 3D-Vorschau (buildVoxelMesh → VoxelScene)                               │
+   ├─► Materialliste (countMaterials)                                         │
+   ├─► Projekte (IndexedDB, VoxelTransport)                                   │
+   └─► .schem-Export (writeSpongeV3 → validateSchematic) ──────────────────────┘
 ```
 
-Die Vorschau und der Export erzeugen **keine eigene Geometrie**. Beide lesen dasselbe, unveränderte `VoxelModel`.
+Es gibt genau **ein** Blockmodell pro Variante.
 
-- Für die Kamera wird das Modell nur visuell zentriert: Eine Three.js-Gruppe wird um `(-width/2, 0, -length/2)` verschoben. Die gespeicherten Blockkoordinaten bleiben unverändert.
-- Der Export nimmt das ausgewählte Modell entgegen (`POST /api/export`). Er generiert nie aus dem Prompt neu.
+- Vorschau, Materialliste, Speichern und Export lesen es unverändert. Der Editor erzeugt bei jeder Änderung ein neues, neu gehashtes Modell.
+- Die Kamera zentriert das Modell nur visuell: Eine Three.js-Gruppe wird verschoben, die Blockkoordinaten bleiben unverändert.
+- `POST /api/export` exportiert das übergebene Modell und generiert nie neu.
 
-## Kanonisches Datenmodell
+## Datenmodelle
+
+### BuildSpec (`src/core/schema/buildSpec.ts`, `buildOptions.ts`)
+
+| Feld | Werte |
+|---|---|
+| `kind` | `house`, `tree`, `market_stall`, `station` |
+| `style` | `christmas`, `fairytale`, `realistic` |
+| `size` | `small`, `medium`, `large` |
+| `materialTheme` | `spruce`, `oak`, `stone` |
+| `colorTheme` | `red_green`, `ice_blue`, `natural` |
+| `detailLevel` | 1, 2, 3 |
+| `seed` | 0 … 2³¹−1 |
+| `targetMinecraftVersion` | `1.21.11` (Standard), `1.21.1` |
+| `options` | alles optional (`undefined` = automatisch aus Größe, Stil und Detailgrad), siehe unten |
+
+Die Felder in `options`:
+
+- **Maße:** `width` (ungerade 7–33), `depth` (ungerade 5–25), `wallHeight` (3–8).
+- **Form:** `roofShape` (`gable`, `steep`, `hip`), `windows` (`few`, `normal`, `many`).
+- **Schalter:** `snow`, `chimney`, `lights`, `garland`, `christmasTree`, `presents`.
+- **Bauteile:** `tower` und `annex` (`none`, `left`, `right`), `porch`, `hedge`.
+- **Material:** `frameWood` (`spruce`, `oak`, `dark_oak`, `birch`) und `materials.{wall, roof, floor, foundation, accent}`. Jedes Bauteil hat eine feste Liste erlaubter Blöcke.
+
+Welche Optionen ein Bauwerkstyp nutzt, steht in `APPLICABLE_OPTIONS` (`generateBuilding.ts`). Optionen ohne Wirkung werden in der API-Antwort als Hinweis gemeldet.
+
+### VoxelModel (`src/core/schema/voxelModel.ts`)
 
 ```ts
 interface VoxelModel {
   schemaVersion: 1;
-  dimensions: { width; height; length };   // X, Y, Z
-  palette: string[];                        // eindeutige, vollständige, kanonische Blockstates
-  indices: Uint16Array;                     // ein Paletten-Index pro Block, inkl. Luft
+  dimensions: { width; height; length }; // X, Y, Z
+  palette: string[];                     // eindeutige, vollständige, kanonische Blockstates
+  indices: Uint16Array;                  // ein Paletten-Index pro Block, inkl. Luft
   origin: { x: 0; y: 0; z: 0 };
   spec: BuildSpec;
-  hash: string;                             // SHA-256 (hex)
+  hash: string;                          // SHA-256 (hex)
 }
 ```
 
-- **Koordinaten:** X = Breite (Osten), Y = Höhe, Z = Tiefe (Süden). Index: `x + width * (z + length * y)`, d. h. X läuft am schnellsten. Das ist dieselbe Reihenfolge wie bei Sponge v3.
-- **Blockstates** sind kanonisch: `minecraft:<id>`, *alle* Eigenschaften angegeben, alphabetisch sortiert (z. B. `minecraft:spruce_leaves[distance=7,persistent=true,waterlogged=false]`). Das entspricht der Ausgabe von WorldEdits `BlockState#getAsString()`. `checkBlockState` lehnt alles ab, was nicht in der Registry steht oder nicht kanonisch ist.
-- **Palette** in kanonischer Reihenfolge: Luft auf Index 0, danach die Blockstates in der Reihenfolge ihres ersten Auftretens in Indexreihenfolge. Ungenutzte Einträge werden entfernt (`canonicalizeVoxelData`). Gleiche Blockdaten ergeben so immer dieselbe Palette und denselben Hash.
-- **Hash:** SHA-256 über `"mcb-voxel-v1\n{w}x{h}x{l}\n" + palette.join("\n") + "\n"`, danach die Indizes als little-endian uint16. Die Implementierung ist eine synchrone SHA-256-Funktion in reinem TypeScript, die in Node und im Browser gleich arbeitet. Sie ist gegen `node:crypto` getestet.
-- **Limits:** maximal 48 × 32 × 48 Blöcke (73 728) und maximal 1024 Paletteneinträge. Geprüft werden sie im Generator (`VoxelBuilder`), im Transport, im Export und im Validator.
+- **Koordinaten:** X = Breite (Osten), Y = Höhe, Z = Tiefe (Süden). Der Index ist `x + width * (z + length * y)`, also dieselbe Reihenfolge wie bei Sponge v3.
+- **Blockstates:** alle Eigenschaften angegeben, alphabetisch sortiert, z. B. `minecraft:rail[shape=east_west,waterlogged=false]`. Das entspricht WorldEdits `getAsString()`.
+- **Palette:** Luft auf Index 0, danach in der Reihenfolge des ersten Auftretens; ungenutzte Einträge werden entfernt. Gleiche Blöcke ergeben so immer denselben Hash.
+- **Hash:** SHA-256 über einen Kopf aus Maßen und Palette und über die Indizes als little-endian uint16.
+- **Grenzen:** 48 × 32 × 48 Blöcke und 1024 Paletteneinträge. Geprüft wird im Generator, im Transport, beim Speichern, im Export und im Validator.
 
-## Generator
+## Text, Einstellungen und Herkunft (`resolveSpec`)
 
-`generateBuilding(spec)` validiert die Spec und ruft den Generator für den Bauwerkstyp auf. Derzeit gibt es nur `house`. Andere Typen werfen `NotImplementedBuildingError`, die API antwortet dann mit HTTP 422.
+Der wirksame Spec wird schichtweise zusammengesetzt; spätere Schichten gewinnen:
 
-`VoxelBuilder` (`geometry.ts`) arbeitet mit Grenzprüfungen und **Schreibprioritäten**. Ein Block wird nur gesetzt, wenn seine Priorität mindestens so hoch ist wie die bereits gespeicherte:
+1. Standardwerte, Seed und Version;
+2. Wünsche aus dem Text, entweder vom Regel-Parser oder, falls aktiv, aus dem KI-Plan;
+3. **manuelle UI-Einstellungen**.
 
-| Priorität | Verwendung |
+Jedes Feld kennt seine Herkunft (`standard`, `text`, `ki`, `manuell`); die Oberfläche zeigt sie als Etikett an. Widersprüche zwischen Text und Einstellung werden aufgelistet.
+
+Der Parser (`parseDescription.ts`) arbeitet mit deutschen Wortstämmen und Komposita:
+
+- Er akzeptiert Umlaute in beiden Schreibweisen und erkennt Verneinungen („ohne“, „kein“), Maße („15 x 11“), Farbe plus Bauteil („rotes Dach“) und Seitenangaben bei Turm und Anbau.
+- Bekannte, aber nicht baubare Wünsche (Pool, Treppen, Türblöcke, Möbel …) und unverstandene Satzteile werden als **Warnung** gemeldet.
+
+## Generatoren
+
+`VoxelBuilder` (`geometry.ts`) prüft alle Grenzen und arbeitet mit Schreibprioritäten:
+
+| Priorität | Wert |
 |---|---|
-| `CLEARANCE` (100) | Durchgang und Freiraum vor bzw. hinter dem Eingang; danach überschreibt nichts mehr diese Zellen |
-| `OPENING` (80) | Glasfenster |
-| `CHIMNEY` (60) | Schornstein (durchstößt das Dach) |
-| `STRUCTURE` (50) | Fundament, Wände, Pfosten, Balken, Giebel |
-| `ROOF` (30) / `ROOF_COVER` (20) | Dach und Schneeauflage |
-| `DECOR` (10) | Girlanden, Kranz, Baum, Geschenke, Licht |
+| `DECOR` | 10 |
+| `ROOF_COVER` | 20 |
+| `ROOF` | 30 |
+| `STRUCTURE` | 50 |
+| `CHIMNEY` | 60 |
+| `ANNEX` | 70 |
+| `OPENING` | 80 |
+| `CLEARANCE` | 100 |
 
-Helfer: `setBlock`, `fillBox`, `hollowBox`, `line`, `placeSymmetric`, `roofGable`, `firstSolidAbove`.
+Ein Block wird nur gesetzt, wenn seine Priorität mindestens so hoch ist wie die gespeicherte. Deko kann deshalb nie den Eingang zustellen oder ein Fenster überschreiben.
 
-Arbeitsschritte von `buildHouse` (Mittelgröße: Grundfläche 13 × 11, Volumen 15 × 14 × 13):
+Helfer: `setBlock`, `fillBox`, `hollowBox`, `line`, `placeSymmetric`, `roofGable`, `roofHip`, `firstSolidAbove`.
 
-1. **Fundament:** ein Ring aus Fundamentblöcken, darin der Holzboden (y = 0).
-2. **Wände:** vier geschlossene Wände (y = 1 … Wandhöhe) mit Eckpfosten (Stamm, `axis=y`) und umlaufendem Balken (`axis=x` bzw. `axis=z`).
-3. **Eingang:** in der Frontwand (−Z / Norden), 1 × 2 Blöcke echte Luft, mit Rahmen und Sturz. Freigehalten werden außerdem eine Zelle davor und zwei dahinter. Davor liegt ein Wegblock.
-4. **Fenster:** aus `glass` bzw. Buntglas in allen vier Wänden, symmetrisch angeordnet, ab Detailgrad 2 mit Fensterläden.
-5. **Satteldach:** gestuft aus vollen Blöcken, jede Stufe zwei Blöcke tief (also ohne diagonale Lücken), mit 1 Block Überstand rundum, Giebelwänden und Schneeauflage. Der Stil „märchenhaft“ ist doppelt so steil.
-6. **Schornstein:** auf der hinteren Dachseite neben dem First. Die Seite (links oder rechts) hängt vom Seed ab. Er ragt über den First.
-7. **Dekoration** (`decorations.ts`), je nach Detailgrad und Stil: Leuchtstein unter dem First, Bodenleuchten, Giebelfenster, Girlande mit Schleifen (Versatz per Seed), Kranz über der Tür, Weihnachtsbaum an der fensterlosen Mitte der Rückwand mit Kugeln (Seed) und Geschenken (Seed).
+### Haus (`buildHouse.ts`, `houseComponents.ts`, `decorations.ts`)
 
-Der Zufall kommt ausschließlich aus `createSeededRandom(spec.seed)` (mulberry32). Die Beschreibung fließt noch nicht in die Geometrie ein; das kommt mit dem Parser in Phase 2.
+1. **Ränder planen:** Dachüberstand plus Platz für Turm, Anbau, Vordach und Hecke.
+2. **Fundament und Boden.**
+3. **Wände:** vier Wände mit Eckpfosten und Balken.
+4. **Eingang:** offen, 2 Blöcke hoch, mit Freiraum davor und dahinter.
+5. **Bauteile:**
+   - Turm: 5×5, Pyramidendach, offener Schacht mit Durchgang ins Haus.
+   - Anbau: eigenes Satteldach und Durchgang.
+   - Vordach und Hecke mit Weg und Eckleuchten.
+6. **Fenster:** aus Glas, je nach Dichte; Fenster hinter Bauteilen entfallen.
+7. **Dach:** gestuftes Sattel- oder Walmdach aus vollen Blöcken, Stufen zwei Blöcke tief, optional mit Schnee.
+8. **Schornstein:** auf der hinteren Dachseite, die Seite bestimmt der Seed.
+9. **Deko:** Licht, Bodenleuchten, Giebelfenster, Girlanden, Kranz, Baum mit Kugeln und Geschenken.
 
-## Export (Sponge Schematic v3)
+### Weitere Typen
 
-`exportSchematic(model, profile)`:
+- **Weihnachtsbaum** (`buildTree.ts`):
+  - Bodenscheibe, Stamm, kegelförmige Stufen in Sägezahnform.
+  - Schmuck und Lichter am Rand, Lichterspirale, Schnee auf den Stufen, Stern und Geschenke.
+- **Marktstand** (`buildMarketStall.ts`):
+  - 1–3 Buden mit gemeinsamen Pfosten, Theke mit freier Ausgabestelle und Waren.
+  - Rückwand mit Lampe, Seitenwände mit Händlerzugang.
+  - Gestreiftes Satteldach, Girlande, gepflasterter Kundenbereich.
+- **Bahnhof** (`buildStation.ts`):
+  - 1–2 Gleise aus Bett, Schwellen und `minecraft:rail[shape=east_west]` auf festem Grund.
+  - Bahnsteig mit gelber Kante und Überdachung (Licht, Girlande).
+  - Gebäude mit Tür zum Bahnsteig, Uhr, Fenstern, Dach und Schornstein; Baum auf dem Bahnsteig.
 
-1. `buildSpongeV3Nbt` prüft das Modell: Maße, Palette gegen die Registry, Indexgrenzen, Hash und Zielversion. Bei Fehlern wirft es `SchematicExportError`, und es entsteht kein Download.
-2. Danach baut es den NBT-Baum: Root-Compound `""` → Compound `Schematic` mit
-   - `Version` (Int 3),
-   - `DataVersion` (Int 3955),
-   - `Metadata` (Name, Author, `MCBVoxelHash`, `MCBMinecraftVersion`),
-   - `Width`/`Height`/`Length` (Short),
-   - `Offset` (IntArray [0,0,0]),
-   - `Blocks` mit `Palette` (Compound: Blockstate → Int), `Data` (ByteArray der VarInt-Bytes) und `BlockEntities` (leere Liste von Compounds).
-3. `prismarine-nbt` serialisiert das als Big-Endian-NBT, danach folgt GZip (`node:zlib`). Strings werden auf Zeichen geprüft, bei denen sich UTF-8 und Javas „modified UTF-8“ unterscheiden.
-4. `validateSchematic` liest die Datei sofort wieder ein, und zwar über einen **eigenen, unabhängigen NBT-Leser** (`nbtReader.ts`). Geprüft werden:
-   - Root und `Schematic`, Tag-Typen, `Version`, `DataVersion` und Maße;
-   - Palette-IDs (0 … n−1) und Registry;
-   - alle VarInts, ohne Abschneiden und ohne Restbytes;
-   - jeder Block gegen das Modell, dazu der Hash.
+Zufall gibt es nur über `createSeededRandom(spec.seed)` (mulberry32).
 
-   Nur wenn alles stimmt, liefert die Route die Datei aus.
+## Editor (`src/core/editor/editOperations.ts`)
+
+- **Befehle** speichern pro Zelle den Blockstate vorher und nachher: `setBlockCommand`, `removeBlockCommand`, `replaceAllCommand` und `fillBoxCommand`. `applyCommand` erzeugt ein neues, kanonisches und neu gehashtes Modell.
+- **Rückgängig** stellt den ursprünglichen Hash exakt wieder her.
+- **Verlauf:** `EditHistory` hält begrenztes Undo/Redo pro Variante.
+- **Picking in 3D:** Jede Fläche des Mesh merkt sich ihren Block (`faceCells`). Ein Klick bestimmt daraus den getroffenen Block und die freie Nachbarzelle. Das funktioniert auch für flache Blöcke. Ziehen gilt als Kamerabewegung, nicht als Klick.
+
+## Vorschau (`buildVoxelMesh.ts`, `VoxelScene.tsx`)
+
+- `buildVoxelMesh` ist eine reine Funktion. Sie erzeugt nur Flächen zu nicht verdeckenden Nachbarn.
+- Glas bekommt einen eigenen transparenten Mesh, Leuchtblöcke werden unbeleuchtet gezeichnet.
+- Schienen sind flache Platten mit 1/16 Blockhöhe und verdecken keine Nachbarflächen.
+- `maxY` schaltet den Ebenenschnitt.
+
+## Projekte (`src/lib/persistence/projects.ts`)
+
+- Speicher ist IndexedDB über Dexie, Datenbankschema Version 1.
+- **Gespeichert:** Beschreibung, manuelle Einstellungen, Seed, Version, die Voxeldaten aller Varianten (inklusive Bearbeitungen), Bearbeitungszähler, Auswahl und ein eventueller KI-Plan.
+- **Beim Laden geprüft:** Schema, Registry, Grenzen und Hashes. Beschädigte Datensätze erzeugen eine sichtbare Fehlermeldung.
 
 ## API-Verträge
 
-### `POST /api/generate`
-
-Request (max. 16 KB):
-
-```json
-{ "spec": BuildSpec, "variants": 1..3 (optional, Standard 3) }
-```
-
-Antwort 200:
-
-```json
-{
-  "generator": "rule-based",
-  "profile": { "minecraftVersion": "1.21.1", "dataVersion": 3955, "schematic": "Sponge Schematic v3" },
-  "variants": [ { "seed": 1, "hash": "…", "dimensions": {…}, "totalBlocks": 976, "model": VoxelTransport } ],
-  "warnings": []
-}
-```
-
-Fehler: 400 (ungültiges JSON oder Schema, mit `issues`), 413 (zu groß), 422 (Bauwerkstyp noch nicht verfügbar), 500.
-
-### `POST /api/export`
-
-- **Request:** ein `VoxelTransport` (max. 512 KB), also das ausgewählte Modell.
-- **Antwort 200:** die `.schem`-Bytes mit folgenden Headern:
-  - `Content-Type: application/octet-stream`
-  - `Content-Disposition: attachment; filename="christmas-house-<size>-seed<n>-<hash8>.schem"`
-  - `X-MCB-Voxel-Hash`, `X-MCB-Schematic-Version`, `X-MCB-Data-Version`
-- **Fehler:**
-  - 400: Modell abgelehnt, z. B. wegen Hash, Registry, Grenzen oder Schema; mit `issues`.
-  - 413: Anfrage zu groß.
-  - 422: Export oder Selbstprüfung verweigert.
-  - 500: sonstiger Serverfehler.
-
-Der Client vergleicht `X-MCB-Voxel-Hash` mit dem ausgewählten Modell und meldet einen Fehler, wenn er abweicht.
+| Route | Request | Antwort / Fehler |
+|---|---|---|
+| `POST /api/generate` | `{ spec, variants? }` (max. 16 KB) | `{ generator, profile, variants[{ seed, hash, dimensions, totalBlocks, model }], warnings }`. Fehler: 400 (Schema/JSON), 413 (zu groß), 422 (passt nicht in die Grenzen) |
+| `POST /api/export` | `VoxelTransport` (max. 512 KB) | `.schem` mit `Content-Disposition: attachment` und `X-MCB-Voxel-Hash`. Fehler: 400 (Modell abgelehnt, inkl. Hash/Registry), 413, 422 (Selbstprüfung) |
+| `GET /api/ai/status` | – | `{ enabled, provider, model, reachable, modelInstalled, installedModels, message }` |
+| `POST /api/ai/plan` | `{ description }` | `{ source: 'ollama', model, durationMs, attempts, plan, patch }`. Fehler: 503 (aus/nicht erreichbar), 504 (Zeit), 502 (ungültig/HTTP) |
 
 ### Transportformat `VoxelTransport`
 
 ```json
-{
-  "schemaVersion": 1,
-  "dimensions": { "width": 15, "height": 14, "length": 13 },
-  "palette": ["minecraft:air", "…"],
-  "indexEncoding": "u16le-base64",
-  "indices": "<base64>",
-  "origin": { "x": 0, "y": 0, "z": 0 },
-  "spec": BuildSpec,
-  "hash": "<64 hex>"
-}
+{ "schemaVersion": 1, "dimensions": {…}, "palette": […], "indexEncoding": "u16le-base64",
+  "indices": "<base64>", "origin": {"x":0,"y":0,"z":0}, "spec": BuildSpec, "hash": "<64 hex>" }
 ```
 
-- `indices` enthält die Paletten-Indizes in Indexreihenfolge als **little-endian uint16** (2 Bytes pro Block), base64-kodiert.
-- Maximale Größe bei 48 × 32 × 48: 147 456 Bytes roh bzw. 196 608 base64-Zeichen.
-- `decodeVoxelTransport` prüft Schema, Grenzen, Base64, Länge, Registry, Indexgrenzen und Hash, und zwar auf dem Server *und* im Browser.
+- `indices`: little-endian uint16 pro Block, base64-kodiert.
+- Größe bei 48 × 32 × 48: höchstens 147 456 Bytes, also 196 608 base64-Zeichen.
+- `decodeVoxelTransport` prüft auf Server **und** Client: Schema, Grenzen, Base64, Länge, Registry, Indizes und Hash.
 
-## Vorschau
+## Export (Sponge Schematic v3)
 
-`buildVoxelMesh` ist eine reine Funktion ohne Abhängigkeit von Three.js und ist getestet:
-
-- Luft erzeugt keine Geometrie.
-- Undurchsichtige und leuchtende Blöcke geben nur Flächen zu nicht verdeckenden Nachbarn aus.
-- Glas bekommt einen eigenen, transparenten Mesh (`depthWrite: false`). Flächen zwischen gleichem Glas werden ausgelassen.
-- Ein 3 × 3 × 3-Würfel ergibt 54 statt 162 Flächen.
-
-`VoxelScene` rendert drei Meshes:
-
-- opak: `MeshLambertMaterial`;
-- leuchtend: `MeshBasicMaterial`, unbeleuchtet;
-- transluzent.
-
-Die Kamera passt sich an die Größe des Modells und das Seitenverhältnis an. Für E2E-Tests setzt die Szene `data-model-hash`, `data-rendered-hash` und `data-face-count`.
+1. Das Modell wird geprüft und die Zielversion bestimmt das Profil: 1.21.11 ergibt DataVersion 4671, 1.21.1 ergibt 3955.
+2. Der NBT-Baum ist `""` → `Schematic` mit:
+   - `Version` 3 und `DataVersion`;
+   - `Metadata`;
+   - `Width`/`Height`/`Length` (Short) und `Offset` [0,0,0];
+   - `Blocks` mit `Palette`, `Data` (VarInt-ByteArray) und `BlockEntities` (leere Liste).
+3. Big-Endian-NBT, danach GZip. Strings werden auf Kompatibilität mit Javas „modified UTF-8“ geprüft.
+4. Ein **eigener, unabhängiger NBT-Leser** liest die Datei sofort wieder ein und vergleicht Layout, Typen, VarInts, jeden Block und den Hash. Erst danach startet der Download.

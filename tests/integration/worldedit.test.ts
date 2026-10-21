@@ -18,7 +18,7 @@ import type { VoxelModel } from '@/core/schema/voxelModel';
 import { largePaletteModel } from '../helpers/syntheticModels';
 
 /**
- * Opens our exported .schem files with the real EngineHub WorldEdit 7.3.8 reader
+ * Opens our exported .schem files with the real EngineHub WorldEdit 7.4.2 reader
  * (SpongeSchematicV3Reader on the worldedit-cli platform, see tests/worldedit/README.md).
  * Build the reader once with `npm run worldedit:build`. Without the jar the suite is skipped,
  * unless MCB_REQUIRE_WORLDEDIT=1 (then a missing jar fails the run).

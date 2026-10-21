@@ -1,97 +1,121 @@
 # Minecraft Christmas Builder
 
-Webanwendung, die aus einer Beschreibung und Einstellungen ein **echtes Minecraft-Java-Bauwerk** erzeugt: Die Blockdaten werden regelbasiert generiert, als drehbare 3D-Vorschau angezeigt, als Materialliste gezählt und als **Sponge-Schematic-v3-Datei (`.schem`)** für WorldEdit exportiert. Vorschau, Materialliste und Export lesen dabei **dasselbe** kanonische Voxelmodell.
+Eine lokale Website für Minecraft-Bauwerke. Du beschreibst deine Idee, bekommst ein **echtes Minecraft-Java-Bauwerk** aus Blöcken, kannst es in 3D ansehen und bearbeiten und exportierst es als **`.schem`-Datei für WorldEdit**. Vorschau, Materialliste, Editor, Speichern und Export lesen dabei **dasselbe** Blockmodell.
 
-**Stand: Phase 0 (Fundament) und Phase 1 (Vertical Slice) abgeschlossen.** Details und echte Testergebnisse: [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md).
+Zielversion ist **Minecraft Java 1.21.11** (DataVersion 4671); 1.21.1 ist als zweites Profil wählbar. Echte Prüfergebnisse stehen in [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md).
 
-## Was funktioniert (implementiert und getestet)
+## Was die App kann
 
-- Begehbares Weihnachtshaus mit Fundament, vier Wänden mit Eckpfosten, offenem 2 Blöcke hohem Eingang, Glasfenstern, geschlossenem Satteldach mit Schnee, Schornstein am First, Girlanden, Kranz, Leuchtstein-Licht, Weihnachtsbaum und Geschenken.
-- Einstellungen Größe (klein/mittel/groß), Stil (weihnachtlich/märchenhaft/realistisch), Material (Fichte/Eiche/Stein), Farbthema (Rot-Grün/Eisblau/Natur), Detailgrad (1–3) und Seed. Jede Einstellung ändert die Blockdaten nachweisbar (Unit- und E2E-Tests).
-- Drei echte Varianten pro Generierung (Seed, Seed+1, Seed+2), reproduzierbar bis auf das Bit genau.
-- 3D-Vorschau (Three.js / React Three Fiber) mit Drehen, Zoomen, Verschieben, „Ansicht zurücksetzen“ und Raster. Verdeckte Flächen werden ausgeblendet, Glas wird gesondert transparent dargestellt.
-- Materialliste direkt aus den Blockdaten, ohne Luft, mit 64er-Stacks.
-- `.schem`-Export im Sponge-v3-Format (DataVersion 3955). Ablauf: Prüfung auf dem Server, dann Schreiben, dann Gegenlesen mit einem unabhängigen NBT-Leser, erst danach der Download.
-- Exportierte Dateien werden in einem automatisierten Test vom **echten EngineHub-WorldEdit-7.3.8-Reader** Block für Block identisch gelesen.
+- **Vier Bauwerkstypen:**
+  - **Haus:** Fundament, Wände, offener Eingang, Fenster, Satteldach, steiles Satteldach oder Walmdach, Schornstein, Deko, Baum und Geschenke innen.
+  - **Bauteile für das Haus:** Turm, Anbau, Vordach und Hecke mit Weg.
+  - **Weihnachtsbaum:** Schmuck, Lichterkette, Stern und Geschenke.
+  - **Weihnachtsmarktstand:** 1–3 Buden mit Theke, Waren und Streifendach.
+  - **Winterbahnhof:** Gleise mit echten Schienen, Bahnsteig, Überdachung und Bahnhofsgebäude.
+- **Freitext auf Deutsch**, z. B. „großes Steinhaus mit Turm rechts, rotem Dach, ohne Schnee, 15 x 11“:
+  - Ein regelbasierter Parser erkennt Typ, Stil, Größe, Material, Farben, Maße, Bauteile und Verneinungen.
+  - Wünsche, die nicht gebaut werden (z. B. Pool, Treppen, Türblöcke), erscheinen **als Warnung**.
+- **Einstellungen und Feinparameter:**
+  - Grundeinstellungen: Stil, Größe, Material, Farbe, Detailgrad, Seed und Minecraft-Version.
+  - Feinparameter: Breite, Tiefe, Wandhöhe, Dach, Fensterdichte, Bauteile, Material pro Bauteil, Balkenholz sowie Schalter für Schnee, Schornstein, Licht, Girlanden, Baum und Geschenke.
+  - Manuelle Einstellungen haben Vorrang vor dem Text; Konflikte werden angezeigt.
+- **Drei echte Varianten** pro Generierung, bei gleicher Eingabe bitgenau reproduzierbar.
+- **3D-Vorschau** mit Drehen, Zoomen und Verschieben, Kamerabuttons und Ebenenschnitt. Verdeckte Flächen werden ausgeblendet, Glas ist transparent, Schienen sind flach.
+- **Editor:**
+  - Blöcke in 3D anklicken: setzen, entfernen, ersetzen oder per Pipette aufnehmen.
+  - Block-Auswahl mit Suche und Blockzuständen (z. B. Ausrichtung).
+  - Setzen über Koordinaten, Material global austauschen.
+  - Rückgängig/Wiederholen (Strg+Z / Strg+Y).
+- **Materialliste** mit Stack-Angaben, direkt aus den Blockdaten.
+- **Projekte speichern** im Browser (IndexedDB): öffnen, umbenennen, duplizieren und löschen (mit Bestätigung), inklusive deiner Bearbeitungen. Beim Laden wird alles geprüft.
+- **`.schem`-Export** (Sponge Schematic v3):
+  - Der Server prüft das Modell, schreibt die Datei und liest sie mit einem unabhängigen Leser zurück; erst dann startet der Download.
+  - Exportierte Dateien werden im Test vom **echten EngineHub-WorldEdit-7.4.2-Reader** Block für Block identisch gelesen.
+- **Optionale lokale KI** über Ollama auf deinem PC, ohne Kosten und ohne Cloud:
+  - Die KI plant nur; alle Blöcke setzt immer der regelbasierte Generator.
+  - Ohne KI läuft alles regelbasiert, und das wird auch so angezeigt.
 
-**Noch nicht umgesetzt:**
+**Noch offen:** Der Import in einer echten Minecraft-Welt ist **noch nicht verifiziert**, siehe unten.
 
-- Der Freitext wird noch nicht ausgewertet (Phase 2). Die Oberfläche weist darauf hin.
-- Projekte lassen sich noch nicht speichern (Phase 3). Der Button dafür ist deaktiviert.
-- Weitere Bauwerkstypen fehlen noch (Phase 4). Sie sind in der Oberfläche als „noch nicht verfügbar“ markiert.
-- **Der In-Game-Import ist noch nicht verifiziert**, siehe unten.
+## Schnellstart unter Windows
 
-## Voraussetzungen
+1. **Node.js 22 LTS** von <https://nodejs.org> installieren (Standardoptionen).
+2. Den Projektordner herunterladen, z. B. per Git oder als ZIP von GitHub, und entpacken.
+3. **`start-windows.cmd` doppelklicken.** Beim ersten Mal werden die Abhängigkeiten installiert und die App gebaut. Danach öffnet sich <http://localhost:3000> im Browser.
+4. Zum Beenden das schwarze Fenster schließen.
 
-- Node.js **≥ 22.12** (getestet mit 22.22.0) und npm
-- Nur für den WorldEdit-Reader-Test: JDK 21, Maven 3.9, git, python3
+Optional für die lokale KI: [`docs/LOCAL_AI.md`](docs/LOCAL_AI.md), also Ollama installieren, ein Modell laden und `.env.local` anlegen.
 
-## Starten
+## Starten (alle Systeme, Kommandozeile)
 
 ```sh
 npm ci
-npm run dev          # Entwicklung: http://localhost:3000
+npm run dev          # Entwicklung mit automatischem Neuladen: http://localhost:3000
 ```
 
-Produktionsbuild:
+Produktionsbetrieb (schneller):
 
 ```sh
 npm run build
 npm start            # http://localhost:3000
 ```
 
-Es sind keine Umgebungsvariablen nötig (siehe [`.env.example`](.env.example)). Die Anwendung braucht weder Login noch Datenbank noch KI.
+Voraussetzung: Node.js **≥ 22.12**.
 
-## Bedienung
+## Bedienung in Kürze
 
-1. Links die Einstellungen wählen und auf **„Bauwerk generieren“** klicken.
-2. In der Mitte das Modell drehen (ziehen), zoomen (Mausrad oder Pinch) und verschieben (Rechtsklick oder zwei Finger).
-3. Rechts eine Variante wählen, die Materialliste prüfen und **„.schem herunterladen“** klicken.
-4. Import in Minecraft: siehe [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md).
+1. **Beschreibung** eintippen oder ein Beispiel anklicken. Darunter erscheinen die erkannten Wünsche und Warnungen.
+2. Bei Bedarf **Einstellungen** oder **Feinparameter** ändern und **„Bauwerk generieren“** klicken.
+3. Eine **Variante** wählen. Im **Editor** einen Werkzeugmodus wählen (Setzen, Entfernen, Ersetzen, Pipette) und auf das Modell klicken; Ziehen dreht weiterhin die Ansicht.
+4. **„.schem herunterladen“**, danach in Minecraft einfügen: [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md).
+5. **„Projekt speichern“**, um später weiterzuarbeiten (Menü „Projekte“ oben rechts).
 
 ## Tests
 
 | Befehl | Inhalt |
 |---|---|
 | `npm run typecheck` | TypeScript (`strict`) |
-| `npm run lint` | ESLint (Next.js Core Web Vitals + TypeScript) |
-| `npm test` | Vitest: Unit- und Integrationstests (Generator, Registry gegen `minecraft-data`, VarInt, NBT/Sponge v3, Roundtrip, API) |
-| `npm run worldedit:build` | baut den WorldEdit-Reader (`tests/worldedit/target/schem-reader.jar`) |
-| `npm run test:worldedit` | öffnet exportierte Dateien mit dem echten WorldEdit-7.3.8-Reader; schlägt fehl, wenn der Reader nicht gebaut ist |
-| `npm run test:e2e` | Playwright (Desktop + Mobil); baut und startet die App selbst |
-| `npm run check` | Typecheck, Lint, Tests, Build |
+| `npm run lint` | ESLint |
+| `npm test` | Vitest: Generatoren, Parser, Registry, Editor, Export, Speichern, API, KI-Client (gegen simulierten Ollama-Server), WorldEdit-Reader (falls gebaut) |
+| `npm run worldedit:build` | baut den WorldEdit-7.4.2-Reader (JDK 21, Maven, git, python3; unter Windows Git Bash oder WSL) |
+| `npm run test:worldedit` | Exporte werden mit dem echten WorldEdit-Reader gelesen; schlägt fehl, wenn der Reader fehlt |
+| `npm run test:e2e` | Playwright-Browsertests (Desktop und Handy); baut und startet die App selbst |
+| `npm run check` | Typecheck, Lint, Tests und Build |
 
-Ohne gebauten Reader überspringt `npm test` die WorldEdit-Suite. `npm run test:worldedit` erzwingt sie.
-
-Playwright ist auf Version 1.56.1 festgelegt. Wird der Browser lokal noch nicht gefunden: `npx playwright install chromium`.
+Playwright ist auf 1.56.1 festgelegt. Beim ersten Mal muss der Browser installiert werden: `npx playwright install chromium`.
 
 ## Projektstruktur
 
 ```text
-src/app/                 Next.js App Router: Seite, /api/generate, /api/export
-src/components/builder/  Panels (Eingabe, Einstellungen, Varianten, Materialliste, Export)
-src/components/preview/  3D-Szene, Mesh-Erzeugung mit Face-Culling, Toolbar
-src/core/schema/         BuildSpec (Zod), VoxelModel, Limits, Hash
-src/core/blocks/         geprüfte Blockstate-Registry, Material-/Farbpaletten
-src/core/generator/      Geometrie-Helfer, Haus-Generator, Dekoration, Seeded RNG
-src/core/analysis/       Materialzählung
+src/app/                 Seite und API: /api/generate, /api/export, /api/ai/status, /api/ai/plan
+src/components/builder/  Eingabe, Einstellungen, Feinparameter, KI, Varianten, Material, Export, Projekte
+src/components/editor/   Block-Auswahl, Editor-Panel
+src/components/preview/  3D-Szene, Mesh mit Face-Culling, Werkzeugleisten
+src/core/schema/         BuildSpec + Feinparameter (Zod), VoxelModel, Text/Einstellungs-Auflösung
+src/core/blocks/         geprüfte Blockstate-Registry, Material- und Farbpaletten
+src/core/generator/      Parser, Geometrie, Haus + Bauteile, Baum, Marktstand, Bahnhof
+src/core/editor/         Editier-Operationen und Verlauf
 src/core/export/         VarInt, Sponge-v3-Writer, unabhängiger NBT-Leser, Validator
-src/lib/                 Transportformat, Hash (SHA-256), API-Helfer
-tests/unit|integration|e2e|worldedit   Tests, WorldEdit-Reader-Harness (Java)
-docs/                    Architektur, Kompatibilität, Import-Anleitung, Testbericht
+src/core/ai/             KI-Bauplan-Schema und Prompt
+src/lib/                 Ollama-Client, Transportformat, IndexedDB-Projekte, Hash, API-Helfer
+tests/                   unit, integration, e2e, helpers, worldedit (Java-Reader-Harness)
+docs/                    Architektur, Kompatibilität, Import, lokale KI, Testbericht
 ```
 
 ## Grenzen
 
-- Nur Minecraft Java 1.21.1 (DataVersion 3955), nur Vanilla-Blöcke und nur volle Würfel. Treppen, Stufen, Scheiben und Schneeschichten sind bewusst noch nicht enthalten.
+- Nur Minecraft **Java**, Vanilla-Blöcke und volle Würfel. Einzige Ausnahme sind Schienen. Treppen, Stufen, Scheiben, Zäune, Türen und Schneeschichten fehlen bewusst. Der Eingang ist eine offene Öffnung.
 - Maximales Volumen 48 × 32 × 48 Blöcke.
-- Die Vorschau ist eine vereinfachte Voxel-Darstellung mit Einheitsfarben, ohne Original-Texturen.
-- Der Eingang ist eine echte Luftöffnung ohne Tür.
+- Kein echtes Obergeschoss: „zweistöckig“ ergibt höhere Wände mit Hinweis.
+- Die Vorschau ist eine vereinfachte Voxel-Darstellung ohne Original-Texturen.
+- Projekte liegen nur in diesem Browser auf diesem Gerät; es gibt keine Cloud-Synchronisierung.
+- Die lokale KI kann nur kombinieren, was der Generator kennt. Ein echter Lauf mit einem Modell wurde hier nicht getestet (siehe `docs/LOCAL_AI.md`).
 
 ## Dokumentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Datenfluss, Datenmodell, API-Verträge, Transportformat
-- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md): Zielprofil, Verifikation, Blockliste
-- [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md): Import-Anleitung
-- [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md): ausgeführte Prüfungen mit echten Ergebnissen
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Datenfluss, Datenmodell, Generatoren, Editor, API-Verträge
+- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md): Versionsprofile, Verifikation, Blockliste
+- [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md): Import in Minecraft
+- [`docs/LOCAL_AI.md`](docs/LOCAL_AI.md): lokale KI mit Ollama einrichten (Windows)
+- [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md): ausgeführte Prüfungen mit Ergebnissen
 - [`tests/worldedit/README.md`](tests/worldedit/README.md): Aufbau des WorldEdit-Readers

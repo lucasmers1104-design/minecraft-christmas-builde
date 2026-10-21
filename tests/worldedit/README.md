@@ -187,15 +187,17 @@ The JSON fields `registrySource` and `registryFile` record which file was used.
 
 ### 1.21.1 -> 1.21.11 block differences (from the generated registries)
 
-- **Unchanged:** every block the house generator uses has identical properties, values and
-  default state in 3955 and 4671 (88 blocks):
+- **Unchanged:** all 128 blocks of the app's registry (`src/core/blocks/registry.ts`) have identical
+  properties, values and default state in `3955_1.json` and `4671_1.json`. This was checked on
+  2026-10-21 with a one-off script over both files in the jar; it is not part of the test suite.
+  The original 88 house blocks were also checked in the raw mcmeta data:
   - spruce, oak and dark_oak planks, logs and stripped logs (`axis=x|y|z`, default `y`);
   - cobblestone, stone_bricks, smooth_stone, polished_andesite, deepslate_tiles, bricks,
     terracotta, glass, snow_block, packed_ice, glowstone, sea_lantern, gold_block;
   - wool, concrete, terracotta and stained_glass in all 16 colours;
   - spruce_leaves and oak_leaves: `distance` 1–7 (int), `persistent` and `waterlogged` (bool),
     default `distance=7,persistent=false,waterlogged=false`. The raw mcmeta data was checked as well.
-- **Only differences for these blocks:** tag memberships, which do not affect schematics. Terracotta
+- **Only differences for the original 88 blocks:** tag memberships, which do not affect schematics. Terracotta
   moved from `dead_bush_may_place_on` to `dry_vegetation_may_place_on`, and leaves joined
   `replaceable_by_mushrooms`.
 - **Registry-wide:** 1.21.11 adds 107 blocks, among them pale oak, resin, copper chests, golems and

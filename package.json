@@ -16,7 +16,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "worldedit:build": "bash tests/worldedit/build.sh",
-    "test:worldedit": "MCB_REQUIRE_WORLDEDIT=1 vitest run tests/integration/worldedit.test.ts",
+    "test:worldedit": "node scripts/test-worldedit.mjs",
     "check": "npm run typecheck && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
