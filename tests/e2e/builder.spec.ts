@@ -67,14 +67,13 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
     await expect(page.getByTestId('preview-dimensions')).toContainText('11 × 11 × 9');
   });
 
-  test('nicht implementierte Optionen sind deaktiviert und gekennzeichnet', async ({ page }) => {
+  test('alle vier Bauwerkstypen sind wählbar; Speichern erst nach dem Generieren', async ({ page }) => {
     await page.goto('/');
     const kinds = page.getByTestId('control-kind');
-    for (const label of ['Weihnachtsbaum', 'Marktstand', 'Bahnhof']) {
-      const option = kinds.getByRole('radio', { name: new RegExp(label) });
-      await expect(option).toBeDisabled();
+    for (const label of ['Haus', 'Weihnachtsbaum', 'Marktstand', 'Bahnhof']) {
+      await expect(kinds.getByRole('radio', { name: new RegExp(label) })).toBeEnabled();
     }
-    await expect(kinds).toContainText('noch nicht verfügbar');
+    await expect(kinds).not.toContainText('noch nicht verfügbar');
     await expect(page.getByTestId('save-button')).toBeDisabled();
     await expect(page.getByText('Regelbasierter Generator').first()).toBeVisible();
   });
@@ -146,5 +145,40 @@ test.describe('Phase 2: Freitext und Feinparameter', () => {
     const { report } = await downloadSchematic(page);
     expect(report.ok).toBe(true);
     expect(report.decoded?.palette).toContain('minecraft:red_terracotta');
+  });
+});
+
+test.describe('Phase 4: weitere Bauwerkstypen', () => {
+  for (const [label, title, mustContain] of [
+    ['Weihnachtsbaum', 'Weihnachtsbaum', 'minecraft:spruce_leaves'],
+    ['Marktstand', 'Weihnachtsmarktstand', 'minecraft:barrel'],
+    ['Bahnhof', 'Winterbahnhof', 'minecraft:rail'],
+  ] as const) {
+    test(`${label}: generieren, ansehen, exportieren`, async ({ page }) => {
+      await page.goto('/');
+      await page.getByTestId('prompt-input').fill('');
+      await page.getByTestId('control-kind').getByText(label, { exact: true }).click();
+      await page.getByTestId('generate-button').click();
+      await expect(page.getByTestId('building-title')).toHaveText(title);
+      const hash = await waitForRenderedModel(page);
+      await expect(page.getByTestId('material-table')).toContainText(mustContain);
+      const { report } = await downloadSchematic(page);
+      expect(report.ok).toBe(true);
+      expect(report.decoded?.hash).toBe(hash);
+    });
+  }
+
+  test('Bauteile im Feinparameter-Panel nur beim Haus', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('toggle-fine').click();
+    await expect(page.getByTestId('fine-options-tower')).toBeVisible();
+    await page.getByTestId('fine-options-tower').selectOption('left');
+    await page.getByTestId('fine-options-porch').selectOption('true');
+    await page.getByTestId('generate-button').click();
+    await waitForRenderedModel(page);
+    await expect(page.getByTestId('preview-dimensions')).toContainText('17 ×');
+    await page.getByTestId('control-kind').getByText('Weihnachtsbaum', { exact: true }).click();
+    await expect(page.getByTestId('fine-options-tower')).toHaveCount(0);
+    await expect(page.getByTestId('fine-options-snow')).toBeVisible();
   });
 });

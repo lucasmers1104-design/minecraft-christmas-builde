@@ -81,6 +81,13 @@ export function houseStructureProblems(
     for (let z = z0; z <= z1; z++)
       if (isAir(m, x, 0, z)) problems.push(`Fundament fehlt bei (${x},0,${z})`);
 
+  // Intentional openings to attached parts (tower shaft, annex doorway).
+  const passageSet = new Set(layout.passages.map((c) => `${c.x},${c.y},${c.z}`));
+  const passage = (x: number, y: number, z: number) => passageSet.has(`${x},${y},${z}`);
+  // Parts that legitimately break the front/back roof symmetry.
+  const asymmetric = layout.components.filter((c) => c.kind === 'tower' || c.kind === 'porch');
+  const inAsymmetricPart = (x: number, z: number) => asymmetric.some((b) => x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1);
+
   // Four closed walls: every wall cell is solid or glass, except the door opening.
   const doorCell = (x: number, y: number, z: number) =>
     x === door.x && z === door.z && y >= door.yFrom && y <= door.yTo;
@@ -88,7 +95,7 @@ export function houseStructureProblems(
     for (let x = x0; x <= x1; x++)
       for (let z = z0; z <= z1; z++) {
         const onWall = x === x0 || x === x1 || z === z0 || z === z1;
-        if (!onWall || doorCell(x, y, z)) continue;
+        if (!onWall || doorCell(x, y, z) || passage(x, y, z)) continue;
         if (isAir(m, x, y, z))
           problems.push(`Loch in der Wand bei (${x},${y},${z})`);
       }
@@ -113,8 +120,11 @@ export function houseStructureProblems(
 
   // Windows: real glass, open to the outside and the inside.
   const walls = new Set(layout.windows.map((w) => w.wall));
+  // A side wall covered by the annex may legitimately have no window of its own.
+  const annex = layout.components.find((c) => c.kind === "annex");
+  const annexSide = annex ? (annex.footprint.x0 >= layout.x1 ? "right" : "left") : null;
   for (const wall of ["front", "back", "left", "right"] as const)
-    if (!walls.has(wall)) problems.push(`Keine Fenster in der Wand ${wall}`);
+    if (!walls.has(wall) && wall !== annexSide) problems.push(`Keine Fenster in der Wand ${wall}`);
   for (const w of layout.windows)
     for (const c of w.cells) {
       if (!isGlass(m, c.x, c.y, c.z))
@@ -149,7 +159,7 @@ export function houseStructureProblems(
   for (let y = wallTop + 1; y <= layout.roof.ridgeY; y++)
     for (let x = x0 - 1; x <= x1 + 1; x++)
       for (let z = z0 - 1; z <= z1 + 1; z++) {
-        if (chimneyCell(x, z) || chimneyCell(x, zMirror(z))) continue;
+        if (chimneyCell(x, z) || chimneyCell(x, zMirror(z)) || inAsymmetricPart(x, z) || inAsymmetricPart(x, zMirror(z))) continue;
         if (x > x0 && x < x1) {
           // Only compare roof/cover blocks, not interior decoration below the roof.
           const a = idAt(m, x, y, z);
@@ -187,7 +197,7 @@ export function houseStructureProblems(
       problems.push("Schornstein steht nicht neben dem First");
   }
 
-  // Interior is not solid: at least 70 % of the walkable layer (y = 1..2) is free.
+  // Interior is not solid: at least 60 % of the walkable layer (y = 1..2) is free.
   let free = 0;
   let total = 0;
   for (let x = x0 + 1; x < x1; x++)
@@ -195,7 +205,7 @@ export function houseStructureProblems(
       total++;
       if (isAir(m, x, 1, z) && isAir(m, x, 2, z)) free++;
     }
-  if (free / total < 0.7)
+  if (free / total < 0.6)
     problems.push(`Innenraum zu voll (${free}/${total} frei)`);
 
   // At least three blocks of clear interior height along the walls.

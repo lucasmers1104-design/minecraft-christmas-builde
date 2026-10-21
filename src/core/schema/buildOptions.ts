@@ -6,7 +6,9 @@ import { z } from 'zod';
  * free-text parser and (later) the local AI planner, and every field changes real blocks.
  */
 
-export const ROOF_SHAPES = ['gable', 'steep'] as const;
+export const ROOF_SHAPES = ['gable', 'steep', 'hip'] as const;
+export const TOWER_POSITIONS = ['none', 'left', 'right'] as const;
+export const ANNEX_SIDES = ['none', 'left', 'right'] as const;
 export const WINDOW_DENSITIES = ['few', 'normal', 'many'] as const;
 export const WOOD_TYPES = ['spruce', 'oak', 'dark_oak', 'birch'] as const;
 
@@ -115,6 +117,14 @@ export const buildOptionsSchema = z
     garland: z.boolean().optional(),
     christmasTree: z.boolean().optional(),
     presents: z.boolean().optional(),
+    /** Square tower with pyramid roof on a front corner (house only). */
+    tower: z.enum(TOWER_POSITIONS).optional(),
+    /** Smaller gabled wing on one side, connected by an open doorway (house only). */
+    annex: z.enum(ANNEX_SIDES).optional(),
+    /** Roofed porch in front of the entrance (house only). */
+    porch: z.boolean().optional(),
+    /** Hedge around the plot with a path to the door (house only). */
+    hedge: z.boolean().optional(),
     frameWood: z.enum(WOOD_TYPES).optional(),
     materials: z
       .object({
@@ -131,6 +141,8 @@ export const buildOptionsSchema = z
 
 export type BuildOptions = z.infer<typeof buildOptionsSchema>;
 export type RoofShape = (typeof ROOF_SHAPES)[number];
+export type TowerPosition = (typeof TOWER_POSITIONS)[number];
+export type AnnexSide = (typeof ANNEX_SIDES)[number];
 export type WindowDensity = (typeof WINDOW_DENSITIES)[number];
 export type WoodType = (typeof WOOD_TYPES)[number];
 

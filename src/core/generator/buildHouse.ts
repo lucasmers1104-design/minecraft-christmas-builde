@@ -1,9 +1,29 @@
 import { resolvePalettes, type ColorPalette, type MaterialPalette } from '@/core/blocks/palettes';
-import type { WindowDensity } from '@/core/schema/buildOptions';
+import type { AnnexSide, RoofShape, TowerPosition, WindowDensity } from '@/core/schema/buildOptions';
 import type { BuildSize, BuildSpec } from '@/core/schema/buildSpec';
 import { checkDimensions, type Dimensions } from '@/core/schema/voxelModel';
 import { decorateHouse } from '@/core/generator/decorations';
-import { Priority, roofGable, VoxelBuilder, type GableRoofResult } from '@/core/generator/geometry';
+import {
+  hipRoofLayers,
+  Priority,
+  roofGable,
+  roofHip,
+  VoxelBuilder,
+  type GableRoofResult,
+  type Vec3,
+} from '@/core/generator/geometry';
+import {
+  ANNEX_GEOMETRY,
+  buildAnnex,
+  buildHedge,
+  buildPorch,
+  buildTower,
+  PORCH_DEPTH,
+  TOWER_HALF,
+  towerRoofTop,
+  towerTopY,
+  type ComponentBox,
+} from '@/core/generator/houseComponents';
 import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRandom';
 
 interface SizeDefaults {
@@ -22,8 +42,10 @@ const SIZE_DEFAULTS: Record<BuildSize, SizeDefaults> = {
 };
 
 export const DOOR_HEIGHT = 2;
-/** Roof overhang on every side; also the free margin around the footprint. */
-const OVERHANG = 1;
+/** Roof overhang on every side. */
+export const OVERHANG = 1;
+/** Extra free margin for the hedge ring around the plot. */
+const HEDGE_MARGIN = 2;
 
 /** Raised when the requested parameters do not fit into the MVP volume limits. */
 export class BuildLimitError extends Error {
@@ -38,6 +60,7 @@ export interface HouseParameters {
   width: number;
   depth: number;
   wallHeight: number;
+  roofShape: RoofShape;
   rise: 1 | 2;
   windows: WindowDensity;
   snow: boolean;
@@ -51,6 +74,10 @@ export interface HouseParameters {
   shutters: boolean;
   wreath: boolean;
   atticWindows: boolean;
+  tower: TowerPosition;
+  annex: AnnexSide;
+  porch: boolean;
+  hedge: boolean;
   materials: MaterialPalette;
   colors: ColorPalette;
   roof: string;
@@ -80,11 +107,23 @@ export function resolveHouseParameters(spec: BuildSpec): HouseParameters {
       );
     }
   }
+  const roofShape: RoofShape = o.roofShape ?? (spec.style === 'fairytale' ? 'steep' : 'gable');
+  const tower = o.tower ?? 'none';
+  let annex = o.annex ?? 'none';
+  if (annex !== 'none' && annex === tower) {
+    annex = tower === 'left' ? 'right' : 'left';
+    notes.push(`Turm und Anbau können nicht auf derselben Seite stehen – der Anbau steht ${annex === 'left' ? 'links' : 'rechts'}.`);
+  }
+  if (annex !== 'none' && depth < ANNEX_GEOMETRY.minHouseDepth) {
+    annex = 'none';
+    notes.push(`Ein Anbau braucht mindestens ${ANNEX_GEOMETRY.minHouseDepth} Blöcke Haustiefe und wurde weggelassen.`);
+  }
   return {
     width,
     depth,
     wallHeight: o.wallHeight ?? size.wallHeight,
-    rise: (o.roofShape ?? (spec.style === 'fairytale' ? 'steep' : 'gable')) === 'steep' ? 2 : 1,
+    roofShape,
+    rise: roofShape === 'steep' ? 2 : 1,
     windows: o.windows ?? 'normal',
     snow: o.snow ?? true,
     chimney: o.chimney ?? true,
@@ -96,7 +135,11 @@ export function resolveHouseParameters(spec: BuildSpec): HouseParameters {
     presents: christmasTree && (o.presents ?? (detail >= 3 && !realistic)),
     shutters: detail >= 2,
     wreath: !realistic,
-    atticWindows: (o.windows ?? 'normal') !== 'few' && detail >= 2,
+    atticWindows: (o.windows ?? 'normal') !== 'few' && detail >= 2 && roofShape !== 'hip',
+    tower,
+    annex,
+    porch: o.porch ?? false,
+    hedge: o.hedge ?? false,
     materials,
     colors,
     roof,
@@ -126,8 +169,12 @@ export interface HouseLayout {
   wallTop: number;
   door: { x: number; z: number; yFrom: number; yTo: number };
   windows: WindowOpening[];
-  roof: GableRoofResult & { baseY: number; rise: 1 | 2 };
+  roof: GableRoofResult & { baseY: number; rise: 1 | 2; shape: RoofShape };
   chimney: { xs: number[]; z: number; yFrom: number; yTo: number } | null;
+  /** House-wall cells intentionally opened to attached parts (tower, annex). */
+  passages: Vec3[];
+  /** Attached parts (tower, annex, porch, hedge) – excluded from the main-house symmetry check. */
+  components: ComponentBox[];
   style: BuildSpec['style'];
 }
 
@@ -141,16 +188,51 @@ export interface HouseContext {
   random: SeededRandom;
 }
 
-/** Volume needed for the parameters (roof layers, snow cover, chimney above the ridge). */
-export function planHouseDimensions(p: Pick<HouseParameters, 'width' | 'depth' | 'wallHeight' | 'rise'>): Dimensions {
-  const span = p.depth + 2 * OVERHANG - 1;
-  const roofLayers = Math.floor(span / 2) + 1;
-  const roofTopY = p.wallHeight + 1 + roofLayers * p.rise - 1;
+interface Margins {
+  left: number;
+  right: number;
+  front: number;
+  back: number;
+}
+
+/** Free space needed around the footprint for overhang and attached parts. */
+export function planMargins(p: Pick<HouseParameters, 'tower' | 'annex' | 'porch' | 'hedge' | 'width'>): Margins {
+  const m: Margins = { left: OVERHANG, right: OVERHANG, front: OVERHANG, back: OVERHANG };
+  if (p.tower !== 'none') {
+    m[p.tower] = Math.max(m[p.tower], TOWER_HALF + OVERHANG);
+    m.front = Math.max(m.front, TOWER_HALF + OVERHANG);
+  }
+  if (p.annex !== 'none') m[p.annex] = ANNEX_GEOMETRY.length + OVERHANG;
+  if (p.porch) m.front = Math.max(m.front, PORCH_DEPTH + 1);
+  if (p.hedge) {
+    m.left += HEDGE_MARGIN;
+    m.right += HEDGE_MARGIN;
+    m.front += HEDGE_MARGIN;
+    m.back += HEDGE_MARGIN;
+  }
+  return m;
+}
+
+function roofTopY(p: Pick<HouseParameters, 'width' | 'depth' | 'wallHeight' | 'rise' | 'roofShape'>): number {
+  const spanZ = p.depth + 2 * OVERHANG;
+  const spanX = p.width + 2 * OVERHANG;
+  const layers = p.roofShape === 'hip' ? hipRoofLayers(spanX, spanZ) : Math.floor((spanZ - 1) / 2) + 1;
+  return p.wallHeight + 1 + layers * p.rise - 1;
+}
+
+/** Volume needed for the parameters (roof layers, snow cover, chimney / tower spire). */
+export function planHouseDimensions(
+  p: Pick<HouseParameters, 'width' | 'depth' | 'wallHeight' | 'rise' | 'roofShape' | 'tower' | 'annex' | 'porch' | 'hedge'>,
+): Dimensions {
+  const m = planMargins(p);
+  const ridge = roofTopY(p);
+  // + snow cover on the ridge, + chimney cap one block above that.
+  let height = ridge + 3;
+  if (p.tower !== 'none') height = Math.max(height, towerRoofTop(towerTopY(p.wallHeight, ridge)) + 3);
   return {
-    width: p.width + 2 * OVERHANG,
-    // + snow cover on the ridge, + chimney cap one block above that.
-    height: roofTopY + 3,
-    length: p.depth + 2 * OVERHANG,
+    width: p.width + m.left + m.right,
+    height,
+    length: p.depth + m.front + m.back,
   };
 }
 
@@ -174,6 +256,9 @@ export function windowSegments(from: number, to: number, density: WindowDensity,
   return segments;
 }
 
+const inFootprint = (b: ComponentBox, x: number, z: number) =>
+  x >= b.footprint.x0 && x <= b.footprint.x1 && z >= b.footprint.z0 && z <= b.footprint.z1;
+
 export function buildHouse(spec: BuildSpec): { builder: VoxelBuilder; layout: HouseLayout; params: HouseParameters } {
   const params = resolveHouseParameters(spec);
   const { rise, materials, colors } = params;
@@ -181,20 +266,24 @@ export function buildHouse(spec: BuildSpec): { builder: VoxelBuilder; layout: Ho
   const limitIssues = checkDimensions(dimensions);
   if (limitIssues.length > 0) {
     throw new BuildLimitError(
-      `Das Haus wäre ${dimensions.width}×${dimensions.height}×${dimensions.length} Blöcke groß und passt nicht in die Grenzen (${limitIssues.join('; ')}). Bitte Tiefe, Wandhöhe oder Dachneigung verringern.`,
+      `Das Haus wäre ${dimensions.width}×${dimensions.height}×${dimensions.length} Blöcke groß und passt nicht in die Grenzen (${limitIssues.join('; ')}). Bitte Maße, Dachneigung oder Anbauten verringern.`,
     );
   }
   const builder = new VoxelBuilder(dimensions);
   const random = createSeededRandom(spec.seed);
+  const margins = planMargins(params);
 
-  const x0 = OVERHANG;
+  const x0 = margins.left;
   const x1 = x0 + params.width - 1;
-  const z0 = OVERHANG;
+  const z0 = margins.front;
   const z1 = z0 + params.depth - 1;
   const xc = x0 + (params.width - 1) / 2;
   const zc = z0 + (params.depth - 1) / 2;
   const wallTop = params.wallHeight;
   const windowTop = Math.max(2, wallTop - 1);
+  const ridgeTop = roofTopY(params);
+  const passages: Vec3[] = [];
+  const components: ComponentBox[] = [];
 
   // 1. Foundation ring + floor on the footprint.
   builder.fillBox({ x: x0, y: 0, z: z0 }, { x: x1, y: 0, z: z1 }, materials.floor, Priority.STRUCTURE);
@@ -231,29 +320,48 @@ export function buildHouse(spec: BuildSpec): { builder: VoxelBuilder; layout: Ho
   }
   builder.setBlock(xc, 0, z0 - 1, materials.path, Priority.STRUCTURE);
 
-  // 4. Windows with real glass blocks.
+  // 4. Attached parts. Built before windows and roof so they win where they meet the house.
+  const ctxBase = { builder, params, materials, colors, x0, x1, z0, z1, xc, zc, wallTop, ridgeTop, random };
+  if (params.tower !== 'none') {
+    const tower = buildTower(ctxBase, params.tower);
+    passages.push(...tower.passages);
+    components.push(tower.box);
+  }
+  if (params.annex !== 'none') {
+    const annex = buildAnnex(ctxBase, params.annex);
+    passages.push(...annex.passages);
+    components.push(annex.box);
+  }
+  if (params.porch) components.push(buildPorch(ctxBase));
+  if (params.hedge) components.push(buildHedge(ctxBase));
+  const blocked = (x: number, z: number) => components.some((b) => b.blocksHouseWall && inFootprint(b, x, z));
+
+  // 5. Windows with real glass blocks (skipped where an attached part covers the wall).
   const windows: WindowOpening[] = [];
   const shutterState = spec.style === 'realistic' ? materials.frame : colors.primaryAccent;
-  const addWindow = (wall: WindowOpening['wall'], cells: WindowOpening['cells']): void => {
+  const addWindow = (wall: WindowOpening['wall'], cells: WindowOpening['cells']): boolean => {
+    if (cells.some((c) => blocked(c.x, c.z))) return false;
     for (const c of cells) builder.setBlock(c.x, c.y, c.z, colors.windowGlass, Priority.OPENING);
     windows.push({ wall, cells });
+    return true;
   };
 
   // Front/back: windows on each side of the door, mirrored around xc.
   const frontSegments = windowSegments(x0 + 1, xc - 2, params.windows, 2);
   for (const z of [z0, z1]) {
     const wall = z === z0 ? 'front' : 'back';
+    const placed: boolean[] = [];
     for (const [start, end] of frontSegments) {
       for (const mirrored of [false, true]) {
         const cells: WindowOpening['cells'] = [];
         for (let x = start; x <= end; x++) {
           for (let y = 2; y <= windowTop; y++) cells.push({ x: mirrored ? 2 * xc - x : x, y, z });
         }
-        addWindow(wall, cells);
+        placed.push(addWindow(wall, cells));
       }
     }
     const single = frontSegments.length === 1 ? frontSegments[0] : undefined;
-    if (params.shutters && single && single[0] - 1 > x0 && single[1] + 1 < xc - 1) {
+    if (params.shutters && single && placed.every(Boolean) && single[0] - 1 > x0 && single[1] + 1 < xc - 1) {
       for (let y = 2; y <= windowTop; y++) {
         builder.placeSymmetric(single[0] - 1, y, z, xc, shutterState, Priority.STRUCTURE);
         builder.placeSymmetric(single[1] + 1, y, z, xc, shutterState, Priority.STRUCTURE);
@@ -270,13 +378,14 @@ export function buildHouse(spec: BuildSpec): { builder: VoxelBuilder; layout: Ho
         })
       : windowSegments(z0 + 1, z1 - 1, params.windows, 2);
   for (const x of [x0, x1]) {
+    let placedAll = true;
     for (const [start, end] of sideSegments) {
       const cells: WindowOpening['cells'] = [];
       for (let z = start; z <= end; z++) for (let y = 2; y <= windowTop; y++) cells.push({ x, y, z });
-      addWindow(x === x0 ? 'left' : 'right', cells);
+      placedAll = addWindow(x === x0 ? 'left' : 'right', cells) && placedAll;
     }
     const single = sideSegments.length === 1 ? sideSegments[0] : undefined;
-    if (params.shutters && single && single[0] - 1 > z0 && single[1] + 1 < z1) {
+    if (params.shutters && single && placedAll && single[0] - 1 > z0 && single[1] + 1 < z1) {
       for (let y = 2; y <= windowTop; y++) {
         builder.setBlock(x, y, single[0] - 1, shutterState, Priority.STRUCTURE);
         builder.setBlock(x, y, single[1] + 1, shutterState, Priority.STRUCTURE);
@@ -284,21 +393,33 @@ export function buildHouse(spec: BuildSpec): { builder: VoxelBuilder; layout: Ho
     }
   }
 
-  // 5. Symmetric stepped gable roof (full blocks) with gable walls and optional snow cover.
+  // 6. Roof: symmetric stepped gable (or hip) roof from full blocks, optional snow cover.
   const roofBaseY = wallTop + 1;
-  const roofResult = roofGable(builder, {
-    xFrom: x0 - OVERHANG,
-    xTo: x1 + OVERHANG,
-    zFront: z0 - OVERHANG,
-    zBack: z1 + OVERHANG,
-    baseY: roofBaseY,
-    rise,
-    roof: params.roof,
-    cover: params.snow ? colors.roofCover : undefined,
-    gable: { state: materials.wall, xs: [x0, x1] },
-  });
+  const roofResult =
+    params.roofShape === 'hip'
+      ? roofHip(builder, {
+          xFrom: x0 - OVERHANG,
+          xTo: x1 + OVERHANG,
+          zFrom: z0 - OVERHANG,
+          zTo: z1 + OVERHANG,
+          baseY: roofBaseY,
+          rise,
+          roof: params.roof,
+          cover: params.snow ? colors.roofCover : undefined,
+        })
+      : roofGable(builder, {
+          xFrom: x0 - OVERHANG,
+          xTo: x1 + OVERHANG,
+          zBack: z1 + OVERHANG,
+          zFront: z0 - OVERHANG,
+          baseY: roofBaseY,
+          rise,
+          roof: params.roof,
+          cover: params.snow ? colors.roofCover : undefined,
+          gable: { state: materials.wall, xs: [x0, x1] },
+        });
 
-  // 6. Chimney beside the ridge on the back slope, near one gable end (side chosen by seed).
+  // 7. Chimney beside the ridge on the back slope, near one gable end (side chosen by seed).
   const chimneyOnRight = random.chance(0.5);
   let chimney: HouseLayout['chimney'] = null;
   if (params.chimney) {
@@ -332,12 +453,14 @@ export function buildHouse(spec: BuildSpec): { builder: VoxelBuilder; layout: Ho
     wallTop,
     door,
     windows,
-    roof: { ...roofResult, baseY: roofBaseY, rise },
+    roof: { ...roofResult, baseY: roofBaseY, rise, shape: params.roofShape },
     chimney,
+    passages,
+    components,
     style: spec.style,
   };
 
-  // 7./8. Christmas decoration, lights, tree – never inside reserved clearances.
+  // 8./9. Christmas decoration, lights, tree – never inside reserved clearances.
   decorateHouse({ spec, params, builder, layout, materials, colors, random });
 
   return { builder, layout, params };

@@ -116,6 +116,28 @@ const setOnce = <K extends keyof SpecPatch>(patch: SpecPatch, key: K, value: Non
   return true;
 };
 
+/** The side word ("links"/"rechts") closest to the match, within a few words. */
+function sideNear(text: string, m: Match): 'left' | 'right' | null {
+  const from = Math.max(0, m.start - 24);
+  const around = text.slice(from, Math.min(text.length, m.end + 24));
+  let best: { side: 'left' | 'right'; distance: number } | null = null;
+  const sideRe = /(?<![\p{L}])(?:(links|linke[nmrs]?|westlich)|(rechts|rechte[nmrs]?|östlich|oestlich))(?![\p{L}])/giu;
+  for (let s = sideRe.exec(around); s; s = sideRe.exec(around)) {
+    const pos = from + s.index;
+    const distance = pos >= m.end ? pos - m.end : m.start - (pos + s[0].length);
+    const side = s[1] ? 'left' : 'right';
+    if (!best || distance < best.distance) best = { side, distance };
+  }
+  return best?.side ?? null;
+}
+
+const flagOption = (key: 'porch' | 'hedge', on: string, off: string) =>
+  (ctx: RuleContext, m: Match): string => {
+    const value = !isNegated(ctx.text, m.start);
+    ctx.options[key] = value;
+    return value ? on : off;
+  };
+
 const flag = (key: 'snow' | 'chimney' | 'lights' | 'garland' | 'presents' | 'christmasTree', on: string, off: string) =>
   (ctx: RuleContext, m: Match): string => {
     const value = !isNegated(ctx.text, m.start);
@@ -281,13 +303,54 @@ const RULES: Rule[] = [
   },
   { re: part('girlande'), apply: flag('garland', 'Girlanden', 'keine Girlanden') },
   { re: part('geschenk|päckchen|paket'), apply: flag('presents', 'Geschenke', 'keine Geschenke') },
+  // Attached building parts (house only).
+  {
+    re: new RegExp(`${word('turm|türmchen|türme', '(?:e|en)?').source}|${part('glockenturm|uhrturm|kirchturm|eckturm').source}`, 'giu'),
+    apply: (ctx, m) => {
+      const side = sideNear(ctx.text, m) ?? 'left';
+      if (isNegated(ctx.text, m.start)) {
+        ctx.options.tower = 'none';
+        return 'kein Turm';
+      }
+      ctx.options.tower = side;
+      return `Turm ${side === 'left' ? 'links' : 'rechts'}`;
+    },
+  },
+  {
+    re: part('anbau|seitenflügel|flügel|nebengebäude'),
+    apply: (ctx, m) => {
+      const side = sideNear(ctx.text, m) ?? 'right';
+      if (isNegated(ctx.text, m.start)) {
+        ctx.options.annex = 'none';
+        return 'kein Anbau';
+      }
+      ctx.options.annex = side;
+      return `Anbau ${side === 'left' ? 'links' : 'rechts'}`;
+    },
+  },
+  {
+    re: part('veranda|vordach|terrasse|überdachung|vorbau'),
+    apply: flagOption('porch', 'Vordach am Eingang', 'kein Vordach'),
+  },
+  {
+    re: part('hecke|zaun|garten|grundstück'),
+    apply: flagOption('hedge', 'Hecke ums Grundstück (Zäune werden als Hecke gebaut)', 'keine Hecke'),
+  },
+  {
+    re: part('walmdach|walm'),
+    apply: (ctx) => {
+      ctx.options.roofShape = 'hip';
+      return 'Dach: Walmdach';
+    },
+  },
+
   // Building type. The first type not attached with "mit/und …" is the main building.
   {
     re: part('weihnachtsbaum|tannenbaum|christbaum|baum'),
     apply: (ctx, m) => mainOrAttachment(ctx, m, 'tree'),
   },
   {
-    re: part('marktstand|marktbude|glühweinstand|verkaufsstand|weihnachtsmarkt|bude'),
+    re: new RegExp(`${part('marktstand|marktbude|glühweinstand|verkaufsstand|weihnachtsmarkt|bude').source}|${word('markt', '(?:es|s)?').source}`, 'giu'),
     apply: (ctx, m) => mainOrAttachment(ctx, m, 'market_stall'),
   },
   {
@@ -465,14 +528,6 @@ const KNOWN_UNSUPPORTED: { re: RegExp; message: (phrase: string) => string }[] =
     re: new RegExp(`${part('möbel').source}|${word('bett|tisch|stuhl|stühle|sofa|sessel|schrank|regal', '(?:e|en|es|s)?').source}`, 'giu'),
     message: (p) => `„${p}“: Möbel werden noch nicht eingerichtet.`,
   },
-  {
-    re: new RegExp(`${word('turm|türmchen|türme', '(?:e|en)?').source}|${part('glockenturm|uhrturm|kirchturm').source}`, 'giu'),
-    message: (p) => `„${p}“: Türme sind noch nicht verfügbar.`,
-  },
-  { re: part('anbau|flügel|nebengebäude'), message: (p) => `„${p}“: Anbauten sind noch nicht verfügbar.` },
-  { re: part('veranda|vordach|terrasse|überdachung'), message: (p) => `„${p}“: Vordächer/Veranden sind noch nicht verfügbar.` },
-  { re: part('zaun|hecke|garten'), message: (p) => `„${p}“: Zäune und Gärten sind noch nicht verfügbar.` },
-  { re: part('walmdach'), message: (p) => `„${p}“: Walmdächer sind noch nicht verfügbar – es wird ein Satteldach gebaut.` },
 ];
 
 const STOPWORDS = new Set(

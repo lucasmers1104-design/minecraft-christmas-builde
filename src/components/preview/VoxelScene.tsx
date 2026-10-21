@@ -37,15 +37,20 @@ function useBufferGeometry(buffers: MeshBuffers, colorSize: 3 | 4): THREE.Buffer
   return geometry;
 }
 
-/** Click/hover target from a face hit in group-local coordinates. */
-function cellsFromEvent(e: ThreeEvent<PointerEvent | MouseEvent>, offset: THREE.Vector3): CellAction | null {
+/**
+ * Click/hover target: the block that owns the hit face (looked up per face, so flat blocks
+ * such as rails work too) and the free cell in front of that face.
+ */
+function cellsFromEvent(e: ThreeEvent<PointerEvent | MouseEvent>, dims: Dimensions): CellAction | null {
   const n = e.face?.normal;
-  if (!n) return null;
-  const local = e.point.clone().sub(offset);
+  const faceCells = (e.object.userData as { faceCells?: Int32Array }).faceCells;
+  if (!n || !faceCells || e.faceIndex === undefined || e.faceIndex === null) return null;
+  const index = faceCells[Math.floor(e.faceIndex / 2)];
+  if (index === undefined) return null;
   const hit = {
-    x: Math.floor(local.x - n.x * 0.5),
-    y: Math.floor(local.y - n.y * 0.5),
-    z: Math.floor(local.z - n.z * 0.5),
+    x: index % dims.width,
+    z: Math.floor(index / dims.width) % dims.length,
+    y: Math.floor(index / (dims.width * dims.length)),
   };
   return { hit, place: { x: hit.x + Math.round(n.x), y: hit.y + Math.round(n.y), z: hit.z + Math.round(n.z) } };
 }
@@ -86,12 +91,12 @@ function VoxelMeshes({
         onClick: (e: ThreeEvent<MouseEvent>) => {
           e.stopPropagation();
           if (e.delta > 4) return; // that was an orbit drag, not a click
-          const cells = cellsFromEvent(e, offset);
+          const cells = cellsFromEvent(e, model.dimensions);
           if (cells) onCellAction?.(cells);
         },
         onPointerMove: (e: ThreeEvent<PointerEvent>) => {
           e.stopPropagation();
-          setHover(target(cellsFromEvent(e, offset)));
+          setHover(target(cellsFromEvent(e, model.dimensions)));
         },
         onPointerOut: () => setHover(null),
       }
@@ -100,13 +105,13 @@ function VoxelMeshes({
   return (
     // Visual centring only – the stored block coordinates are never shifted.
     <group position={offset.toArray()}>
-      <mesh geometry={opaque} {...handlers}>
+      <mesh geometry={opaque} userData={{ faceCells: mesh.opaque.faceCells }} {...handlers}>
         <meshLambertMaterial vertexColors />
       </mesh>
-      <mesh geometry={emissive} {...handlers}>
+      <mesh geometry={emissive} userData={{ faceCells: mesh.emissive.faceCells }} {...handlers}>
         <meshBasicMaterial vertexColors toneMapped={false} />
       </mesh>
-      <mesh geometry={translucent} renderOrder={1} {...handlers}>
+      <mesh geometry={translucent} renderOrder={1} userData={{ faceCells: mesh.translucent.faceCells }} {...handlers}>
         <meshLambertMaterial vertexColors transparent depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
       {mode === 'place' ? (

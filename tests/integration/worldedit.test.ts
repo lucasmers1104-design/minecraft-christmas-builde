@@ -95,6 +95,11 @@ describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub 
     ['klein/realistisch/eiche/natur', { ...DEFAULT_HOUSE_SPEC, size: 'small', style: 'realistic', materialTheme: 'oak', colorTheme: 'natural', detailLevel: 1 }],
     ['groß/märchenhaft/stein/eisblau', { ...DEFAULT_HOUSE_SPEC, size: 'large', style: 'fairytale', materialTheme: 'stone', colorTheme: 'ice_blue', detailLevel: 3 }],
     ['Profil 1.21.1 (DataVersion 3955)', { ...DEFAULT_HOUSE_SPEC, targetMinecraftVersion: '1.21.1' }],
+    ['Haus mit Turm, Anbau, Vordach, Hecke und Walmdach', { ...DEFAULT_HOUSE_SPEC, size: 'large', options: { tower: 'left', annex: 'right', porch: true, hedge: true, roofShape: 'hip' } }],
+    ['Weihnachtsbaum groß', { ...DEFAULT_HOUSE_SPEC, kind: 'tree', size: 'large', detailLevel: 3 }],
+    ['Marktstand groß', { ...DEFAULT_HOUSE_SPEC, kind: 'market_stall', size: 'large' }],
+    ['Bahnhof groß mit Schienen (1.21.11)', { ...DEFAULT_HOUSE_SPEC, kind: 'station', size: 'large' }],
+    ['Bahnhof klein mit Schienen (1.21.1)', { ...DEFAULT_HOUSE_SPEC, kind: 'station', size: 'small', targetMinecraftVersion: '1.21.1' }],
     [
       'Feinparameter (Birke, Ziegel, rotes Dach, viele Fenster)',
       {

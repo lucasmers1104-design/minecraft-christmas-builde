@@ -67,10 +67,22 @@ describe('parseDescription', () => {
     expect(w).toMatch(/Einhorn.*nicht erkannt/);
   });
 
-  it('Bauwerkstypen, die noch fehlen, werden ehrlich gemeldet', () => {
-    const r = parseDescription('Bahnhof im Schnee');
-    expect(r.patch.kind).toBe('house');
-    expect(r.warnings.join()).toMatch(/Bahnhof ist noch nicht verfügbar/);
+  it.each([
+    ['Bahnhof im Schnee', 'station'],
+    ['großer Weihnachtsbaum mit Geschenken', 'tree'],
+    ['ein Glühweinstand auf dem Weihnachtsmarkt', 'market_stall'],
+    ['Weihnachtsmarkt mit drei Buden', 'market_stall'],
+    ['Weihnachtshaus mit Tannenbaum', 'house'],
+  ])('Bauwerkstyp aus „%s“ = %s', (text, kind) => {
+    expect(parseDescription(text).patch.kind).toBe(kind);
+  });
+
+  it('erkennt Bauteile mit Seite und Verneinung', () => {
+    expect(parseDescription('Haus mit Turm rechts und Anbau links').patch.options).toMatchObject({ tower: 'right', annex: 'left' });
+    expect(parseDescription('Haus mit Turm').patch.options).toMatchObject({ tower: 'left' });
+    expect(parseDescription('Haus mit Veranda und Garten').patch.options).toMatchObject({ porch: true, hedge: true });
+    expect(parseDescription('Haus ohne Turm mit Walmdach').patch.options).toMatchObject({ tower: 'none', roofShape: 'hip' });
+    expect(parseDescription('Haus mit Turm im Schneesturm').warnings).toEqual([]);
   });
 
   it('„Schornstein“ ist kein Steinhaus, „Tannenbaum“ kein Fichtenholz', () => {

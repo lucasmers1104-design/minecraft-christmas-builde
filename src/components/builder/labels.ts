@@ -39,5 +39,7 @@ export const DETAIL_LABELS: Record<DetailLevel, string> = {
 
 export function buildingTitle(kind: BuildingType, style: BuildStyle): string {
   if (kind === 'house') return style === 'christmas' ? 'Weihnachtshaus' : `${STYLE_LABELS[style]}es Winterhaus`;
+  if (kind === 'market_stall') return 'Weihnachtsmarktstand';
+  if (kind === 'station') return 'Winterbahnhof';
   return BUILDING_TYPE_LABELS[kind];
 }

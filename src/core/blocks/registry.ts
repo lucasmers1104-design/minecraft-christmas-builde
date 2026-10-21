@@ -3,9 +3,9 @@
  *
  * Only blocks listed here may appear in a VoxelModel palette. Property names and the
  * allowed values are checked in tests/unit/registry.test.ts against minecraft-data's
- * block lists for every supported profile, so nothing in here is guessed. All blocks render as full cubes
- * (or nothing, for air); non-cube shapes such as stairs, slabs, panes or snow layers are
- * deliberately not in the registry until renderer and exporter both support them.
+ * block lists for every supported profile, so nothing in here is guessed. All blocks are
+ * full cubes except rails, which the preview draws as a flat plate; stairs, slabs, panes and
+ * snow layers are deliberately not in the registry until the renderer supports their shapes.
  */
 
 export type RenderKind = 'none' | 'opaque' | 'translucent' | 'emissive';
@@ -16,6 +16,11 @@ export interface BlockRender {
   color: string;
   /** Only for translucent blocks. */
   opacity?: number;
+  /**
+   * Geometry in the preview: full cube (default) or a flat 1/16-high plate (rails). Flat
+   * blocks never hide neighbouring faces.
+   */
+  shape?: 'cube' | 'flat';
 }
 
 export interface BlockDefinition {
@@ -188,6 +193,29 @@ const DEFINITIONS: readonly BlockDefinition[] = [
   simple('pumpkin', 'Kürbis', opaque('#c6761c')),
   facing('carved_pumpkin', 'Geschnitzter Kürbis', opaque('#c27318')),
   simple('melon', 'Melone', opaque('#6f912a')),
+
+  // Not a full cube: rendered as a flat plate. Needs a solid block below in the world.
+  {
+    id: 'minecraft:rail',
+    label: 'Schiene',
+    properties: {
+      shape: [
+        'north_south',
+        'east_west',
+        'ascending_east',
+        'ascending_west',
+        'ascending_north',
+        'ascending_south',
+        'south_east',
+        'south_west',
+        'north_west',
+        'north_east',
+      ],
+      waterlogged: BOOL,
+    },
+    defaults: { shape: 'north_south', waterlogged: 'false' },
+    render: { kind: 'opaque', color: '#8d8a84', shape: 'flat' },
+  },
 ];
 
 const BY_ID = new Map<string, BlockDefinition>(DEFINITIONS.map((d) => [d.id, d]));

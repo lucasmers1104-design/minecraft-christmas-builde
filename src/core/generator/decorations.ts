@@ -30,13 +30,15 @@ function placeFloorLights({ builder, layout, colors }: HouseContext): void {
   builder.placeSymmetric(x0 + 2, 0, z0 + 2, xc, colors.light, Priority.STRUCTURE);
 }
 
-function placeAtticWindows({ builder, layout, colors }: HouseContext): void {
+function placeAtticWindows({ builder, layout, colors, params }: HouseContext): void {
   const { zc, x0, x1 } = layout;
   const cells = layout.roof.gableCells.filter((c) => c.z === zc && (c.x === x0 || c.x === x1));
   const ys = [...new Set(cells.map((c) => c.y))].sort((a, b) => a - b);
   // Use the two rows above the lowest gable row, if the gable is tall enough.
   const rows = ys.slice(1, 3);
-  for (const x of [x0, x1]) {
+  // The annex roof sits in front of the gable on its side.
+  const gables = [x0, x1].filter((x) => !(params.annex === 'left' && x === x0) && !(params.annex === 'right' && x === x1));
+  for (const x of gables) {
     const glassCells: { x: number; y: number; z: number }[] = [];
     for (const y of rows) {
       builder.setBlock(x, y, zc, colors.windowGlass, Priority.OPENING);

@@ -26,6 +26,8 @@ export const Priority = {
   ROOF: 30,
   STRUCTURE: 50,
   CHIMNEY: 60,
+  /** Attached building parts (tower, annex) replace house walls/windows where they join. */
+  ANNEX: 70,
   OPENING: 80,
   CLEARANCE: 100,
 } as const;
@@ -234,4 +236,67 @@ export function roofGable(builder: VoxelBuilder, o: GableRoofOptions): GableRoof
     }
   }
   return { ridgeY, ridgeZ, gableCells };
+}
+
+export interface HipRoofOptions {
+  /** Roof footprint including overhang. */
+  xFrom: number;
+  xTo: number;
+  zFrom: number;
+  zTo: number;
+  baseY: number;
+  rise: 1 | 2;
+  roof: string;
+  cover?: string;
+  priority?: PriorityValue;
+}
+
+/**
+ * Stepped hip roof (Walmdach) / pyramid roof: every layer shrinks by one block on all four
+ * sides, each step two blocks deep so the roof stays closed. Works for any rectangle.
+ */
+export function roofHip(builder: VoxelBuilder, o: HipRoofOptions): GableRoofResult {
+  const priority = o.priority ?? Priority.ROOF;
+  const coverPriority = priority === Priority.ROOF ? Priority.ROOF_COVER : priority;
+  let ridgeY = o.baseY;
+  for (let k = 0; ; k++) {
+    const xa = o.xFrom + k;
+    const xb = o.xTo - k;
+    const za = o.zFrom + k;
+    const zb = o.zTo - k;
+    if (xa > xb || za > zb) break;
+    const isTop = xb - xa <= 1 || zb - za <= 1;
+    for (let r = 0; r < o.rise; r++) {
+      const y = o.baseY + k * o.rise + r;
+      for (let x = xa; x <= xb; x++)
+        for (let z = za; z <= zb; z++) {
+          const ring = x <= xa + 1 || x >= xb - 1 || z <= za + 1 || z >= zb - 1;
+          if (ring || isTop) builder.setBlock(x, y, z, o.roof, priority);
+        }
+      ridgeY = y;
+    }
+    if (o.cover) {
+      const coverY = o.baseY + k * o.rise + o.rise;
+      for (let x = xa; x <= xb; x++)
+        for (let z = za; z <= zb; z++) {
+          const outer = x === xa || x === xb || z === za || z === zb;
+          if (outer || isTop) builder.setBlock(x, coverY, z, o.cover, coverPriority);
+        }
+    }
+    if (isTop) break;
+  }
+  return { ridgeY, ridgeZ: Math.floor((o.zFrom + o.zTo) / 2), gableCells: [] };
+}
+
+/** Number of layers a hip roof needs (for volume planning). */
+export function hipRoofLayers(spanX: number, spanZ: number): number {
+  // Layer k exists while both ranges are non-empty; stops early once one side is <= 2 wide.
+  let k = 0;
+  for (;;) {
+    const w = spanX - 2 * k;
+    const d = spanZ - 2 * k;
+    if (w <= 0 || d <= 0) return k;
+    if (w <= 2 || d <= 2) return k + 1;
+    k++;
+  }
 }

@@ -15,6 +15,13 @@ export class SchematicExportError extends Error {
 
 export const SCHEMATIC_AUTHOR = 'Minecraft Christmas Builder';
 
+const SCHEMATIC_NAMES: Record<VoxelModel['spec']['kind'], string> = {
+  house: 'Weihnachtshaus',
+  tree: 'Weihnachtsbaum',
+  market_stall: 'Weihnachtsmarktstand',
+  station: 'Winterbahnhof',
+};
+
 type Tag = nbt.Tags[nbt.TagType];
 
 const int = (value: number): Tag => ({ type: 'int', value }) as Tag;
@@ -60,7 +67,7 @@ export function buildSpongeV3Nbt(model: VoxelModel, requestedProfile?: Compatibi
     Version: int(profile.schematicVersion),
     DataVersion: int(profile.dataVersion),
     Metadata: compound({
-      Name: nbtString(`Weihnachtshaus (Seed ${model.spec.seed})`),
+      Name: nbtString(`${SCHEMATIC_NAMES[model.spec.kind]} (Seed ${model.spec.seed})`),
       Author: nbtString(SCHEMATIC_AUTHOR),
       MCBVoxelHash: nbtString(model.hash),
       MCBMinecraftVersion: nbtString(profile.minecraftVersion),

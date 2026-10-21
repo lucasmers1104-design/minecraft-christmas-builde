@@ -10,7 +10,7 @@ export const COLOR_THEMES = ['red_green', 'ice_blue', 'natural'] as const;
 export const DETAIL_LEVELS = [1, 2, 3] as const;
 
 /** Building kinds that have a real generator. Everything else is shown as "noch nicht verfügbar". */
-export const IMPLEMENTED_BUILDING_TYPES: readonly BuildingType[] = ['house'];
+export const IMPLEMENTED_BUILDING_TYPES: readonly BuildingType[] = ['house', 'tree', 'market_stall', 'station'];
 
 export const MAX_DESCRIPTION_LENGTH = 600;
 export const MAX_SEED = 0x7fffffff;
