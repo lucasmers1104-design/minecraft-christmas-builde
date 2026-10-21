@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { requireProfile } from '@/core/compat/profile';
 import { parseDescription, type SpecPatch } from '@/core/generator/parseDescription';
 import { DEFAULT_HOUSE_SPEC, type BuildSpec } from '@/core/schema/buildSpec';
@@ -8,12 +8,22 @@ import { flattenPatch, resolveSpec, withManual, withoutManual, type SettingPath 
 import type { VoxelModel } from '@/core/schema/voxelModel';
 import { ApiRequestError, requestGeneration, requestSchematic, triggerDownload } from '@/lib/client/builderApi';
 import { useHydrated } from '@/lib/client/useHydrated';
+import {
+  loadProject,
+  PersistenceError,
+  saveNewProject,
+  updateProject,
+  type LoadedProject,
+  type ProjectContent,
+} from '@/lib/persistence/projects';
 import { AppHeader, type BuilderStatus } from '@/components/builder/AppHeader';
 import { ExportPanel, type ExportInfo } from '@/components/builder/ExportPanel';
 import { FineControls } from '@/components/builder/FineControls';
 import { buildingTitle } from '@/components/builder/labels';
 import { MaterialList } from '@/components/builder/MaterialList';
+import { ProjectLibrary } from '@/components/builder/ProjectLibrary';
 import { PromptPanel } from '@/components/builder/PromptPanel';
+import { SaveProjectPanel } from '@/components/builder/SaveProjectPanel';
 import { StyleControls, type SettingsBinding } from '@/components/builder/StyleControls';
 import { VariantSelector } from '@/components/builder/VariantSelector';
 import { PreviewPanel } from '@/components/preview/PreviewPanel';
@@ -27,6 +37,9 @@ const MOBILE_TABS: { id: MobileTab; label: string }[] = [
 ];
 
 function describeError(error: unknown): string {
+  if (error instanceof PersistenceError) {
+    return error.issues.length > 0 ? `${error.message}: ${error.issues.join('; ')}` : error.message;
+  }
   if (error instanceof ApiRequestError) {
     return error.issues.length > 0 ? `${error.message}: ${error.issues.join('; ')}` : error.message;
   }
@@ -46,6 +59,11 @@ export function BuilderApp() {
   const [seed, setSeed] = useState(DEFAULT_HOUSE_SPEC.seed);
   const [version, setVersion] = useState(DEFAULT_HOUSE_SPEC.targetMinecraftVersion);
   const [notes, setNotes] = useState<string[]>([]);
+  const [edits, setEdits] = useState<number[]>([]);
+  const [project, setProject] = useState<Pick<LoadedProject, 'id' | 'name' | 'updatedAt'> | null>(null);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [variants, setVariants] = useState<VoxelModel[]>([]);
   const [selected, setSelected] = useState(0);
   const [status, setStatus] = useState<BuilderStatus>('bereit');
@@ -67,6 +85,88 @@ export function BuilderApp() {
   const stale = specChanged(spec, variants[0]?.spec);
   const title = useMemo(() => (model ? buildingTitle(model.spec.kind, model.spec.style) : ''), [model]);
 
+  const content: ProjectContent = useMemo(
+    () => ({
+      description,
+      manual,
+      seed,
+      targetMinecraftVersion: version,
+      variants,
+      edits: variants.map((_, i) => edits[i] ?? 0),
+      selected,
+    }),
+    [description, manual, seed, version, variants, edits, selected],
+  );
+  const contentKey = useMemo(
+    () =>
+      JSON.stringify({
+        description,
+        manual,
+        seed,
+        version,
+        hashes: variants.map((v) => v.hash),
+        selected,
+      }),
+    [description, manual, seed, version, variants, selected],
+  );
+  const dirty = project ? contentKey !== savedKey : variants.length > 0;
+
+  // Warn before leaving the page with unsaved work.
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [dirty]);
+
+  const saveProject = useCallback(
+    async (name: string, asNew: boolean) => {
+      setSaving(true);
+      setError(null);
+      try {
+        const saved = project && !asNew ? await updateProject(project.id, content, name) : await saveNewProject(name, content);
+        setProject({ id: saved.id, name: saved.name, updatedAt: saved.updatedAt });
+        setSavedKey(contentKey);
+        setStatus('gespeichert');
+      } catch (e) {
+        setError(`Speichern fehlgeschlagen – ${describeError(e)}`);
+        setStatus('fehler');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [project, content, contentKey],
+  );
+
+  const openProject = useCallback(async (id: string) => {
+    const loaded = await loadProject(id);
+    abortRef.current?.abort();
+    setDescription(loaded.description);
+    setManual(loaded.manual);
+    setSeed(loaded.seed);
+    setVersion(loaded.targetMinecraftVersion);
+    setVariants(loaded.variants);
+    setEdits(loaded.edits);
+    setSelected(loaded.selected);
+    setNotes([]);
+    setLastExport(null);
+    setError(null);
+    setProject({ id: loaded.id, name: loaded.name, updatedAt: loaded.updatedAt });
+    setSavedKey(
+      JSON.stringify({
+        description: loaded.description,
+        manual: loaded.manual,
+        seed: loaded.seed,
+        version: loaded.targetMinecraftVersion,
+        hashes: loaded.variants.map((v) => v.hash),
+        selected: loaded.selected,
+      }),
+    );
+    setStatus('gespeichert');
+    setLibraryOpen(false);
+    setMobileTab('preview');
+  }, []);
+
   const setSetting = useCallback((path: SettingPath, value: unknown) => setManual((m) => withManual(m, path, value)), []);
   const resetSetting = useCallback((path: SettingPath) => setManual((m) => withoutManual(m, path)), []);
 
@@ -80,6 +180,7 @@ export function BuilderApp() {
     try {
       const result = await requestGeneration(spec, controller.signal);
       setVariants(result.variants);
+      setEdits(result.variants.map(() => 0));
       setNotes(result.warnings);
       setSelected(0);
       setStatus('generiert');
@@ -131,7 +232,19 @@ export function BuilderApp() {
 
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh">
-      <AppHeader status={status} profile={requireProfile(spec.targetMinecraftVersion)} />
+      <AppHeader
+        status={status}
+        profile={requireProfile(spec.targetMinecraftVersion)}
+        projectName={project?.name ?? null}
+        onOpenLibrary={() => setLibraryOpen(true)}
+      />
+      <ProjectLibrary
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        onOpen={openProject}
+        currentId={project?.id ?? null}
+        hasUnsavedChanges={dirty}
+      />
 
       <nav aria-label="Bereiche" className="border-b border-white/6 bg-night-950/60 px-4 py-2 lg:hidden">
         <div role="tablist" className="grid grid-cols-3 gap-1 rounded-xl bg-white/4 p-1">
@@ -198,6 +311,18 @@ export function BuilderApp() {
           <VariantSelector variants={variants} selected={selected} onSelect={selectVariant} />
           <MaterialList model={model} />
           <ExportPanel model={model} onExport={exportSelected} exporting={busy === 'export'} lastExport={lastExport} />
+          <SaveProjectPanel
+            key={project?.id ?? 'neu'}
+            canSave={variants.length > 0}
+            currentName={project?.name ?? null}
+            defaultName={`${title || 'Bauwerk'} vom ${new Date().toLocaleDateString('de-DE')}`}
+            dirty={dirty}
+            busy={saving}
+            lastSavedAt={project?.updatedAt ?? null}
+            onSave={(name) => void saveProject(name, false)}
+            onSaveAsNew={(name) => void saveProject(name, true)}
+            onOpenLibrary={() => setLibraryOpen(true)}
+          />
         </div>
       </main>
     </div>

@@ -20,7 +20,7 @@ export function Panel({
       aria-labelledby={headingId}
       className={`shrink-0 rounded-2xl border border-white/8 bg-night-850/80 shadow-[0_10px_40px_-20px_rgb(0_0_0/0.8)] backdrop-blur ${className}`}
     >
-      <header className="flex items-start justify-between gap-3 border-b border-white/6 px-4 py-3">
+      <header className="flex items-start justify-between gap-3 border-b border-white/6 px-4 py-3" data-testid={headingId ? `${headingId}-header` : undefined}>
         <div>
           <h2 id={headingId} className="text-sm font-semibold tracking-wide text-snow-50">
             {title}

@@ -1,16 +1,27 @@
 import type { CompatibilityProfile } from '@/core/compat/profile';
 
-export type BuilderStatus = 'bereit' | 'generiert' | 'exportiert' | 'fehler' | 'arbeitet';
+export type BuilderStatus = 'bereit' | 'generiert' | 'gespeichert' | 'exportiert' | 'fehler' | 'arbeitet';
 
 const STATUS_STYLES: Record<BuilderStatus, string> = {
   bereit: 'border-white/10 text-mist-300',
   arbeitet: 'border-gold-400/40 text-gold-300',
   generiert: 'border-fir-500/50 text-fir-300',
+  gespeichert: 'border-fir-500/50 text-fir-300',
   exportiert: 'border-ice-300/50 text-ice-200',
   fehler: 'border-holly-500/50 text-holly-300',
 };
 
-export function AppHeader({ status, profile }: { status: BuilderStatus; profile: CompatibilityProfile }) {
+export function AppHeader({
+  status,
+  profile,
+  projectName,
+  onOpenLibrary,
+}: {
+  status: BuilderStatus;
+  profile: CompatibilityProfile;
+  projectName: string | null;
+  onOpenLibrary: () => void;
+}) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/6 bg-night-950/70 px-4 py-3 backdrop-blur lg:px-6">
       <div className="flex items-center gap-3">
@@ -33,6 +44,15 @@ export function AppHeader({ status, profile }: { status: BuilderStatus; profile:
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <button
+          type="button"
+          onClick={onOpenLibrary}
+          data-testid="open-library"
+          className="rounded-full border border-white/15 bg-white/6 px-3 py-1 font-medium text-snow-50 hover:bg-white/10"
+          aria-haspopup="dialog"
+        >
+          Projekte{projectName ? `: ${projectName}` : ''}
+        </button>
         <span
           className="rounded-full border border-white/10 bg-white/4 px-2.5 py-1 text-mist-300"
           title="Aktives Kompatibilitätsprofil"

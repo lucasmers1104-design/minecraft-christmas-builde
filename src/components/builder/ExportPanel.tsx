@@ -60,12 +60,6 @@ export function ExportPanel({
         </p>
       ) : null}
 
-      <Button variant="ghost" className="mt-2 w-full" disabled aria-describedby="save-hint" data-testid="save-button">
-        Projekt speichern
-      </Button>
-      <p id="save-hint" className="mt-1 text-center text-[11px] text-mist-400">
-        Lokales Speichern (IndexedDB) ist noch nicht verfügbar.
-      </p>
     </Panel>
   );
 }

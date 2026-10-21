@@ -1,6 +1,14 @@
+import { z } from 'zod';
 import type { ParsedDescription, SpecPatch } from '@/core/generator/parseDescription';
 import { buildOptionsSchema, compactOptions, type BuildOptions } from '@/core/schema/buildOptions';
 import { buildSpecSchema, type BuildSpec } from '@/core/schema/buildSpec';
+
+/** Validates stored or transmitted manual settings (same fields as the text parser fills). */
+export const specPatchSchema = buildSpecSchema
+  .pick({ kind: true, style: true, size: true, materialTheme: true, colorTheme: true, detailLevel: true })
+  .partial()
+  .extend({ options: buildOptionsSchema.optional() })
+  .strict() satisfies z.ZodType<SpecPatch>;
 
 export type SettingSource = 'standard' | 'text' | 'manuell';
 
