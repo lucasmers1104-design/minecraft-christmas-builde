@@ -32,9 +32,11 @@ describe('POST /api/generate', () => {
     expect((await generateRoute(post({ spec: { ...DEFAULT_HOUSE_SPEC, size: 'huge' } }))).status).toBe(400);
     expect((await generateRoute(post(undefined, '{not json'))).status).toBe(400);
     expect((await generateRoute(post({ spec: DEFAULT_HOUSE_SPEC, extra: 1 }))).status).toBe(400);
-    const notImplemented = await generateRoute(post({ spec: { ...DEFAULT_HOUSE_SPEC, kind: 'station' } }));
-    expect(notImplemented.status).toBe(422);
-    expect(((await notImplemented.json()) as { error: string }).error).toMatch(/noch nicht verfügbar/);
+    const tooLarge = await generateRoute(post({ spec: { ...DEFAULT_HOUSE_SPEC, options: { depth: 25, wallHeight: 8, roofShape: 'steep' } } }));
+    expect(tooLarge.status).toBe(422);
+    expect(((await tooLarge.json()) as { error: string }).error).toMatch(/passt nicht/);
+    const station = await generateRoute(post({ spec: { ...DEFAULT_HOUSE_SPEC, kind: 'station' }, variants: 1 }));
+    expect(station.status).toBe(200);
     expect((await generateRoute(post(undefined, JSON.stringify({ spec: DEFAULT_HOUSE_SPEC, pad: 'x'.repeat(20_000) })))).status).toBe(413);
   });
 });

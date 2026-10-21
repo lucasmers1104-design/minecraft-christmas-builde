@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { countMaterials } from '@/core/analysis/materialCounts';
 import { checkBlockState } from '@/core/blocks/registry';
 import { BuildLimitError, buildHouse, resolveHouseParameters } from '@/core/generator/buildHouse';
-import { generateBuilding, generateVariants, NotImplementedBuildingError } from '@/core/generator/generateBuilding';
+import { generateBuilding, generateVariants } from '@/core/generator/generateBuilding';
 import {
   BUILD_SIZES,
   BUILD_STYLES,
@@ -147,10 +147,11 @@ describe('Eingabevalidierung', () => {
     expect(() => generateBuilding({ ...DEFAULT_HOUSE_SPEC, seed: -5 })).toThrow();
   });
 
-  it('meldet nicht implementierte Bauwerkstypen ehrlich', () => {
-    for (const kind of ['tree', 'market_stall', 'station'] as const) {
-      expect(() => generateBuilding(spec({ kind }))).toThrow(NotImplementedBuildingError);
+  it('alle Bauwerkstypen sind implementiert; unbekannte Typen werden abgelehnt', () => {
+    for (const kind of ['house', 'tree', 'market_stall', 'station'] as const) {
+      expect(collectVoxelIssues(generateBuilding(spec({ kind })))).toEqual([]);
     }
+    expect(() => generateBuilding({ ...spec(), kind: 'castle' as never })).toThrow();
   });
 });
 
