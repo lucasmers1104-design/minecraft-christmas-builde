@@ -20,6 +20,9 @@ export function PromptPanel({
   parsed,
   conflicts,
   confirmRegenerate = false,
+  planning = false,
+  aiActive = false,
+  plannerLabel,
 }: {
   description: string;
   onDescriptionChange: (value: string) => void;
@@ -31,6 +34,11 @@ export function PromptPanel({
   conflicts: string[];
   /** Manual edits exist: the next click regenerates and discards them. */
   confirmRegenerate?: boolean;
+  /** The local AI is currently planning. */
+  planning?: boolean;
+  /** Settings currently come from an AI plan for this exact text. */
+  aiActive?: boolean;
+  plannerLabel: string;
 }) {
   return (
     <Panel
@@ -52,14 +60,16 @@ export function PromptPanel({
         placeholder="z. B. Baue ein gemütliches Weihnachtshaus aus Fichtenholz …"
       />
       <div className="mt-1 flex justify-between text-[11px] text-mist-400">
-        <span>Erkannte Wünsche werden in die Einstellungen übernommen.</span>
+        <span>
+          {aiActive ? 'Die Einstellungen stammen aus dem KI-Plan für diesen Text.' : 'Erkannte Wünsche werden in die Einstellungen übernommen.'}
+        </span>
         <span aria-hidden="true">
           {description.length}/{MAX_DESCRIPTION_LENGTH}
         </span>
       </div>
 
       <div aria-live="polite" className="mt-2 flex flex-col gap-2" data-testid="parse-result">
-        {parsed.recognized.length > 0 ? (
+        {!aiActive && parsed.recognized.length > 0 ? (
           <ul className="flex flex-wrap gap-1.5" aria-label="Erkannte Wünsche" data-testid="recognized-list">
             {parsed.recognized.map((r, i) => (
               <li
@@ -72,7 +82,7 @@ export function PromptPanel({
             ))}
           </ul>
         ) : null}
-        {parsed.warnings.length > 0 ? (
+        {!aiActive && parsed.warnings.length > 0 ? (
           <ul className="flex flex-col gap-1 text-[11px] text-gold-300" aria-label="Nicht umgesetzte Wünsche" data-testid="parse-warnings">
             {parsed.warnings.map((w) => (
               <li key={w} className="rounded-md border border-gold-400/25 bg-gold-400/8 px-2 py-1">
@@ -117,15 +127,15 @@ export function PromptPanel({
         data-testid="generate-button"
         aria-describedby="generator-mode"
       >
-        {busy ? 'Wird generiert …' : confirmRegenerate ? 'Trotzdem neu generieren' : 'Bauwerk generieren'}
+        {planning ? 'Lokale KI plant …' : busy ? 'Wird generiert …' : confirmRegenerate ? 'Trotzdem neu generieren' : 'Bauwerk generieren'}
       </Button>
       {confirmRegenerate ? (
         <p role="alert" className="mt-2 text-center text-[11px] text-gold-300" data-testid="regenerate-warning">
           Neu generieren verwirft deine manuellen Block-Änderungen. Zum Bestätigen erneut klicken.
         </p>
       ) : null}
-      <p id="generator-mode" className="mt-2 text-center text-[11px] text-mist-400">
-        Regelbasierter Generator · keine KI aktiv
+      <p id="generator-mode" className="mt-2 text-center text-[11px] text-mist-400" data-testid="generator-mode">
+        {plannerLabel}
       </p>
     </Panel>
   );

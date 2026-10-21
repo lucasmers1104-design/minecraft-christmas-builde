@@ -17,11 +17,14 @@ export function AppHeader({
   profile,
   projectName,
   onOpenLibrary,
+  plannedBy,
 }: {
   status: BuilderStatus;
   profile: CompatibilityProfile;
   projectName: string | null;
   onOpenLibrary: () => void;
+  /** Model name if the shown building was planned by the local AI, else null. */
+  plannedBy: string | null;
 }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/6 bg-night-950/70 px-4 py-3 backdrop-blur lg:px-6">
@@ -61,8 +64,8 @@ export function AppHeader({
         >
           Java {profile.minecraftVersion} · DataVersion {profile.dataVersion} · Sponge v{profile.schematicVersion}
         </span>
-        <span className="rounded-full border border-fir-500/40 bg-fir-700/30 px-2.5 py-1 text-fir-300">
-          Regelbasierter Generator
+        <span className="rounded-full border border-fir-500/40 bg-fir-700/30 px-2.5 py-1 text-fir-300" data-testid="planner-badge">
+          {plannedBy ? `KI-Plan: ${plannedBy} (lokal)` : 'Regelbasierter Generator'}
         </span>
         <span
           role="status"

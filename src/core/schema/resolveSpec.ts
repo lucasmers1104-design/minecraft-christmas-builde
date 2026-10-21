@@ -10,7 +10,7 @@ export const specPatchSchema = buildSpecSchema
   .extend({ options: buildOptionsSchema.optional() })
   .strict() satisfies z.ZodType<SpecPatch>;
 
-export type SettingSource = 'standard' | 'text' | 'manuell';
+export type SettingSource = 'standard' | 'text' | 'ki' | 'manuell';
 
 /** Field paths that can come from text or manual settings, e.g. "size", "options.snow", "options.materials.roof". */
 export type SettingPath = string;
@@ -57,7 +57,12 @@ function display(value: unknown): string {
  * Effective spec = base (defaults, seed, version) ← wishes recognised in the text ← manual
  * UI settings. Manual settings always win; contradicting text wishes are reported.
  */
-export function resolveSpec(base: BuildSpec, parsed: ParsedDescription | null, manual: SpecPatch): ResolvedSpec {
+export function resolveSpec(
+  base: BuildSpec,
+  parsed: ParsedDescription | null,
+  manual: SpecPatch,
+  textSource: 'text' | 'ki' = 'text',
+): ResolvedSpec {
   let spec: BuildSpec = { ...base, options: { ...base.options } };
   const sources: Record<SettingPath, SettingSource> = {};
   const conflicts: string[] = [];
@@ -66,11 +71,13 @@ export function resolveSpec(base: BuildSpec, parsed: ParsedDescription | null, m
 
   for (const [path, value] of fromText) {
     spec = applyPath(spec, path, value);
-    sources[path] = 'text';
+    sources[path] = textSource;
   }
   for (const [path, value] of fromManual) {
     if (fromText.has(path) && fromText.get(path) !== value) {
-      conflicts.push(`Text wünscht ${path.replace('options.', '')} = ${display(fromText.get(path))}, die Einstellung ${display(value)} hat Vorrang.`);
+      conflicts.push(
+        `${textSource === 'ki' ? 'Die KI plant' : 'Text wünscht'} ${path.replace('options.', '')} = ${display(fromText.get(path))}, die Einstellung ${display(value)} hat Vorrang.`,
+      );
     }
     spec = applyPath(spec, path, value);
     sources[path] = 'manuell';

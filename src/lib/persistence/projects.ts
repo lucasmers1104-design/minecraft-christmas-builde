@@ -18,6 +18,18 @@ export const PROJECT_SCHEMA_VERSION = 1;
 export const MAX_PROJECT_NAME_LENGTH = 80;
 const DB_NAME = 'minecraft-christmas-builder';
 
+/** A local-AI plan the project was generated from (kept so reopening restores the same settings). */
+const storedAiPlanSchema = z
+  .object({
+    description: z.string().max(MAX_DESCRIPTION_LENGTH),
+    model: z.string().max(120),
+    durationMs: z.number().nonnegative(),
+    explanation: z.string().max(600),
+    unsupported: z.array(z.string().max(200)).max(12),
+    patch: specPatchSchema,
+  })
+  .strict();
+
 export const storedProjectSchema = z
   .object({
     id: z.string().min(1).max(64),
@@ -33,6 +45,8 @@ export const storedProjectSchema = z
     /** Number of manual block edits per variant (0 = as generated). */
     edits: z.array(z.number().int().nonnegative()),
     selected: z.number().int().nonnegative(),
+    /** Optional (added before the first release, still schema version 1). */
+    aiPlan: storedAiPlanSchema.nullable().optional(),
   })
   .strict()
   .refine((p) => p.selected < p.variants.length && p.edits.length === p.variants.length, {
@@ -62,6 +76,7 @@ export interface ProjectContent {
   variants: VoxelModel[];
   edits: number[];
   selected: number;
+  aiPlan?: z.infer<typeof storedAiPlanSchema> | null;
 }
 
 export interface LoadedProject extends ProjectContent {
@@ -135,6 +150,7 @@ function toStored(id: string, name: string, createdAt: number, content: ProjectC
     variants: content.variants.map(encodeVoxelTransport),
     edits: content.edits,
     selected: content.selected,
+    aiPlan: content.aiPlan ?? null,
   };
   const parsed = storedProjectSchema.safeParse(record);
   if (!parsed.success) {
@@ -162,6 +178,7 @@ function fromStored(raw: unknown): LoadedProject {
       variants: p.variants.map((v) => decodeVoxelTransport(v)),
       edits: p.edits,
       selected: p.selected,
+      aiPlan: p.aiPlan ?? null,
     };
   } catch (error) {
     if (error instanceof TransportError) throw new PersistenceError('Voxeldaten des Projekts sind beschädigt', error.issues);

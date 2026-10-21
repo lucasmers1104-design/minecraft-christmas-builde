@@ -3,6 +3,13 @@ import type { SettingSource } from '@/core/schema/resolveSpec';
 /** Shows where a setting comes from; manual settings can be reset to text/default. */
 export function SourceBadge({ source, onReset, label }: { source: SettingSource; onReset?: () => void; label: string }) {
   if (source === 'standard') return null;
+  if (source === 'ki') {
+    return (
+      <span className="rounded-full border border-fir-500/50 bg-fir-700/30 px-1.5 py-px text-[10px] font-medium normal-case tracking-normal text-fir-300">
+        von KI
+      </span>
+    );
+  }
   if (source === 'text') {
     return (
       <span className="rounded-full border border-ice-300/40 bg-ice-300/10 px-1.5 py-px text-[10px] font-medium normal-case tracking-normal text-ice-200">

@@ -12,12 +12,13 @@ import {
   type Cell,
   type EditCommand,
 } from '@/core/editor/editOperations';
-import { parseDescription, type SpecPatch } from '@/core/generator/parseDescription';
+import { parseDescription, type ParsedDescription, type SpecPatch } from '@/core/generator/parseDescription';
 import { DEFAULT_HOUSE_SPEC, type BuildSpec } from '@/core/schema/buildSpec';
 import { flattenPatch, resolveSpec, withManual, withoutManual, type SettingPath } from '@/core/schema/resolveSpec';
 import type { VoxelModel } from '@/core/schema/voxelModel';
 import { ApiRequestError, requestGeneration, requestSchematic, triggerDownload } from '@/lib/client/builderApi';
 import { useHydrated } from '@/lib/client/useHydrated';
+import { fetchAiStatus, requestAiPlan, type AiPlanState, type AiStatus } from '@/lib/client/aiApi';
 import {
   loadProject,
   PersistenceError,
@@ -31,6 +32,7 @@ import { ExportPanel, type ExportInfo } from '@/components/builder/ExportPanel';
 import { FineControls } from '@/components/builder/FineControls';
 import { buildingTitle } from '@/components/builder/labels';
 import { MaterialList } from '@/components/builder/MaterialList';
+import { AiPlannerPanel } from '@/components/builder/AiPlannerPanel';
 import { ProjectLibrary } from '@/components/builder/ProjectLibrary';
 import { PromptPanel } from '@/components/builder/PromptPanel';
 import { SaveProjectPanel } from '@/components/builder/SaveProjectPanel';
@@ -83,10 +85,16 @@ export function BuilderApp() {
   const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
   const [regenerateArmed, setRegenerateArmed] = useState(false);
   const historiesRef = useRef<EditHistory[]>([]);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
+  const [aiChecking, setAiChecking] = useState(false);
+  const [aiOn, setAiOn] = useState(false);
+  const [aiPlan, setAiPlan] = useState<AiPlanState | null>(null);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
+  const [plannedBy, setPlannedBy] = useState<string | null>(null);
   const [variants, setVariants] = useState<VoxelModel[]>([]);
   const [selected, setSelected] = useState(0);
   const [status, setStatus] = useState<BuilderStatus>('bereit');
-  const [busy, setBusy] = useState<'generate' | 'export' | null>(null);
+  const [busy, setBusy] = useState<'generate' | 'plan' | 'export' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastExport, setLastExport] = useState<ExportInfo | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('input');
@@ -94,11 +102,18 @@ export function BuilderApp() {
   const hydrated = useHydrated();
 
   const parsed = useMemo(() => parseDescription(description), [description]);
-  const resolved = useMemo(
-    () =>
-      resolveSpec({ ...DEFAULT_HOUSE_SPEC, description, seed, targetMinecraftVersion: version }, parsed, manual),
-    [description, seed, version, parsed, manual],
-  );
+  const aiReady = !!aiStatus?.enabled && aiStatus.reachable && aiStatus.modelInstalled;
+  // An AI plan replaces the rule-based text reading – but only for the exact text it was made for.
+  // A stored plan is data: applying it needs no running model.
+  const aiActive = aiOn && aiPlan !== null && aiPlan.description === description;
+  const resolved = useMemo(() => {
+    const base = { ...DEFAULT_HOUSE_SPEC, description, seed, targetMinecraftVersion: version };
+    if (aiActive && aiPlan) {
+      const fromAi: ParsedDescription = { patch: aiPlan.patch, recognized: [], warnings: aiPlan.unsupported };
+      return resolveSpec(base, fromAi, manual, 'ki');
+    }
+    return resolveSpec(base, parsed, manual);
+  }, [description, seed, version, parsed, manual, aiActive, aiPlan]);
   const spec = resolved.spec;
   const model = variants[selected] ?? null;
   const stale = specChanged(spec, variants[0]?.spec);
@@ -113,8 +128,9 @@ export function BuilderApp() {
       variants,
       edits: variants.map((_, i) => edits[i] ?? 0),
       selected,
+      aiPlan: plannedBy && aiPlan ? aiPlan : null,
     }),
-    [description, manual, seed, version, variants, edits, selected],
+    [description, manual, seed, version, variants, edits, selected, plannedBy, aiPlan],
   );
   const contentKey = useMemo(
     () =>
@@ -167,6 +183,9 @@ export function BuilderApp() {
     setVariants(loaded.variants);
     setEdits(loaded.edits);
     setSelected(loaded.selected);
+    setAiPlan(loaded.aiPlan ?? null);
+    setAiOn(!!loaded.aiPlan);
+    setPlannedBy(loaded.aiPlan?.model ?? null);
     historiesRef.current = [];
     setHistoryFlags({ canUndo: false, canRedo: false });
     setEditorMessage(null);
@@ -314,7 +333,34 @@ export function BuilderApp() {
     setStatus('arbeitet');
     setError(null);
     try {
-      const result = await requestGeneration(spec, controller.signal);
+      let target = spec;
+      let planner: string | null = aiActive && aiPlan ? aiPlan.model : null;
+      if (aiOn && !aiReady && !aiActive) {
+        setAiNotice('Lokale KI ist gerade nicht erreichbar – es wurde regelbasiert erzeugt.');
+      }
+      if (aiOn && aiReady && !aiActive && description.trim().length > 0) {
+        // Ask the local model first; fall back to the rule-based reading if that fails.
+        setBusy('plan');
+        try {
+          const plan = await requestAiPlan(description, controller.signal);
+          setAiPlan(plan);
+          setAiNotice(null);
+          planner = plan.model;
+          target = resolveSpec(
+            { ...DEFAULT_HOUSE_SPEC, description, seed, targetMinecraftVersion: version },
+            { patch: plan.patch, recognized: [], warnings: plan.unsupported },
+            manual,
+            'ki',
+          ).spec;
+        } catch (e) {
+          if (controller.signal.aborted) return;
+          setAiNotice(`Lokale KI nicht nutzbar – ${describeError(e)}. Es wurde regelbasiert erzeugt.`);
+          planner = null;
+        }
+        setBusy('generate');
+      }
+      const result = await requestGeneration(target, controller.signal);
+      setPlannedBy(planner);
       setVariants(result.variants);
       setEdits(result.variants.map(() => 0));
       historiesRef.current = [];
@@ -331,7 +377,36 @@ export function BuilderApp() {
     } finally {
       if (abortRef.current === controller) setBusy(null);
     }
-  }, [spec, hasEdits, regenerateArmed]);
+  }, [spec, hasEdits, regenerateArmed, aiActive, aiPlan, aiOn, aiReady, description, seed, version, manual]);
+
+  const checkAi = useCallback(async () => {
+    setAiChecking(true);
+    try {
+      setAiStatus(await fetchAiStatus());
+    } catch (e) {
+      setAiStatus({
+        enabled: false,
+        provider: 'off',
+        model: '',
+        reachable: false,
+        modelInstalled: false,
+        installedModels: [],
+        message: `KI-Status nicht abrufbar: ${describeError(e)}`,
+      });
+    } finally {
+      setAiChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchAiStatus()
+      .then((s) => {
+        if (!controller.signal.aborted) setAiStatus(s);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
 
   const exportSelected = useCallback(async () => {
     if (!model) return;
@@ -366,7 +441,7 @@ export function BuilderApp() {
     sources: resolved.sources,
     set: setSetting,
     reset: resetSetting,
-    disabled: busy === 'generate',
+    disabled: busy === 'generate' || busy === 'plan',
   };
 
   const panelVisibility = (tab: MobileTab) => (mobileTab === tab ? 'flex' : 'hidden lg:flex');
@@ -378,6 +453,7 @@ export function BuilderApp() {
         profile={requireProfile(spec.targetMinecraftVersion)}
         projectName={project?.name ?? null}
         onOpenLibrary={() => setLibraryOpen(true)}
+        plannedBy={variants.length > 0 ? plannedBy : null}
       />
       <ProjectLibrary
         open={libraryOpen}
@@ -414,11 +490,24 @@ export function BuilderApp() {
             description={description}
             onDescriptionChange={setDescription}
             onGenerate={generate}
-            busy={busy === 'generate'}
+            busy={busy === 'generate' || busy === 'plan'}
+            planning={busy === 'plan'}
+            aiActive={aiActive}
+            plannerLabel={aiOn && aiReady ? `Planung: lokale KI (${aiStatus?.model}) · Blöcke: regelbasierter Generator` : 'Regelbasierter Generator · keine KI aktiv'}
             ready={hydrated}
             confirmRegenerate={regenerateArmed}
             parsed={parsed}
             conflicts={resolved.conflicts}
+          />
+          <AiPlannerPanel
+            status={aiStatus}
+            checking={aiChecking}
+            onRecheck={() => void checkAi()}
+            enabled={aiOn}
+            onToggle={setAiOn}
+            plan={aiPlan}
+            planIsCurrent={aiPlan !== null && aiPlan.description === description}
+            notice={aiNotice}
           />
           <StyleControls
             binding={binding}
@@ -448,7 +537,7 @@ export function BuilderApp() {
             <PreviewPanel
               model={model}
               title={title}
-              busy={busy === 'generate'}
+              busy={busy === 'generate' || busy === 'plan'}
               error={error}
               editing={{
                 mode,
