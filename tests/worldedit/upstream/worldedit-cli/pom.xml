@@ -11,7 +11,7 @@
   </parent>
   <groupId>com.sk89q.worldedit</groupId>
   <artifactId>worldedit-cli</artifactId>
-  <version>7.3.8</version>
+  <version>7.4.2</version>
 
   <properties>
     <we.cli.dir>${src.root}/WorldEdit/worldedit-cli</we.cli.dir>

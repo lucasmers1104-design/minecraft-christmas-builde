@@ -7,7 +7,7 @@ hand, following https://github.com/SpongePowered/Schematic-Specification (versio
     root TAG_Compound ""                      (WorldEdit ignores the root name)
       Schematic TAG_Compound
         Version      TAG_Int 3
-        DataVersion  TAG_Int 3955               (Minecraft Java 1.21.1)
+        DataVersion  TAG_Int 4671 / 3955        (Minecraft Java 1.21.11 / 1.21.1)
         Width/Height/Length TAG_Short           (unsigned)
         Offset       TAG_Int_Array [x, y, z]    (optional, default 0,0,0)
         Blocks TAG_Compound
@@ -27,7 +27,8 @@ import json
 import os
 import struct
 
-DATA_VERSION_1_21_1 = 3955
+DATA_VERSION_1_21_1 = 3955    # secondary profile
+DATA_VERSION_1_21_11 = 4671   # default profile (the user's server)
 
 TAG_END, TAG_BYTE, TAG_SHORT, TAG_INT, TAG_LONG = 0, 1, 2, 3, 4
 TAG_BYTE_ARRAY, TAG_STRING, TAG_LIST, TAG_COMPOUND, TAG_INT_ARRAY = 7, 8, 9, 10, 11
@@ -155,7 +156,7 @@ def build(grid, w, h, l, palette_order=None, offset=(0, 0, 0), data_version=DATA
     })
     if extra:
         schematic.update(extra)
-    return Compound({"Schematic": Compound(schematic)}), cells
+    return Compound({"Schematic": Compound(schematic)}), cells, data_version
 
 
 def expected_worldedit_view(cells, canonical=None):
@@ -175,6 +176,8 @@ def expected_worldedit_view(cells, canonical=None):
 
 # --- fixtures ---------------------------------------------------------------------------------
 
+COLORS = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
+          "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"]
 AIR = "minecraft:air"
 SPRUCE = "minecraft:spruce_planks"
 LOG_Y = "minecraft:oak_log[axis=y]"
@@ -191,11 +194,33 @@ def basic_grid(x, y, z):
     return LOG_Y if z in (0, 3) else GLASS
 
 
-def big_palette_states():
-    colors = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",
-              "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"]
+def app_block_states():
+    """Every state of the vanilla full-cube blocks the house generator uses (+ air): 155 states."""
     states = [AIR]
-    for c in colors:
+    for wood in ("spruce", "oak", "dark_oak"):
+        states.append(f"minecraft:{wood}_planks")
+        states += [f"minecraft:{wood}_log[axis={a}]" for a in "xyz"]
+        states += [f"minecraft:stripped_{wood}_log[axis={a}]" for a in "xyz"]
+    states += [f"minecraft:{b}" for b in ("cobblestone", "stone_bricks", "smooth_stone", "polished_andesite",
+                                            "deepslate_tiles", "bricks", "terracotta", "glass", "snow_block",
+                                            "packed_ice", "glowstone", "sea_lantern", "gold_block")]
+    for c in COLORS:
+        states += [f"minecraft:{c}_wool", f"minecraft:{c}_concrete", f"minecraft:{c}_terracotta",
+                   f"minecraft:{c}_stained_glass"]
+    states += [f"minecraft:{leaves}[distance={d},persistent={p},waterlogged={w}]"
+               for leaves in ("spruce_leaves", "oak_leaves")
+               for d in range(1, 8) for p in ("false", "true") for w in ("false", "true")]
+    return states
+
+
+# Blocks that exist in 1.21.11 (4671) but not in 1.21.1 (3955); "chain" became "iron_chain" in 1.21.9.
+NEW_IN_1_21_11 = ["minecraft:pale_oak_planks", "minecraft:pale_oak_log[axis=y]", "minecraft:resin_bricks",
+                  "minecraft:pale_moss_block", "minecraft:iron_chain[axis=y,waterlogged=false]"]
+
+
+def big_palette_states():
+    states = [AIR]
+    for c in COLORS:
         states += [f"minecraft:{c}_wool", f"minecraft:{c}_concrete", f"minecraft:{c}_stained_glass",
                    f"minecraft:{c}_terracotta"]
     states += [f"minecraft:note_block[instrument=harp,note={n},powered={p}]"
@@ -215,14 +240,18 @@ def main():
     expected = {}
 
     def emit(name, payload_cells, exit_code, note, check_view=True, root_name="", canonical=None,
-             expect=None, args=None):
-        payload, cells = payload_cells
+             expect=None, args=None, error_contains=None):
+        payload, cells, data_version = payload_cells
         write_schem(os.path.join(out_dir, name), payload, root_name)
         entry = {"exit": exit_code, "note": note}
         if args:
             entry["args"] = args
+        if error_contains:
+            entry["errorContains"] = error_contains
         if check_view and exit_code == 0:
             entry.update(expected_worldedit_view(cells, canonical))
+            entry["schematicDataVersion"] = data_version
+            entry["registryDataVersion"] = data_version
         if expect:
             entry.update(expect)
         expected[name] = entry
@@ -270,13 +299,14 @@ def main():
          (Compound({"Version": Int(3), "DataVersion": Int(3955), "Width": Short(1), "Height": Short(1),
                     "Length": Short(1),
                     "Blocks": Compound({"Palette": Compound({SPRUCE: Int(0)}), "Data": ByteArray(varints([0]))})}),
-          [SPRUCE]),
+          [SPRUCE], 3955),
          2, "v3 fields directly in root named 'Schematic' (v2 layout) is not detected as v3",
          root_name="Schematic")
 
     emit("invalid_data_version_1_21.schem",
          build(lambda x, y, z: SPRUCE, 1, 1, 1, data_version=3953),
-         2, "DataVersion 3953 (1.21): WorldEdit-CLI has no 3953.json registry -> cannot load")
+         2, "DataVersion 3953 (1.21): the harness has no registry data for 3953 -> cannot load",
+         error_contains="no registry data for DataVersion 3953")
 
     emit("valid_offset_neg.schem",
          build(basic_grid, 3, 2, 4, offset=(-1, 0, -2)),
@@ -316,6 +346,54 @@ def main():
     emit("invalid_metadata_emoji_plain_utf8.schem",
          build(basic_grid, 3, 2, 4, metadata=meta(True)),
          2, "same emoji as standard 4-byte UTF-8: not valid NBT (modified UTF-8) for WorldEdit")
+
+    # --- default profile: Minecraft 1.21.11, DataVersion 4671 -------------------------------
+    V4671 = DATA_VERSION_1_21_11
+    emit("valid_basic_3x2x4_dv4671.schem",
+         build(basic_grid, 3, 2, 4, palette_order=[AIR, SPRUCE, LOG_Y, RED_WOOL, GLASS], data_version=V4671),
+         0, "basic valid file, DataVersion 4671 (1.21.11)",
+         expect={"dimensions": {"width": 3, "height": 2, "length": 4},
+                 "minimumPoint": [0, 0, 0], "origin": [0, 0, 0]})
+
+    emit("valid_palette_145_multibyte_varint_dv4671.schem",
+         build(lambda x, y, z: states[(x + w * (z + l * y)) % len(states)], w, h, l, palette_order=states,
+               data_version=V4671),
+         0, f"{len(states)} palette entries (multi-byte VarInts), DataVersion 4671")
+
+    app = app_block_states()
+    aw, ah, al = 8, 4, 5  # 160 cells, every state used at least once
+    for suffix, dv in (("_dv4671", V4671), ("", DATA_VERSION_1_21_1)):
+        emit(f"valid_app_blocks_{len(app)}{suffix}.schem",
+             build(lambda x, y, z: app[(x + aw * (z + al * y)) % len(app)], aw, ah, al, palette_order=app,
+                   data_version=dv),
+             0, f"all {len(app)} states of the house generator's full-cube blocks (incl. every leaves "
+                f"distance/persistent/waterlogged combination), DataVersion {dv}; multi-byte VarInts")
+
+    new_blocks = [AIR] + NEW_IN_1_21_11
+    emit("valid_new_blocks_dv4671.schem",
+         build(lambda x, y, z: new_blocks[x], len(new_blocks), 1, 1, palette_order=new_blocks, data_version=V4671),
+         0, "blocks added after 1.21.1 (pale oak, resin, iron_chain) load with the 4671 registry")
+    emit("invalid_new_blocks_dv3955.schem",
+         build(lambda x, y, z: new_blocks[x], len(new_blocks), 1, 1, palette_order=new_blocks),
+         2, "the same blocks in a DataVersion 3955 file must fail: proves the 3955 registry was loaded",
+         error_contains="Block name 'minecraft:pale_oak_planks' was not recognized")
+    emit("invalid_chain_renamed_dv4671.schem",
+         build(lambda x, y, z: "minecraft:chain[axis=y,waterlogged=false]" if x == 0 else SPRUCE, 2, 1, 1,
+               data_version=V4671),
+         2, "minecraft:chain was renamed to minecraft:iron_chain in 1.21.9: unknown block at 4671",
+         error_contains="Block name 'minecraft:chain[axis=y,waterlogged=false]' was not recognized")
+    expected["valid_basic_3x2x4_dv4671.schem --registry-data-version=3955"] = {
+        "file": "valid_basic_3x2x4_dv4671.schem", "args": ["--registry-data-version=3955"], "exit": 2,
+        "note": "4671 file read with the 3955 registry: WorldEdit warns 'newer Minecraft version' -> fail",
+        "errorContains": "Schematic was made in a newer Minecraft version (4671 > 3955)"}
+    emit("invalid_unknown_block_dv4671.schem",
+         build(lambda x, y, z: "minecraft:candy_cane_block" if (x, y, z) == (1, 0, 1) else SPRUCE, 2, 1, 2,
+               data_version=V4671),
+         2, "unknown block id must fail (4671)")
+    emit("invalid_unknown_property_resets_state_dv4671.schem",
+         build(lambda x, y, z: "minecraft:oak_stairs[facing=east,half=top,shape=straight,sparkly=true,"
+                               "waterlogged=false]" if x == 0 else SPRUCE, 2, 1, 1, data_version=V4671),
+         2, "unknown property silently resets to the default state in WorldEdit - harness must fail (4671)")
 
     with open(os.path.join(out_dir, "expected.json"), "w", encoding="utf-8") as f:
         json.dump(expected, f, indent=1, sort_keys=True)

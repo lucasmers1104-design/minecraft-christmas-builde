@@ -1,13 +1,27 @@
 'use client';
 
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Grid, OrbitControls } from '@react-three/drei';
-import { useEffect, useMemo, useRef, type ComponentRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentRef, type RefObject } from 'react';
 import * as THREE from 'three';
+import type { Cell } from '@/core/editor/editOperations';
 import type { Dimensions, VoxelModel } from '@/core/schema/voxelModel';
 import { buildVoxelMesh, type MeshBuffers } from '@/components/preview/buildVoxelMesh';
+import type { EditMode } from '@/components/editor/EditorPanel';
 
 type OrbitControlsImpl = ComponentRef<typeof OrbitControls>;
+
+/** A click on the model: the block that was hit and the free cell in front of the hit face. */
+export interface CellAction {
+  hit: Cell | null;
+  place: Cell | null;
+}
+
+export interface CameraAction {
+  kind: 'rotate' | 'zoom';
+  value: number;
+  seq: number;
+}
 
 function useBufferGeometry(buffers: MeshBuffers, colorSize: 3 | 4): THREE.BufferGeometry {
   const geometry = useMemo(() => {
@@ -23,34 +37,105 @@ function useBufferGeometry(buffers: MeshBuffers, colorSize: 3 | 4): THREE.Buffer
   return geometry;
 }
 
+/** Click/hover target from a face hit in group-local coordinates. */
+function cellsFromEvent(e: ThreeEvent<PointerEvent | MouseEvent>, offset: THREE.Vector3): CellAction | null {
+  const n = e.face?.normal;
+  if (!n) return null;
+  const local = e.point.clone().sub(offset);
+  const hit = {
+    x: Math.floor(local.x - n.x * 0.5),
+    y: Math.floor(local.y - n.y * 0.5),
+    z: Math.floor(local.z - n.z * 0.5),
+  };
+  return { hit, place: { x: hit.x + Math.round(n.x), y: hit.y + Math.round(n.y), z: hit.z + Math.round(n.z) } };
+}
+
+const HIGHLIGHT_BOX = new THREE.BoxGeometry(1.04, 1.04, 1.04);
+
 function VoxelMeshes({
   model,
+  layerY,
+  mode,
   onRendered,
+  onCellAction,
 }: {
   model: VoxelModel;
+  layerY: number | null;
+  mode: EditMode;
   onRendered?: (hash: string, faceCount: number) => void;
+  onCellAction?: (action: CellAction) => void;
 }) {
-  const mesh = useMemo(() => buildVoxelMesh(model), [model]);
+  const mesh = useMemo(() => buildVoxelMesh(model, layerY === null ? {} : { maxY: layerY }), [model, layerY]);
   const opaque = useBufferGeometry(mesh.opaque, 3);
   const emissive = useBufferGeometry(mesh.emissive, 3);
   const translucent = useBufferGeometry(mesh.translucent, 4);
+  const edges = useMemo(() => new THREE.EdgesGeometry(HIGHLIGHT_BOX), []);
+  const [hover, setHover] = useState<Cell | null>(null);
   useEffect(() => {
     onRendered?.(model.hash, mesh.faceCount);
   }, [model.hash, mesh, onRendered]);
 
   const { width, length } = model.dimensions;
-  // Visual centring only – the stored block coordinates are never shifted.
+  const offset = useMemo(() => new THREE.Vector3(-width / 2, 0, -length / 2), [width, length]);
+  const editing = mode !== 'view';
+
+  const target = (cells: CellAction | null): Cell | null => (cells ? (mode === 'place' ? cells.place : cells.hit) : null);
+
+  const handlers = editing
+    ? {
+        onClick: (e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation();
+          if (e.delta > 4) return; // that was an orbit drag, not a click
+          const cells = cellsFromEvent(e, offset);
+          if (cells) onCellAction?.(cells);
+        },
+        onPointerMove: (e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          setHover(target(cellsFromEvent(e, offset)));
+        },
+        onPointerOut: () => setHover(null),
+      }
+    : {};
+
   return (
-    <group position={[-width / 2, 0, -length / 2]}>
-      <mesh geometry={opaque} castShadow receiveShadow>
+    // Visual centring only – the stored block coordinates are never shifted.
+    <group position={offset.toArray()}>
+      <mesh geometry={opaque} {...handlers}>
         <meshLambertMaterial vertexColors />
       </mesh>
-      <mesh geometry={emissive}>
+      <mesh geometry={emissive} {...handlers}>
         <meshBasicMaterial vertexColors toneMapped={false} />
       </mesh>
-      <mesh geometry={translucent} renderOrder={1}>
+      <mesh geometry={translucent} renderOrder={1} {...handlers}>
         <meshLambertMaterial vertexColors transparent depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
+      {mode === 'place' ? (
+        // Invisible ground plane so blocks can also be placed on empty ground cells (y = 0).
+        <mesh
+          position={[width / 2, 0, length / 2]}
+          rotation-x={-Math.PI / 2}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (e.delta > 4) return;
+            const local = e.point.clone().sub(offset);
+            onCellAction?.({ hit: null, place: { x: Math.floor(local.x), y: 0, z: Math.floor(local.z) } });
+          }}
+          onPointerMove={(e) => {
+            e.stopPropagation();
+            const local = e.point.clone().sub(offset);
+            setHover({ x: Math.floor(local.x), y: 0, z: Math.floor(local.z) });
+          }}
+          onPointerOut={() => setHover(null)}
+        >
+          <planeGeometry args={[width, length]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      ) : null}
+      {editing && hover ? (
+        <lineSegments geometry={edges} position={[hover.x + 0.5, hover.y + 0.5, hover.z + 0.5]}>
+          <lineBasicMaterial color={mode === 'remove' ? '#f09a92' : '#f2cf86'} />
+        </lineSegments>
+      ) : null}
       <axesHelper args={[3]} position={[0, 0.02, 0]} />
     </group>
   );
@@ -61,10 +146,12 @@ function CameraRig({
   dimensions,
   resetToken,
   controls,
+  cameraAction,
 }: {
   dimensions: Dimensions;
   resetToken: number;
   controls: RefObject<OrbitControlsImpl | null>;
+  cameraAction: CameraAction | null;
 }) {
   const camera = useThree((state) => state.camera);
   const getState = useThree((state) => state.get);
@@ -88,6 +175,17 @@ function CameraRig({
       controls.current.update();
     }
   }, [camera, controls, getState, width, height, length, resetToken]);
+
+  // Button-driven rotation/zoom (keyboard and touch users).
+  useEffect(() => {
+    if (!cameraAction || !controls.current) return;
+    const target = controls.current.target;
+    const offset = camera.position.clone().sub(target);
+    if (cameraAction.kind === 'rotate') offset.applyAxisAngle(new THREE.Vector3(0, 1, 0), cameraAction.value);
+    else offset.multiplyScalar(cameraAction.value);
+    camera.position.copy(target).add(offset);
+    controls.current.update();
+  }, [cameraAction, camera, controls]);
   return null;
 }
 
@@ -96,10 +194,24 @@ export interface VoxelSceneProps {
   resetToken: number;
   showGrid: boolean;
   reducedMotion: boolean;
+  mode: EditMode;
+  layerY: number | null;
+  cameraAction: CameraAction | null;
   onRendered?: (hash: string, faceCount: number) => void;
+  onCellAction?: (action: CellAction) => void;
 }
 
-export function VoxelScene({ model, resetToken, showGrid, reducedMotion, onRendered }: VoxelSceneProps) {
+export function VoxelScene({
+  model,
+  resetToken,
+  showGrid,
+  reducedMotion,
+  mode,
+  layerY,
+  cameraAction,
+  onRendered,
+  onCellAction,
+}: VoxelSceneProps) {
   const controls = useRef<OrbitControlsImpl | null>(null);
   const d = Math.max(model.dimensions.width, model.dimensions.height, model.dimensions.length);
   return (
@@ -109,13 +221,14 @@ export function VoxelScene({ model, resetToken, showGrid, reducedMotion, onRende
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       aria-label="3D-Vorschau des Bauwerks"
       role="img"
+      style={{ cursor: mode === 'view' ? 'grab' : 'crosshair' }}
     >
       <color attach="background" args={['#0b1526']} />
       <hemisphereLight args={['#dfeefe', '#2a3b52', 0.9]} />
       <ambientLight intensity={0.35} />
       <directionalLight position={[d, d * 1.6, -d * 0.6]} intensity={1.6} />
       <directionalLight position={[-d, d * 0.8, d]} intensity={0.45} color="#a9d8f2" />
-      <VoxelMeshes model={model} onRendered={onRendered} />
+      <VoxelMeshes model={model} layerY={layerY} mode={mode} onRendered={onRendered} onCellAction={onCellAction} />
       {showGrid ? (
         <Grid
           position={[0, -0.001, 0]}
@@ -136,7 +249,7 @@ export function VoxelScene({ model, resetToken, showGrid, reducedMotion, onRende
         maxDistance={d * 5}
         maxPolarAngle={Math.PI * 0.495}
       />
-      <CameraRig dimensions={model.dimensions} resetToken={resetToken} controls={controls} />
+      <CameraRig dimensions={model.dimensions} resetToken={resetToken} controls={controls} cameraAction={cameraAction} />
     </Canvas>
   );
 }

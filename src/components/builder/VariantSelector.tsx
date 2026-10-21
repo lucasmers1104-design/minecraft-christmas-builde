@@ -8,10 +8,12 @@ export function VariantSelector({
   variants,
   selected,
   onSelect,
+  edits = [],
 }: {
   variants: VoxelModel[];
   selected: number;
   onSelect: (index: number) => void;
+  edits?: number[];
 }) {
   return (
     <Panel title="Varianten" headingId="variants-heading" description="Jede Variante ist ein eigenes, echtes Blockvolumen.">
@@ -43,6 +45,11 @@ export function VariantSelector({
                 <span className="block text-[11px] text-mist-400">Seed {model.spec.seed}</span>
                 <span className="block text-[11px] text-mist-400">{total.toLocaleString('de-DE')} Blöcke</span>
                 <span className="mt-1 block font-mono text-[10px] text-mist-400/80">{model.hash.slice(0, 8)}</span>
+                {(edits[index] ?? 0) > 0 ? (
+                  <span className="mt-0.5 block text-[10px] text-gold-300" data-testid={`variant-${index}-edited`}>
+                    bearbeitet ({edits[index]})
+                  </span>
+                ) : null}
               </button>
             );
           })}

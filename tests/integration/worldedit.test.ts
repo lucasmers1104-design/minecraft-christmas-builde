@@ -8,6 +8,8 @@ import { gzipSync } from 'node:zlib';
 import * as nbt from 'prismarine-nbt';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { countMaterials } from '@/core/analysis/materialCounts';
+import { blockState } from '@/core/blocks/registry';
+import { EditHistory, replaceAllCommand, setBlockCommand } from '@/core/editor/editOperations';
 import { requireProfile } from '@/core/compat/profile';
 import { buildSpongeV3Nbt, writeSpongeV3 } from '@/core/export/writeSpongeV3';
 import { generateBuilding, generateVariants } from '@/core/generator/generateBuilding';
@@ -80,7 +82,7 @@ function expectIdenticalToModel(out: ReaderOutput, model: VoxelModel): void {
   expect(mismatches, first).toBe(0);
 }
 
-describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub WorldEdit 7.3.8)', () => {
+describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub WorldEdit 7.4.2)', () => {
   beforeAll(async () => {
     if (!jarAvailable) throw new Error(`WorldEdit-Reader fehlt: ${JAR} – zuerst "npm run worldedit:build" ausführen`);
     dir = await mkdtemp(join(tmpdir(), 'mcb-worldedit-'));
@@ -92,6 +94,14 @@ describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub 
   const specs: [string, BuildSpec][] = [
     ['klein/realistisch/eiche/natur', { ...DEFAULT_HOUSE_SPEC, size: 'small', style: 'realistic', materialTheme: 'oak', colorTheme: 'natural', detailLevel: 1 }],
     ['groß/märchenhaft/stein/eisblau', { ...DEFAULT_HOUSE_SPEC, size: 'large', style: 'fairytale', materialTheme: 'stone', colorTheme: 'ice_blue', detailLevel: 3 }],
+    ['Profil 1.21.1 (DataVersion 3955)', { ...DEFAULT_HOUSE_SPEC, targetMinecraftVersion: '1.21.1' }],
+    [
+      'Feinparameter (Birke, Ziegel, rotes Dach, viele Fenster)',
+      {
+        ...DEFAULT_HOUSE_SPEC,
+        options: { width: 21, frameWood: 'birch', windows: 'many', materials: { wall: 'bricks', roof: 'red_terracotta', accent: 'blue_wool' } },
+      },
+    ],
   ];
 
   it('liest die drei Standard-Varianten Block für Block identisch', async () => {
@@ -99,7 +109,7 @@ describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub 
     const results = await Promise.all(variants.map((m) => readWithWorldEdit(`house-seed${m.spec.seed}.schem`, writeSpongeV3(m))));
     results.forEach(({ code, out }, i) => {
       expect(code).toBe(0);
-      expect(out.reader).toMatch(/EngineHub WorldEdit 7\.3\.8/);
+      expect(out.reader).toMatch(/EngineHub WorldEdit 7\.4\.2/);
       expectIdenticalToModel(out, variants[i]!);
     });
   });
@@ -107,6 +117,16 @@ describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub 
   it.each(specs)('liest weitere Stil-/Größenvarianten identisch (%s)', async (_name, spec) => {
     const model = generateBuilding(spec);
     const { code, out } = await readWithWorldEdit('variant.schem', writeSpongeV3(model));
+    expect(code).toBe(0);
+    expectIdenticalToModel(out, model);
+  });
+
+  it('liest manuell bearbeitete Modelle identisch', async () => {
+    const base = generateBuilding(DEFAULT_HOUSE_SPEC);
+    const history = new EditHistory();
+    let model = history.execute(base, setBlockCommand(base, { x: 0, y: 0, z: 0 }, blockState('jack_o_lantern', { facing: 'east' }))!);
+    model = history.execute(model, replaceAllCommand(model, blockState('snow_block'), blockState('hay_block', { axis: 'x' }))!);
+    const { code, out } = await readWithWorldEdit('edited.schem', writeSpongeV3(model));
     expect(code).toBe(0);
     expectIdenticalToModel(out, model);
   });

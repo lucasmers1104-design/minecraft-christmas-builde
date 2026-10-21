@@ -10,7 +10,7 @@
   </parent>
   <groupId>org.enginehub.piston.core-ap</groupId>
   <artifactId>annotations</artifactId>
-  <version>0.5.10</version>
+  <version>0.5.11</version>
   <properties><maven.compiler.release>17</maven.compiler.release></properties>
   <dependencies>
     <dependency><groupId>org.enginehub.piston</groupId><artifactId>core</artifactId><version>${piston.version}</version></dependency>

@@ -154,9 +154,9 @@ final class Harness {
         CliBootstrap.initialize(app, workDir);
 
         // 2. Format detection exactly like CLIWorldEdit#main.
-        ClipboardFormat format = ClipboardFormats.findByFile(file.toFile());
+        ClipboardFormat format = ClipboardFormats.findByPath(file);
         if (format == null) {
-            errors.add("WorldEdit ClipboardFormats.findByFile() did not recognise the file as any clipboard format");
+            errors.add("WorldEdit ClipboardFormats.findByPath() did not recognise the file as any clipboard format");
             return EXIT_INVALID;
         }
         out.put("format", format.getName());
@@ -185,12 +185,14 @@ final class Harness {
             return EXIT_INVALID;
         }
 
-        // 4. Start the platform: loads com/sk89q/worldedit/cli/data/<registryDataVersion>.json.
-        String dataFile = "com/sk89q/worldedit/cli/data/" + registryDataVersion + ".json";
-        if (Harness.class.getClassLoader().getResource(dataFile) == null) {
+        // 4. Start the platform: FileRegistries loads <working dir>/cli-data/<DataVersion>_<format>.json,
+        //    and would download it from services.enginehub.org if it were missing. Only start
+        //    WorldEdit when this jar has generated data for that DataVersion, so it never downloads.
+        String dataFile = CliBootstrap.dataFileName(registryDataVersion);
+        if (!CliBootstrap.seedRegistryData(workDir, registryDataVersion)) {
             errors.add("WorldEdit-CLI has no registry data for DataVersion " + registryDataVersion
-                + " (it loads exactly " + dataFile + " for the schematic's DataVersion); available: "
-                + availableRegistryVersions());
+                + " (it needs exactly cli-data/" + dataFile + " for the schematic's DataVersion and this"
+                + " harness never downloads it); available: " + availableRegistryVersions());
             return EXIT_INVALID;
         }
         CliBootstrap.setDataVersion(app, registryDataVersion);
@@ -204,6 +206,7 @@ final class Harness {
         int loaded = app.getPlatform().getDataVersion();
         out.put("registryDataVersion", loaded);
         out.put("registrySource", registrySource(loaded));
+        out.put("registryFile", "cli-data/" + dataFile);
         out.put("worldEditVersion", WorldEdit.getVersion());
 
         // 5. The actual read, with the unmodified upstream reader.
@@ -445,22 +448,19 @@ final class Harness {
     }
 
     private String registrySource(int dataVersion) {
-        String generated = build.getProperty("registry.generated." + dataVersion);
-        if (generated != null) {
-            return generated;
-        }
-        return "com/sk89q/worldedit/cli/data/" + dataVersion + ".json bundled with worldedit-cli "
-            + build.getProperty("we.tag", "?");
+        return build.getProperty("registry.generated." + dataVersion, "unknown");
     }
 
-    private static String availableRegistryVersions() {
+    /** DataVersions this jar carries registry data for (checked against the actual resources). */
+    private List<Integer> availableRegistryVersions() throws ReflectiveOperationException {
         List<Integer> found = new ArrayList<>();
-        for (int v = 1000; v < 10000; v++) {
-            if (Harness.class.getClassLoader().getResource("com/sk89q/worldedit/cli/data/" + v + ".json") != null) {
-                found.add(v);
+        for (String v : build.getProperty("registry.dataVersions", "").split(",")) {
+            if (!v.isBlank() && Harness.class.getClassLoader().getResource(
+                    CliBootstrap.DATA_RESOURCE_DIR + CliBootstrap.dataFileName(Integer.parseInt(v.trim()))) != null) {
+                found.add(Integer.parseInt(v.trim()));
             }
         }
-        return found.toString();
+        return found;
     }
 
     private static Properties loadBuildInfo() {

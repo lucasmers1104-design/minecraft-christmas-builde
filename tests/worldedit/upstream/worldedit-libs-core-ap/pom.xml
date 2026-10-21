@@ -11,7 +11,7 @@
   <!-- Equivalent of WorldEdit's :worldedit-libs:core:ap project (relocated Piston annotation processor). -->
   <groupId>com.sk89q.worldedit.worldedit-libs</groupId>
   <artifactId>ap</artifactId>
-  <version>7.3.8</version>
+  <version>7.4.2</version>
   <dependencies>
     <dependency><groupId>org.enginehub.piston.core-ap</groupId><artifactId>annotations</artifactId><version>${piston.version}</version><optional>true</optional></dependency>
     <dependency><groupId>org.enginehub.piston.core-ap</groupId><artifactId>processor</artifactId><version>${piston.version}</version><optional>true</optional></dependency>

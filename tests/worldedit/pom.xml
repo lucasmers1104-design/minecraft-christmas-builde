@@ -6,8 +6,9 @@
   Inputs supplied by build.sh:
     -Dmaven.repo.local=...      local repo that contains the WorldEdit artifacts built from source
                                 (or use -Penginehub on a machine that can reach maven.enginehub.org)
-    -Dgenerated.resources=...   dir with com/sk89q/worldedit/cli/data/3955.json (generated
-                                registry, see registry/gen_cli_registry.py) and
+    -Dgenerated.resources=...   dir with schem-reader/cli-data/<DataVersion>_1.json (generated
+                                WorldEdit-CLI registry data for 4671 and 3955, see
+                                registry/gen_cli_registry.py), lang/i18n.zip and
                                 schem-reader-build.properties (pinned tags/commits)
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -22,9 +23,9 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>21</maven.compiler.release>
-    <we.version>7.3.8</we.version>
+    <we.version>7.4.2</we.version>
     <we.commit>unknown</we.commit>
-    <log4j.version>2.22.1</log4j.version>
+    <log4j.version>2.24.1</log4j.version>
     <generated.resources>${project.basedir}/target/generated-resources-missing</generated.resources>
   </properties>
 

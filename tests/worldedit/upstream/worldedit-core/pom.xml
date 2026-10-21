@@ -11,7 +11,7 @@
   </parent>
   <groupId>com.sk89q.worldedit</groupId>
   <artifactId>worldedit-core</artifactId>
-  <version>7.3.8</version>
+  <version>7.4.2</version>
 
   <properties>
     <we.core.dir>${src.root}/WorldEdit/worldedit-core</we.core.dir>
@@ -19,6 +19,11 @@
 
   <dependencies>
     <dependency><groupId>com.sk89q.worldedit.worldedit-libs</groupId><artifactId>core</artifactId><version>${we.version}</version></dependency>
+    <!-- api(platform(libs.linBus.bom)) + api(libs.linBus.*) since 7.4.0 (no longer shaded into worldedit-libs:core) -->
+    <dependency><groupId>org.enginehub.lin-bus</groupId><artifactId>lin-bus-common</artifactId><version>${linbus.version}</version></dependency>
+    <dependency><groupId>org.enginehub.lin-bus</groupId><artifactId>lin-bus-stream</artifactId><version>${linbus.version}</version></dependency>
+    <dependency><groupId>org.enginehub.lin-bus</groupId><artifactId>lin-bus-tree</artifactId><version>${linbus.version}</version></dependency>
+    <dependency><groupId>org.enginehub.lin-bus.format</groupId><artifactId>lin-bus-format-snbt</artifactId><version>${linbus.version}</version></dependency>
     <dependency><groupId>org.mozilla</groupId><artifactId>rhino-runtime</artifactId></dependency>
     <dependency><groupId>org.yaml</groupId><artifactId>snakeyaml</artifactId></dependency>
     <dependency><groupId>com.google.guava</groupId><artifactId>guava</artifactId></dependency>

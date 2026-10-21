@@ -154,7 +154,7 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
     >
       {open ? (
         <div id="fine-body" className="flex flex-col gap-4">
-          <fieldset className="grid grid-cols-3 gap-2">
+          <fieldset className="min-w-0 grid grid-cols-3 gap-2">
             <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-mist-400">Maße</legend>
             {field(
               'options.width',
@@ -175,7 +175,7 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
               Number,
             )}
           </fieldset>
-          <fieldset className="grid grid-cols-2 gap-2">
+          <fieldset className="min-w-0 grid grid-cols-2 gap-2">
             <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-mist-400">Form</legend>
             {field('options.roofShape', 'Dachneigung', [
               { value: 'gable', label: 'normal (45°)' },
@@ -187,11 +187,11 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
               { value: 'many', label: 'viele' },
             ])}
           </fieldset>
-          <fieldset className="grid grid-cols-2 gap-2">
+          <fieldset className="min-w-0 grid grid-cols-2 gap-2">
             <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-mist-400">Ausstattung</legend>
             {FLAG_LABELS.map(([key, label]) => field(`options.${key}`, label, flagChoices, (v) => v === 'true'))}
           </fieldset>
-          <fieldset className="grid grid-cols-1 gap-2">
+          <fieldset className="min-w-0 grid grid-cols-1 gap-2">
             <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-mist-400">Material pro Bauteil</legend>
             {(Object.keys(PART_LABELS) as MaterialPart[]).map((part) => field(`options.materials.${part}`, PART_LABELS[part], materialChoices(part)))}
             {field(

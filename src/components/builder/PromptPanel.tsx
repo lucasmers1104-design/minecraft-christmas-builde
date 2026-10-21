@@ -19,6 +19,7 @@ export function PromptPanel({
   ready,
   parsed,
   conflicts,
+  confirmRegenerate = false,
 }: {
   description: string;
   onDescriptionChange: (value: string) => void;
@@ -28,6 +29,8 @@ export function PromptPanel({
   ready: boolean;
   parsed: ParsedDescription;
   conflicts: string[];
+  /** Manual edits exist: the next click regenerates and discards them. */
+  confirmRegenerate?: boolean;
 }) {
   return (
     <Panel
@@ -114,8 +117,13 @@ export function PromptPanel({
         data-testid="generate-button"
         aria-describedby="generator-mode"
       >
-        {busy ? 'Wird generiert …' : 'Bauwerk generieren'}
+        {busy ? 'Wird generiert …' : confirmRegenerate ? 'Trotzdem neu generieren' : 'Bauwerk generieren'}
       </Button>
+      {confirmRegenerate ? (
+        <p role="alert" className="mt-2 text-center text-[11px] text-gold-300" data-testid="regenerate-warning">
+          Neu generieren verwirft deine manuellen Block-Änderungen. Zum Bestätigen erneut klicken.
+        </p>
+      ) : null}
       <p id="generator-mode" className="mt-2 text-center text-[11px] text-mist-400">
         Regelbasierter Generator · keine KI aktiv
       </p>

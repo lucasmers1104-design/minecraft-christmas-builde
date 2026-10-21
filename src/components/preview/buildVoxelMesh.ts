@@ -82,8 +82,14 @@ function occludes(kind: RenderKind): boolean {
   return kind === 'opaque' || kind === 'emissive';
 }
 
-export function buildVoxelMesh(model: Pick<VoxelModel, 'dimensions' | 'palette' | 'indices'>): VoxelMesh {
-  const { width, height, length } = model.dimensions;
+export interface MeshOptions {
+  /** Layer view: blocks above this y are hidden (treated like air for rendering only). */
+  maxY?: number;
+}
+
+export function buildVoxelMesh(model: Pick<VoxelModel, 'dimensions' | 'palette' | 'indices'>, options: MeshOptions = {}): VoxelMesh {
+  const { width, length } = model.dimensions;
+  const height = Math.min(model.dimensions.height, options.maxY === undefined ? Infinity : options.maxY + 1);
   const info = model.palette.map((state) => {
     const render = renderInfoFor(state);
     return { kind: render.kind, rgb: hexToLinear(render.color), alpha: render.opacity ?? 1 };

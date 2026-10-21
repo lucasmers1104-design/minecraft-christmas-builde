@@ -1,21 +1,31 @@
 #!/usr/bin/env python3
-"""Generate a WorldEdit-CLI registry data file (<DataVersion>.json) from Mojang data.
+"""Generate a WorldEdit-CLI registry data file from Mojang data-generator output.
 
 Why this exists
 ---------------
-WorldEdit-CLI (worldedit-cli/src/main/java/com/sk89q/worldedit/cli/data/FileRegistries.java)
-loads exactly ``com/sk89q/worldedit/cli/data/<schematic DataVersion>.json`` from the
-classpath. Every 7.3.x release (7.3.0 .. 7.3.19) only ships data files up to 3105
-(Minecraft 1.19), so the stock CLI refuses a DataVersion 3955 (1.21.1) schematic with
-"The provided file is not compatible with this version of WorldEdit-CLI".
+WorldEdit-CLI only knows the blocks/items/entities/biomes/tags of the DataVersion it was started
+for, and it is started for exactly the schematic's DataVersion.
 
-This script builds the missing file in the exact same JSON shape from the vanilla data
-generator output for the target version, as mirrored by https://github.com/misode/mcmeta
-(``<version>-summary`` tag: blocks/data.json, registries/data.json, data/tag/**/data.json).
+* Up to 7.3.x, worldedit-cli bundled ``com/sk89q/worldedit/cli/data/<DataVersion>.json``, and
+  only up to 3105 (Minecraft 1.19).
+* Since 7.4.0 (commit b37f00a4, "Cleanup WorldEdit-CLI data version systems") nothing is bundled.
+  ``FileRegistries#loadDataFiles`` downloads
+  ``https://services.enginehub.org/cassette-deck/we-cli-data/<DataVersion>/<CLI_DATA_VERSION>``
+  (CLI_DATA_VERSION = 1) into ``<working dir>/cli-data/<DataVersion>_1.json`` and reuses that file
+  if it exists. The JSON has the same shape as the old bundled files: the 7.4 ``DataFile`` record
+  and EngineHub's cassette-deck ``CliData`` record both use the keys itemtags, blocktags,
+  entitytags, items, entities, biomes and blocks{defaultstate, properties{values, type}}.
+  The program that produces EngineHub's files is not public, and services.enginehub.org is not
+  reachable from the build sandbox.
 
-Validation: ``--compare`` regenerates a file for another version (e.g. the 1.19 summary)
-and diffs it against EngineHub's own shipped data file (e.g. 3105.json). If they are
-identical, the conversion rules below reproduce EngineHub's generator.
+This script builds that file from the vanilla data generator output for the target version, as
+mirrored by https://github.com/misode/mcmeta (``<version>-summary`` tag: blocks/data.json,
+registries/data.json, data/tag/**/data.json). The schematic reader harness puts it where
+FileRegistries looks for its download, so WorldEdit loads it through its own code.
+
+Validation: ``--compare`` regenerates a file for another version (the 1.19 summary) and diffs it
+against EngineHub's own data file (3105.json as shipped in worldedit-cli 7.3.8 .. 7.3.19). If they
+are identical, the conversion rules below reproduce EngineHub's generator.
 
 Property type rules (WorldEdit CLIBlockRegistry knows int/bool/enum/direction):
   * values == ["true", "false"]                -> bool
@@ -136,7 +146,7 @@ def diff(generated, reference):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("summary_dir", help="checkout of misode/mcmeta at a <version>-summary tag")
-    ap.add_argument("--out", help="write the generated <DataVersion>.json here")
+    ap.add_argument("--out", help="write the generated data file here (<DataVersion>_1.json)")
     ap.add_argument("--compare", help="EngineHub data file to compare against (validation mode)")
     ap.add_argument("--expect-data-version", type=int,
                     help="fail unless <summary_dir>/version.json has this data_version")

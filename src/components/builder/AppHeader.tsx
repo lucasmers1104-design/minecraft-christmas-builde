@@ -1,12 +1,13 @@
 import type { CompatibilityProfile } from '@/core/compat/profile';
 
-export type BuilderStatus = 'bereit' | 'generiert' | 'gespeichert' | 'exportiert' | 'fehler' | 'arbeitet';
+export type BuilderStatus = 'bereit' | 'generiert' | 'bearbeitet' | 'gespeichert' | 'exportiert' | 'fehler' | 'arbeitet';
 
 const STATUS_STYLES: Record<BuilderStatus, string> = {
   bereit: 'border-white/10 text-mist-300',
   arbeitet: 'border-gold-400/40 text-gold-300',
   generiert: 'border-fir-500/50 text-fir-300',
   gespeichert: 'border-fir-500/50 text-fir-300',
+  bearbeitet: 'border-gold-400/40 text-gold-300',
   exportiert: 'border-ice-300/50 text-ice-200',
   fehler: 'border-holly-500/50 text-holly-300',
 };

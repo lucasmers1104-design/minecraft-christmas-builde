@@ -1,7 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AIR, blockState, labelFor } from '@/core/blocks/registry';
 import { requireProfile } from '@/core/compat/profile';
+import {
+  blockAtCell,
+  EditHistory,
+  removeBlockCommand,
+  replaceAllCommand,
+  setBlockCommand,
+  type Cell,
+  type EditCommand,
+} from '@/core/editor/editOperations';
 import { parseDescription, type SpecPatch } from '@/core/generator/parseDescription';
 import { DEFAULT_HOUSE_SPEC, type BuildSpec } from '@/core/schema/buildSpec';
 import { flattenPatch, resolveSpec, withManual, withoutManual, type SettingPath } from '@/core/schema/resolveSpec';
@@ -27,6 +37,8 @@ import { SaveProjectPanel } from '@/components/builder/SaveProjectPanel';
 import { StyleControls, type SettingsBinding } from '@/components/builder/StyleControls';
 import { VariantSelector } from '@/components/builder/VariantSelector';
 import { PreviewPanel } from '@/components/preview/PreviewPanel';
+import type { CellAction } from '@/components/preview/VoxelScene';
+import { EditorPanel, type EditMode } from '@/components/editor/EditorPanel';
 
 type MobileTab = 'input' | 'preview' | 'details';
 
@@ -64,6 +76,13 @@ export function BuilderApp() {
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState<EditMode>('view');
+  const [brush, setBrush] = useState(() => blockState('spruce_planks'));
+  const [editorMessage, setEditorMessage] = useState<string | null>(null);
+  /** Undo/redo availability of the selected variant, synced after every history change. */
+  const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
+  const [regenerateArmed, setRegenerateArmed] = useState(false);
+  const historiesRef = useRef<EditHistory[]>([]);
   const [variants, setVariants] = useState<VoxelModel[]>([]);
   const [selected, setSelected] = useState(0);
   const [status, setStatus] = useState<BuilderStatus>('bereit');
@@ -148,6 +167,10 @@ export function BuilderApp() {
     setVariants(loaded.variants);
     setEdits(loaded.edits);
     setSelected(loaded.selected);
+    historiesRef.current = [];
+    setHistoryFlags({ canUndo: false, canRedo: false });
+    setEditorMessage(null);
+    setRegenerateArmed(false);
     setNotes([]);
     setLastExport(null);
     setError(null);
@@ -167,10 +190,123 @@ export function BuilderApp() {
     setMobileTab('preview');
   }, []);
 
+  const historyFor = (index: number): EditHistory => {
+    historiesRef.current[index] ??= new EditHistory();
+    return historiesRef.current[index];
+  };
+
+  const syncHistoryFlags = (index: number) => {
+    const h = historiesRef.current[index];
+    setHistoryFlags({ canUndo: !!h?.canUndo, canRedo: !!h?.canRedo });
+  };
+
+  const replaceSelected = useCallback(
+    (next: VoxelModel, delta: number, message: string) => {
+      setVariants((vs) => vs.map((v, i) => (i === selected ? next : v)));
+      setEdits((es) => es.map((n, i) => (i === selected ? Math.max(0, n + delta) : n)));
+      syncHistoryFlags(selected);
+      setEditorMessage(message);
+      setStatus('bearbeitet');
+    },
+    [selected],
+  );
+
+  const runEdit = useCallback(
+    (build: (m: VoxelModel) => EditCommand | null) => {
+      const current = variants[selected];
+      if (!current) return;
+      try {
+        const command = build(current);
+        if (!command) {
+          setEditorMessage('Keine Änderung nötig.');
+          return;
+        }
+        replaceSelected(historyFor(selected).execute(current, command), 1, command.label);
+      } catch (e) {
+        setEditorMessage(describeError(e));
+      }
+    },
+    [variants, selected, replaceSelected],
+  );
+
+  const undo = useCallback(() => {
+    const current = variants[selected];
+    const history = historiesRef.current[selected];
+    if (!current || !history?.canUndo) return;
+    replaceSelected(history.undo(current), -1, 'Rückgängig gemacht.');
+  }, [variants, selected, replaceSelected]);
+
+  const redo = useCallback(() => {
+    const current = variants[selected];
+    const history = historiesRef.current[selected];
+    if (!current || !history?.canRedo) return;
+    replaceSelected(history.redo(current), 1, 'Wiederholt.');
+  }, [variants, selected, replaceSelected]);
+
+  const onCellAction = useCallback(
+    (action: CellAction) => {
+      const current = variants[selected];
+      if (!current) return;
+      if (mode === 'pick') {
+        if (!action.hit) return;
+        try {
+          const state = blockAtCell(current, action.hit);
+          if (state !== AIR) {
+            setBrush(state);
+            setEditorMessage(`Pipette: „${labelFor(state)}“ ausgewählt.`);
+          }
+        } catch (e) {
+          setEditorMessage(describeError(e));
+        }
+        return;
+      }
+      const cell: Cell | null = mode === 'place' ? action.place : action.hit;
+      if (!cell) return;
+      if (mode === 'place') {
+        const d = current.dimensions;
+        if (cell.x < 0 || cell.y < 0 || cell.z < 0 || cell.x >= d.width || cell.y >= d.height || cell.z >= d.length) {
+          setEditorMessage('Dort ist kein Platz mehr im Volumen (Grenze des Bauwerks erreicht).');
+          return;
+        }
+        if (current.palette[current.indices[cell.x + d.width * (cell.z + d.length * cell.y)]!] !== AIR) {
+          setEditorMessage('Diese Zelle ist bereits belegt.');
+          return;
+        }
+        runEdit((m) => setBlockCommand(m, cell, brush));
+      } else if (mode === 'remove') runEdit((m) => removeBlockCommand(m, cell));
+      else if (mode === 'paint') runEdit((m) => setBlockCommand(m, cell, brush));
+    },
+    [variants, selected, mode, brush, runEdit],
+  );
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z), Escape leaves the edit tool.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      } else if (e.key === 'Escape') setMode('view');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo, redo]);
+
   const setSetting = useCallback((path: SettingPath, value: unknown) => setManual((m) => withManual(m, path, value)), []);
   const resetSetting = useCallback((path: SettingPath) => setManual((m) => withoutManual(m, path)), []);
 
+  const hasEdits = edits.some((n) => n > 0);
+
   const generate = useCallback(async () => {
+    if (hasEdits && !regenerateArmed) {
+      setRegenerateArmed(true);
+      return;
+    }
+    setRegenerateArmed(false);
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -181,6 +317,9 @@ export function BuilderApp() {
       const result = await requestGeneration(spec, controller.signal);
       setVariants(result.variants);
       setEdits(result.variants.map(() => 0));
+      historiesRef.current = [];
+      setHistoryFlags({ canUndo: false, canRedo: false });
+      setEditorMessage(null);
       setNotes(result.warnings);
       setSelected(0);
       setStatus('generiert');
@@ -192,7 +331,7 @@ export function BuilderApp() {
     } finally {
       if (abortRef.current === controller) setBusy(null);
     }
-  }, [spec]);
+  }, [spec, hasEdits, regenerateArmed]);
 
   const exportSelected = useCallback(async () => {
     if (!model) return;
@@ -215,6 +354,8 @@ export function BuilderApp() {
   const selectVariant = useCallback(
     (index: number) => {
       setSelected(index);
+      const h = historiesRef.current[index];
+      setHistoryFlags({ canUndo: !!h?.canUndo, canRedo: !!h?.canRedo });
       if (variants.length > 0) setStatus('generiert');
     },
     [variants.length],
@@ -275,6 +416,7 @@ export function BuilderApp() {
             onGenerate={generate}
             busy={busy === 'generate'}
             ready={hydrated}
+            confirmRegenerate={regenerateArmed}
             parsed={parsed}
             conflicts={resolved.conflicts}
           />
@@ -303,12 +445,36 @@ export function BuilderApp() {
             </ul>
           ) : null}
           <div className="min-h-0 flex-1">
-            <PreviewPanel model={model} title={title} busy={busy === 'generate'} error={error} />
+            <PreviewPanel
+              model={model}
+              title={title}
+              busy={busy === 'generate'}
+              error={error}
+              editing={{
+                mode,
+                onModeChange: setMode,
+                canUndo: historyFlags.canUndo,
+                canRedo: historyFlags.canRedo,
+                onUndo: undo,
+                onRedo: redo,
+                onCellAction,
+                editCount: edits[selected] ?? 0,
+              }}
+            />
           </div>
         </div>
 
         <div id="panel-details" className={`${panelVisibility('details')} min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pl-1`}>
-          <VariantSelector variants={variants} selected={selected} onSelect={selectVariant} />
+          <VariantSelector variants={variants} selected={selected} onSelect={selectVariant} edits={edits} />
+          <EditorPanel
+            model={model}
+            brush={brush}
+            onBrushChange={setBrush}
+            onSetAt={(cell, remove) => runEdit((m) => (remove ? removeBlockCommand(m, cell) : setBlockCommand(m, cell, brush)))}
+            onReplaceAll={(from, to) => runEdit((m) => replaceAllCommand(m, from, to))}
+            editCount={edits[selected] ?? 0}
+            message={editorMessage}
+          />
           <MaterialList model={model} />
           <ExportPanel model={model} onExport={exportSelected} exporting={busy === 'export'} lastExport={lastExport} />
           <SaveProjectPanel

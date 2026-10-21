@@ -3,7 +3,9 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useState, useSyncExternalStore } from 'react';
 import type { VoxelModel } from '@/core/schema/voxelModel';
-import { PreviewToolbar } from '@/components/preview/PreviewToolbar';
+import { EditToolbar, PreviewToolbar } from '@/components/preview/PreviewToolbar';
+import type { CameraAction, CellAction } from '@/components/preview/VoxelScene';
+import type { EditMode } from '@/components/editor/EditorPanel';
 import { SceneErrorBoundary } from '@/components/preview/SceneErrorBoundary';
 
 const VoxelScene = dynamic(() => import('@/components/preview/VoxelScene').then((m) => m.VoxelScene), {
@@ -29,18 +31,35 @@ function useReducedMotion(): boolean {
   );
 }
 
+export interface PreviewEditing {
+  mode: EditMode;
+  onModeChange: (mode: EditMode) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  onCellAction: (action: CellAction) => void;
+  editCount: number;
+}
+
 export function PreviewPanel({
   model,
   title,
   busy,
   error,
+  editing,
 }: {
   model: VoxelModel | null;
   title: string;
   busy: boolean;
   error: string | null;
+  editing: PreviewEditing;
 }) {
   const [resetToken, setResetToken] = useState(0);
+  const [layerY, setLayerY] = useState<number | null>(null);
+  const [cameraAction, setCameraAction] = useState<CameraAction | null>(null);
+  const maxLayer = model ? model.dimensions.height - 1 : 0;
+  const effectiveLayer = layerY === null ? null : Math.min(layerY, maxLayer);
   const [showGrid, setShowGrid] = useState(true);
   const [rendered, setRendered] = useState<{ hash: string; faces: number } | null>(null);
   const reducedMotion = useReducedMotion();
@@ -58,7 +77,9 @@ export function PreviewPanel({
           </h2>
           <p className="text-xs text-mist-400" data-testid="preview-dimensions">
             {model
-              ? `${model.dimensions.width} × ${model.dimensions.height} × ${model.dimensions.length} Blöcke (B × H × T) · Seed ${model.spec.seed}`
+              ? `${model.dimensions.width} × ${model.dimensions.height} × ${model.dimensions.length} Blöcke (B × H × T) · Seed ${model.spec.seed}${
+                  editing.editCount > 0 ? ` · bearbeitet (${editing.editCount})` : ''
+                }`
               : 'Noch kein Bauwerk generiert'}
           </p>
         </div>
@@ -66,12 +87,28 @@ export function PreviewPanel({
           onReset={() => setResetToken((t) => t + 1)}
           showGrid={showGrid}
           onToggleGrid={() => setShowGrid((g) => !g)}
+          onRotate={(dir) => setCameraAction((a) => ({ kind: 'rotate', value: (dir * Math.PI) / 8, seq: (a?.seq ?? 0) + 1 }))}
+          onZoom={(dir) => setCameraAction((a) => ({ kind: 'zoom', value: dir > 0 ? 0.8 : 1.25, seq: (a?.seq ?? 0) + 1 }))}
           disabled={!model}
         />
       </header>
+      <div className="border-b border-white/6 px-4 py-2">
+        <EditToolbar
+          mode={editing.mode}
+          onModeChange={editing.onModeChange}
+          canUndo={editing.canUndo}
+          canRedo={editing.canRedo}
+          onUndo={editing.onUndo}
+          onRedo={editing.onRedo}
+          layerY={effectiveLayer}
+          maxLayer={maxLayer}
+          onLayerChange={setLayerY}
+          disabled={!model}
+        />
+      </div>
 
       <div
-        className="relative flex-1"
+        className="relative min-h-[55dvh] flex-1 lg:min-h-0"
         data-testid="scene"
         data-model-hash={model?.hash ?? ''}
         data-rendered-hash={rendered && model && rendered.hash === model.hash ? rendered.hash : ''}
@@ -84,7 +121,11 @@ export function PreviewPanel({
               resetToken={resetToken}
               showGrid={showGrid}
               reducedMotion={reducedMotion}
+              mode={editing.mode}
+              layerY={effectiveLayer}
+              cameraAction={cameraAction}
               onRendered={onRendered}
+              onCellAction={editing.onCellAction}
             />
           </SceneErrorBoundary>
         ) : (
@@ -103,6 +144,7 @@ export function PreviewPanel({
       </div>
       <p className="border-t border-white/6 px-4 py-2 text-[11px] text-mist-400">
         Vereinfachte Voxel-Darstellung (keine Original-Texturen). Ziehen = drehen, Mausrad/Pinch = zoomen, Rechtsklick/zwei Finger = verschieben.
+        Im Bearbeitungsmodus bearbeitet ein kurzer Klick den markierten Block.
       </p>
     </section>
   );
