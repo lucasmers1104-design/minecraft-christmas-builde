@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven reactor that compiles UNMODIFIED EngineHub sources (WorldEdit core + CLI and the
+  EngineHub-only libraries they need) from git checkouts, because maven.enginehub.org is
+  not reachable from the CI sandbox and no Gradle distribution can be downloaded there.
+
+  Sources are NOT copied into this repo: every module points its sourceDirectory at a
+  pinned git checkout under ${src.root} (see ../build.sh and ../upstream.lock).
+  This file only replaces the Gradle build scripts; no Java source is patched, except the
+  jchronic-stub module (see its pom for why).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>local.worldedit-build</groupId>
+  <artifactId>upstream-parent</artifactId>
+  <version>1</version>
+  <packaging>pom</packaging>
+
+  <modules>
+    <module>lin-bus-common</module>
+    <module>lin-bus-stream</module>
+    <module>lin-bus-tree</module>
+    <module>lin-bus-format-snbt</module>
+    <module>piston-core</module>
+    <module>piston-core-ap-runtime</module>
+    <module>piston-core-ap-annotations</module>
+    <module>piston-core-ap-processor</module>
+    <module>piston-default-impl</module>
+    <module>jlibnoise</module>
+    <module>jchronic-stub</module>
+    <module>worldedit-libs-core</module>
+    <module>worldedit-libs-core-ap</module>
+    <module>worldedit-core</module>
+    <module>worldedit-cli</module>
+  </modules>
+
+  <properties>
+    <!-- Root directory containing the git checkouts (WorldEdit/, Piston/, lin-bus/, jlibnoise/). -->
+    <src.root>${env.WE_SRC_ROOT}</src.root>
+    <!-- Maven output directories live outside the repo, next to the checkouts. -->
+    <upstream.build.dir>${src.root}/maven-target</upstream.build.dir>
+    <!-- Recorded in the WorldEdit jars' manifest, like upstream's "$version+$gitCommitHash". -->
+    <we.commit>unknown</we.commit>
+
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>21</maven.compiler.release>
+
+    <we.version>7.3.8</we.version>
+    <piston.version>0.5.10</piston.version>
+    <linbus.version>0.2.0</linbus.version>
+
+    <!-- Versions copied from the upstream Gradle version catalogs of the pinned tags. -->
+    <kyoriText.version>3.0.4</kyoriText.version>
+    <guava.version>32.1.3-jre</guava.version>
+    <gson.version>2.10.1</gson.version>
+    <log4j.version>2.22.1</log4j.version>
+    <fastutil.version>8.5.12</fastutil.version>
+    <autoValue.version>1.10.4</autoValue.version>
+    <autoService.version>1.1.1</autoService.version>
+    <autoCommon.version>1.2.2</autoCommon.version>
+    <javapoet.version>1.13.0</javapoet.version>
+    <antlr.version>4.13.1</antlr.version>
+    <jsr305.version>3.0.2</jsr305.version>
+    <jspecify.version>0.3.0</jspecify.version>
+    <jetbrainsAnnotations.version>24.1.0</jetbrainsAnnotations.version>
+    <rhino.version>1.7.13</rhino.version>
+    <snakeyaml.version>2.0</snakeyaml.version>
+    <truezip.version>6.8.4</truezip.version>
+    <commonsCli.version>1.4</commonsCli.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency><groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>${guava.version}</version></dependency>
+      <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId><version>${gson.version}</version></dependency>
+      <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-api</artifactId><version>${log4j.version}</version></dependency>
+      <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-core</artifactId><version>${log4j.version}</version></dependency>
+      <dependency><groupId>it.unimi.dsi</groupId><artifactId>fastutil</artifactId><version>${fastutil.version}</version></dependency>
+      <dependency><groupId>com.google.code.findbugs</groupId><artifactId>jsr305</artifactId><version>${jsr305.version}</version></dependency>
+      <dependency><groupId>org.jspecify</groupId><artifactId>jspecify</artifactId><version>${jspecify.version}</version></dependency>
+      <dependency><groupId>org.jetbrains</groupId><artifactId>annotations</artifactId><version>${jetbrainsAnnotations.version}</version></dependency>
+      <dependency><groupId>com.google.auto.value</groupId><artifactId>auto-value-annotations</artifactId><version>${autoValue.version}</version></dependency>
+      <dependency><groupId>com.google.auto.service</groupId><artifactId>auto-service</artifactId><version>${autoService.version}</version></dependency>
+      <dependency><groupId>com.google.auto.service</groupId><artifactId>auto-service-annotations</artifactId><version>${autoService.version}</version></dependency>
+      <dependency><groupId>com.google.auto</groupId><artifactId>auto-common</artifactId><version>${autoCommon.version}</version></dependency>
+      <dependency><groupId>com.squareup</groupId><artifactId>javapoet</artifactId><version>${javapoet.version}</version></dependency>
+      <dependency><groupId>net.kyori</groupId><artifactId>text-api</artifactId><version>${kyoriText.version}</version></dependency>
+      <dependency><groupId>net.kyori</groupId><artifactId>text-serializer-gson</artifactId><version>${kyoriText.version}</version></dependency>
+      <dependency><groupId>net.kyori</groupId><artifactId>text-serializer-legacy</artifactId><version>${kyoriText.version}</version></dependency>
+      <dependency><groupId>net.kyori</groupId><artifactId>text-serializer-plain</artifactId><version>${kyoriText.version}</version></dependency>
+      <dependency><groupId>org.antlr</groupId><artifactId>antlr4-runtime</artifactId><version>${antlr.version}</version></dependency>
+      <dependency><groupId>org.mozilla</groupId><artifactId>rhino-runtime</artifactId><version>${rhino.version}</version></dependency>
+      <dependency><groupId>org.yaml</groupId><artifactId>snakeyaml</artifactId><version>${snakeyaml.version}</version></dependency>
+      <dependency><groupId>de.schlichtherle</groupId><artifactId>truezip</artifactId><version>${truezip.version}</version></dependency>
+      <dependency><groupId>commons-cli</groupId><artifactId>commons-cli</artifactId><version>${commonsCli.version}</version></dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <directory>${upstream.build.dir}/${project.groupId}--${project.artifactId}</directory>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
+          <configuration>
+            <release>${maven.compiler.release}</release>
+            <parameters>true</parameters>
+            <encoding>UTF-8</encoding>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.3.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.4.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>3.1.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.2.5</version>
+          <configuration><skip>true</skip></configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>3.6.0</version>
+        </plugin>
+        <plugin>
+          <groupId>org.antlr</groupId>
+          <artifactId>antlr4-maven-plugin</artifactId>
+          <version>${antlr.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>

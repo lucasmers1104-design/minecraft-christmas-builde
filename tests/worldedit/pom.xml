@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  schem-reader: opens a .schem with the real EngineHub WorldEdit reader (worldedit-core) on the
+  WorldEdit-CLI platform (worldedit-cli) and prints a JSON summary. Build with ./build.sh.
+
+  Inputs supplied by build.sh:
+    -Dmaven.repo.local=...      local repo that contains the WorldEdit artifacts built from source
+                                (or use -Penginehub on a machine that can reach maven.enginehub.org)
+    -Dgenerated.resources=...   dir with com/sk89q/worldedit/cli/data/3955.json (generated
+                                registry, see registry/gen_cli_registry.py) and
+                                schem-reader-build.properties (pinned tags/commits)
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>local.mc-christmas-builder</groupId>
+  <artifactId>schem-reader</artifactId>
+  <version>1</version>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>21</maven.compiler.release>
+    <we.version>7.3.8</we.version>
+    <we.commit>unknown</we.commit>
+    <log4j.version>2.22.1</log4j.version>
+    <generated.resources>${project.basedir}/target/generated-resources-missing</generated.resources>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.sk89q.worldedit</groupId>
+      <artifactId>worldedit-cli</artifactId>
+      <version>${we.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.logging.log4j</groupId>
+      <artifactId>log4j-core</artifactId>
+      <version>${log4j.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.google.code.findbugs</groupId>
+      <artifactId>jsr305</artifactId>
+      <version>3.0.2</version>
+      <scope>provided</scope>
+    </dependency>
+  </dependencies>
+
+  <profiles>
+    <profile>
+      <!-- For machines that CAN reach maven.enginehub.org (not verified from the sandbox). -->
+      <id>enginehub</id>
+      <repositories>
+        <repository>
+          <id>enginehub</id>
+          <url>https://maven.enginehub.org/repo/</url>
+        </repository>
+      </repositories>
+    </profile>
+  </profiles>
+
+  <build>
+    <!-- thin jar; the runnable shaded jar is written to target/schem-reader.jar (outputFile below) -->
+    <finalName>schem-reader-thin</finalName>
+    <resources>
+      <resource><directory>src/main/resources</directory></resource>
+      <resource><directory>${generated.resources}</directory></resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+        <configuration>
+          <release>${maven.compiler.release}</release>
+          <compilerArgs><arg>-Xlint:all,-processing,-serial</arg></compilerArgs>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <configuration><skip>true</skip></configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <outputFile>${project.build.directory}/schem-reader.jar</outputFile>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/versions/*/module-info.class</exclude>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
+                  </excludes>
+                </filter>
+                <filter>
+                  <!-- worldedit-cli's log4j2.xml logs to stdout and ./logs/; we use schem-reader-log4j2.xml -->
+                  <artifact>com.sk89q.worldedit:worldedit-cli</artifact>
+                  <excludes><exclude>log4j2.xml</exclude></excludes>
+                </filter>
+              </filters>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>schemreader.SchemReader</mainClass>
+                  <manifestEntries>
+                    <Multi-Release>true</Multi-Release>
+                    <!-- read by WorldEditManifest / CLIWorldEdit#getInternalVersion, like upstream's jar -->
+                    <WorldEdit-Version>${we.version}+${we.commit}</WorldEdit-Version>
+                    <Implementation-Version>${we.version}+${we.commit}</Implementation-Version>
+                  </manifestEntries>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

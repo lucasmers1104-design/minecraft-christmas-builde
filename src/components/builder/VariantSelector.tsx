@@ -1,0 +1,53 @@
+'use client';
+
+import type { VoxelModel } from '@/core/schema/voxelModel';
+import { countMaterials } from '@/core/analysis/materialCounts';
+import { Panel } from '@/components/ui/Panel';
+
+export function VariantSelector({
+  variants,
+  selected,
+  onSelect,
+}: {
+  variants: VoxelModel[];
+  selected: number;
+  onSelect: (index: number) => void;
+}) {
+  return (
+    <Panel title="Varianten" headingId="variants-heading" description="Jede Variante ist ein eigenes, echtes Blockvolumen.">
+      {variants.length === 0 ? (
+        <p className="text-sm text-mist-400">Noch keine Varianten – zuerst ein Bauwerk generieren.</p>
+      ) : (
+        <div role="radiogroup" aria-labelledby="variants-heading" className="grid grid-cols-3 gap-2">
+          {variants.map((model, index) => {
+            const active = index === selected;
+            const total = countMaterials(model).totalBlocks;
+            return (
+              <button
+                key={model.hash}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                data-testid={`variant-${index}`}
+                data-hash={model.hash}
+                onClick={() => onSelect(index)}
+                className={`rounded-xl border px-2 py-2.5 text-left transition-colors ${
+                  active
+                    ? 'border-gold-400/70 bg-gold-400/10'
+                    : 'border-white/8 bg-white/3 hover:border-white/20'
+                }`}
+              >
+                <span className={`block text-sm font-semibold ${active ? 'text-gold-300' : 'text-snow-50'}`}>
+                  Variante {index + 1}
+                </span>
+                <span className="block text-[11px] text-mist-400">Seed {model.spec.seed}</span>
+                <span className="block text-[11px] text-mist-400">{total.toLocaleString('de-DE')} Blöcke</span>
+                <span className="mt-1 block font-mono text-[10px] text-mist-400/80">{model.hash.slice(0, 8)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </Panel>
+  );
+}

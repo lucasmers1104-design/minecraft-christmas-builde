@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Builds tests/worldedit/target/schem-reader.jar: a real EngineHub WorldEdit (worldedit-core +
+# worldedit-cli) Sponge-schematic reader harness. See README.md.
+#
+#   tests/worldedit/build.sh              # default: compile EngineHub sources from GitHub
+#   WE_MODE=enginehub tests/worldedit/build.sh   # use maven.enginehub.org artifacts instead
+#   tests/worldedit/build.sh --selftest   # ...and run the fixture self-test afterwards
+#
+# Environment:
+#   WE_BUILD_CACHE  clones + Maven local repo + build output (default ~/.cache/...); never inside the repo
+#   WE_MODE         source (default) | enginehub
+#   MVN             maven executable (default: mvn)
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CACHE="${WE_BUILD_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/minecraft-christmas-builder/worldedit-build}"
+MODE="${WE_MODE:-source}"
+MVN_BIN="${MVN:-mvn}"
+SELFTEST=0
+for arg in "$@"; do
+  case "$arg" in
+    --selftest) SELFTEST=1 ;;
+    *) echo "unknown argument: $arg" >&2; exit 64 ;;
+  esac
+done
+
+# shellcheck source=upstream.lock
+source "$HERE/upstream.lock"
+
+SRC="$CACHE/src"
+GEN="$CACHE/generated-resources"
+M2="${WE_M2_REPO:-$CACHE/m2}"
+mkdir -p "$SRC" "$GEN/com/sk89q/worldedit/cli/data"
+MVN=("$MVN_BIN" -B -ntp "-Dmaven.repo.local=$M2")
+
+log() { printf '[build.sh] %s\n' "$*" >&2; }
+
+# checkout <dir> <url> <tag-or-empty> <commit>: fetch exactly <commit>, verify it is pristine.
+checkout() {
+  local dir="$1" url="$2" tag="$3" commit="$4"
+  if [ -n "$tag" ]; then
+    local remote
+    remote="$(git ls-remote "$url" "refs/tags/$tag" "refs/tags/$tag^{}" | awk '{print $1}' | tail -n1)"
+    if [ "$remote" != "$commit" ]; then
+      log "ERROR: $url tag $tag resolves to '$remote', expected $commit"; exit 1
+    fi
+  fi
+  if [ ! -d "$dir/.git" ]; then
+    log "fetching $url @ ${tag:-$commit}"
+    git init -q "$dir"
+    git -C "$dir" remote add origin "$url"
+  fi
+  if [ "$(git -C "$dir" rev-parse -q --verify HEAD 2>/dev/null || true)" != "$commit" ]; then
+    git -C "$dir" fetch -q --depth 1 origin "$commit"
+    git -C "$dir" -c advice.detachedHead=false checkout -q --detach "$commit"
+  fi
+  if [ "$(git -C "$dir" rev-parse HEAD)" != "$commit" ] || [ -n "$(git -C "$dir" status --porcelain)" ]; then
+    log "ERROR: $dir is not a clean checkout of $commit"; exit 1
+  fi
+}
+
+# --- 1. upstream sources ------------------------------------------------------------------------
+checkout "$SRC/WorldEdit" "$WE_URL" "$WE_TAG" "$WE_COMMIT"
+checkout "$SRC/mcmeta-$MCMETA_TARGET_TAG" "$MCMETA_URL" "$MCMETA_TARGET_TAG" "$MCMETA_TARGET_COMMIT"
+checkout "$SRC/mcmeta-$MCMETA_VALIDATE_TAG" "$MCMETA_URL" "$MCMETA_VALIDATE_TAG" "$MCMETA_VALIDATE_COMMIT"
+if [ "$MODE" = source ]; then
+  checkout "$SRC/Piston" "$PISTON_URL" "$PISTON_TAG" "$PISTON_COMMIT"
+  checkout "$SRC/lin-bus" "$LINBUS_URL" "$LINBUS_TAG" "$LINBUS_COMMIT"
+  checkout "$SRC/jlibnoise" "$JLIBNOISE_URL" "$JLIBNOISE_TAG" "$JLIBNOISE_COMMIT"
+fi
+
+# --- 2. registry data for DataVersion 3955 (worldedit-cli ships only up to 3105) -------------
+GENPY=(python3 -I "$HERE/registry/gen_cli_registry.py")
+log "validating registry converter against EngineHub's bundled $MCMETA_VALIDATE_DATA_VERSION.json"
+"${GENPY[@]}" "$SRC/mcmeta-$MCMETA_VALIDATE_TAG" --expect-data-version "$MCMETA_VALIDATE_DATA_VERSION" \
+  --compare "$SRC/WorldEdit/worldedit-cli/src/main/resources/com/sk89q/worldedit/cli/data/$MCMETA_VALIDATE_DATA_VERSION.json"
+if [ -e "$SRC/WorldEdit/worldedit-cli/src/main/resources/com/sk89q/worldedit/cli/data/$MCMETA_TARGET_DATA_VERSION.json" ]; then
+  log "ERROR: worldedit-cli now ships $MCMETA_TARGET_DATA_VERSION.json itself; drop the generated one"; exit 1
+fi
+"${GENPY[@]}" "$SRC/mcmeta-$MCMETA_TARGET_TAG" --expect-data-version "$MCMETA_TARGET_DATA_VERSION" \
+  --out "$GEN/com/sk89q/worldedit/cli/data/$MCMETA_TARGET_DATA_VERSION.json"
+
+# worldedit-core expects lang/i18n.zip (Crowdin translations, artifact worldedit-lang, published
+# only on maven.enginehub.org) and NPEs while rendering any InputParseException message without
+# it. It is only consulted for non-default locales; English comes from worldedit-core's own
+# lang/strings.json. A zip without translations therefore restores upstream behaviour for
+# English. (It needs one directory entry: ArchiveUnpacker only creates its target directory
+# while extracting entries.)
+rm -f "$GEN/lang/i18n.zip"
+if [ "$MODE" = source ]; then
+  mkdir -p "$GEN/lang"
+  python3 -I -c 'import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w") as z:
+    z.writestr(zipfile.ZipInfo("no-translations/", date_time=(1980, 1, 1, 0, 0, 0)), "")' "$GEN/lang/i18n.zip"
+fi
+
+cat > "$GEN/schem-reader-build.properties" <<EOF
+we.version=$WE_VERSION
+we.tag=$WE_TAG
+we.commit=$WE_COMMIT
+build.mode=$MODE
+piston=$PISTON_TAG@$PISTON_COMMIT
+lin-bus=$LINBUS_TAG@$LINBUS_COMMIT
+jlibnoise=$JLIBNOISE_COMMIT
+registry.generated.$MCMETA_TARGET_DATA_VERSION=generated by tests/worldedit/registry/gen_cli_registry.py from Minecraft $MCMETA_TARGET_TAG data-generator output (misode/mcmeta $MCMETA_TARGET_TAG@$MCMETA_TARGET_COMMIT); converter verified to reproduce worldedit-cli's own $MCMETA_VALIDATE_DATA_VERSION.json
+EOF
+
+# --- 3. WorldEdit artifacts -----------------------------------------------------------------
+PROFILE=()
+if [ "$MODE" = source ]; then
+  log "compiling EngineHub sources with Maven (lin-bus, Piston, jlibnoise, worldedit-core, worldedit-cli)"
+  "${MVN[@]}" -q -f "$HERE/upstream/pom.xml" \
+    "-Dsrc.root=$SRC" "-Dupstream.build.dir=$CACHE/maven-target" "-Dwe.commit=$WE_COMMIT" install
+elif [ "$MODE" = enginehub ]; then
+  PROFILE=(-Penginehub)
+else
+  log "ERROR: WE_MODE must be 'source' or 'enginehub'"; exit 64
+fi
+
+# --- 4. the harness jar ---------------------------------------------------------------------
+log "building schem-reader.jar"
+"${MVN[@]}" -q -f "$HERE/pom.xml" "${PROFILE[@]}" \
+  "-Dgenerated.resources=$GEN" "-Dwe.version=$WE_VERSION" "-Dwe.commit=$WE_COMMIT" package
+log "built $HERE/target/schem-reader.jar"
+
+if [ "$SELFTEST" = 1 ]; then
+  python3 -I "$HERE/fixtures-src/selftest.py" --jar "$HERE/target/schem-reader.jar"
+fi

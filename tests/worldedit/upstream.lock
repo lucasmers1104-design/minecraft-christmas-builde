@@ -1,0 +1,35 @@
+# Pinned upstream sources (sourced by build.sh). Every checkout is verified to be at exactly
+# this commit with a clean work tree, and tags are checked with `git ls-remote`.
+
+# EngineHub WorldEdit 7.3.8: last 7.3.x release whose newest supported MC version is 1.21.1
+# (7.3.4 added 1.21, 7.3.6/7.3.8 the 1.21.1 Bukkit adapter, 7.3.9 moved on to 1.21.3).
+# Includes the 7.3.7 fix "Sponge v3 schematics lacking BlockEntities not loading".
+WE_URL=https://github.com/EngineHub/WorldEdit
+WE_TAG=7.3.8
+WE_VERSION=7.3.8
+WE_COMMIT=7d32b456e7c3237a70e19cca129e51b790c33b73
+
+# EngineHub-only dependencies of worldedit-core 7.3.8 (gradle/libs.versions.toml there).
+PISTON_URL=https://github.com/EngineHub/Piston
+PISTON_TAG=v0.5.10
+PISTON_COMMIT=887d7d96f1201371d8893f44c6fa90d2a7300ebd
+
+LINBUS_URL=https://github.com/EngineHub/lin-bus
+LINBUS_TAG=v0.2.0
+LINBUS_COMMIT=6a1e200f20b8dabb2efb48c834be6e2c7446c5cf
+
+# com.sk89q.lib:jlibnoise:1.0.0 (no tags in the repo; master).
+JLIBNOISE_URL=https://github.com/EngineHub/jlibnoise
+JLIBNOISE_TAG=
+JLIBNOISE_COMMIT=1cb2810666aa29dda22ae8711861fca363d08afa
+
+# Minecraft data-generator output mirrored by misode/mcmeta, used to generate the
+# WorldEdit-CLI registry file for DataVersion 3955 (1.21.1); the 1.19 summary is used to prove
+# that the conversion reproduces EngineHub's shipped 3105.json byte-for-byte (as JSON).
+MCMETA_URL=https://github.com/misode/mcmeta
+MCMETA_TARGET_TAG=1.21.1-summary
+MCMETA_TARGET_COMMIT=7cffbcdad5fa36f22acef6bd4b869ecad4ca3fd9
+MCMETA_TARGET_DATA_VERSION=3955
+MCMETA_VALIDATE_TAG=1.19-summary
+MCMETA_VALIDATE_COMMIT=ddd2e2d0559871eef6b734fcc6ae1d63582e7bbf
+MCMETA_VALIDATE_DATA_VERSION=3105

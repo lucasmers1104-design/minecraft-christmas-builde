@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Equivalent of WorldEdit's :worldedit-core Gradle project, compiled from the unmodified sources. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>local.worldedit-build</groupId>
+    <artifactId>upstream-parent</artifactId>
+    <version>1</version>
+  </parent>
+  <groupId>com.sk89q.worldedit</groupId>
+  <artifactId>worldedit-core</artifactId>
+  <version>7.3.8</version>
+
+  <properties>
+    <we.core.dir>${src.root}/WorldEdit/worldedit-core</we.core.dir>
+  </properties>
+
+  <dependencies>
+    <dependency><groupId>com.sk89q.worldedit.worldedit-libs</groupId><artifactId>core</artifactId><version>${we.version}</version></dependency>
+    <dependency><groupId>org.mozilla</groupId><artifactId>rhino-runtime</artifactId></dependency>
+    <dependency><groupId>org.yaml</groupId><artifactId>snakeyaml</artifactId></dependency>
+    <dependency><groupId>com.google.guava</groupId><artifactId>guava</artifactId></dependency>
+    <dependency><groupId>com.google.code.gson</groupId><artifactId>gson</artifactId></dependency>
+    <dependency><groupId>local.worldedit-build</groupId><artifactId>jchronic-stub</artifactId><version>0.2.4a-stub</version></dependency>
+    <dependency><groupId>com.sk89q.lib</groupId><artifactId>jlibnoise</artifactId><version>1.0.0</version></dependency>
+    <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-api</artifactId></dependency>
+    <dependency><groupId>it.unimi.dsi</groupId><artifactId>fastutil</artifactId></dependency>
+    <dependency><groupId>org.antlr</groupId><artifactId>antlr4-runtime</artifactId></dependency>
+    <!-- compileOnly / compileOnlyApi in upstream -->
+    <dependency><groupId>com.google.code.findbugs</groupId><artifactId>jsr305</artifactId><scope>provided</scope></dependency>
+    <dependency><groupId>de.schlichtherle</groupId><artifactId>truezip</artifactId><scope>provided</scope></dependency>
+    <dependency><groupId>com.sk89q.worldedit.worldedit-libs</groupId><artifactId>ap</artifactId><version>${we.version}</version><scope>provided</scope></dependency>
+    <dependency><groupId>com.google.auto.value</groupId><artifactId>auto-value-annotations</artifactId><scope>provided</scope></dependency>
+    <dependency><groupId>com.google.auto.service</groupId><artifactId>auto-service-annotations</artifactId><scope>provided</scope></dependency>
+    <dependency><groupId>org.jetbrains</groupId><artifactId>annotations</artifactId><scope>provided</scope></dependency>
+    <dependency><groupId>org.jspecify</groupId><artifactId>jspecify</artifactId><scope>provided</scope></dependency>
+  </dependencies>
+
+  <build>
+    <sourceDirectory>${we.core.dir}/src/main/java</sourceDirectory>
+    <resources>
+      <resource><directory>${we.core.dir}/src/main/resources</directory></resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <!-- upstream: Gradle antlr plugin, arguments "-visitor -package com.sk89q.worldedit.antlr" -->
+        <groupId>org.antlr</groupId>
+        <artifactId>antlr4-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals><goal>antlr4</goal></goals>
+            <configuration>
+              <sourceDirectory>${we.core.dir}/src/main/antlr</sourceDirectory>
+              <visitor>true</visitor>
+              <listener>true</listener>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <id>add-legacy-source</id>
+            <phase>generate-sources</phase>
+            <goals><goal>add-source</goal></goals>
+            <configuration>
+              <sources><source>${we.core.dir}/src/legacy/java</source></sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <compilerArgs>
+            <arg>-Aarg.name.key.prefix=</arg>
+          </compilerArgs>
+          <annotationProcessorPaths>
+            <path><groupId>com.sk89q.worldedit.worldedit-libs</groupId><artifactId>ap</artifactId><version>${we.version}</version></path>
+            <path><groupId>com.google.guava</groupId><artifactId>guava</artifactId><version>${guava.version}</version></path>
+            <path><groupId>com.google.auto.value</groupId><artifactId>auto-value</artifactId><version>${autoValue.version}</version></path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>local.worldedit-build</groupId>
+    <artifactId>upstream-parent</artifactId>
+    <version>1</version>
+  </parent>
+  <!-- Equivalent of WorldEdit's :worldedit-libs:core:ap project (relocated Piston annotation processor). -->
+  <groupId>com.sk89q.worldedit.worldedit-libs</groupId>
+  <artifactId>ap</artifactId>
+  <version>7.3.8</version>
+  <dependencies>
+    <dependency><groupId>org.enginehub.piston.core-ap</groupId><artifactId>annotations</artifactId><version>${piston.version}</version><optional>true</optional></dependency>
+    <dependency><groupId>org.enginehub.piston.core-ap</groupId><artifactId>processor</artifactId><version>${piston.version}</version><optional>true</optional></dependency>
+  </dependencies>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <artifactSet>
+                <!-- Same exclusions as WorldEdit build-logic/buildlogic.libs.gradle.kts -->
+                <excludes>
+                  <exclude>com.google.guava:*</exclude>
+                  <exclude>com.google.j2objc:*</exclude>
+                  <exclude>com.google.code.gson:*</exclude>
+                  <exclude>com.google.errorprone:*</exclude>
+                  <exclude>org.checkerframework:*</exclude>
+                  <exclude>org.jetbrains:*</exclude>
+                  <exclude>org.jetbrains.kotlin:*</exclude>
+                  <exclude>org.apache.logging.log4j:*</exclude>
+                  <exclude>com.google.code.findbugs:*</exclude>
+                  <exclude>org.jspecify:*</exclude>
+                </excludes>
+              </artifactSet>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>module-info.class</exclude>
+                    <exclude>META-INF/versions/*/module-info.class</exclude>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+              <relocations>
+                <relocation><pattern>net.kyori.text</pattern><shadedPattern>com.sk89q.worldedit.util.formatting.text</shadedPattern></relocation>
+                <relocation><pattern>net.kyori.minecraft</pattern><shadedPattern>com.sk89q.worldedit.util.kyori</shadedPattern></relocation>
+              </relocations>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
