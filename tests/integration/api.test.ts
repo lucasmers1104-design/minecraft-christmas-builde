@@ -19,7 +19,7 @@ describe('POST /api/generate', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as GenerateResponse;
     expect(body.generator).toBe('rule-based');
-    expect(body.profile).toEqual({ minecraftVersion: '1.21.1', dataVersion: 3955, schematic: 'Sponge Schematic v3' });
+    expect(body.profile).toEqual({ minecraftVersion: '1.21.11', dataVersion: 4671, schematic: 'Sponge Schematic v3' });
     expect(body.variants.map((v) => v.seed)).toEqual([1, 2, 3]);
     for (const v of body.variants) {
       const model = decodeVoxelTransport(v.model);

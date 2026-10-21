@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { countMaterials } from '@/core/analysis/materialCounts';
 import { getProfileForVersion } from '@/core/compat/profile';
-import { generateVariants, NotImplementedBuildingError, VARIANT_COUNT } from '@/core/generator/generateBuilding';
+import { BuildLimitError } from '@/core/generator/buildHouse';
+import { generateVariants, generationNotes, NotImplementedBuildingError, VARIANT_COUNT } from '@/core/generator/generateBuilding';
 import { buildSpecSchema } from '@/core/schema/buildSpec';
 import { jsonError, readJsonBody, RequestBodyError } from '@/lib/http/apiResponses';
 import { encodeVoxelTransport, type VoxelTransport } from '@/lib/serialization/voxelTransport';
@@ -71,11 +72,11 @@ export async function POST(request: Request): Promise<NextResponse> {
         totalBlocks: countMaterials(model).totalBlocks,
         model: encodeVoxelTransport(model),
       })),
-      warnings: [],
+      warnings: generationNotes(spec),
     };
     return NextResponse.json(response, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    if (error instanceof NotImplementedBuildingError) return jsonError(422, error.message);
+    if (error instanceof NotImplementedBuildingError || error instanceof BuildLimitError) return jsonError(422, error.message);
     console.error('generate failed', error);
     return jsonError(500, 'Generierung fehlgeschlagen', [(error as Error).message]);
   }

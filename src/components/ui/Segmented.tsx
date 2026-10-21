@@ -1,6 +1,6 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
 
 export interface SegmentOption<T extends string | number> {
   value: T;
@@ -18,6 +18,7 @@ export function Segmented<T extends string | number>({
   onChange,
   disabled = false,
   testId,
+  badge,
 }: {
   legend: string;
   name: string;
@@ -26,11 +27,15 @@ export function Segmented<T extends string | number>({
   onChange: (value: T) => void;
   disabled?: boolean;
   testId?: string;
+  badge?: ReactNode;
 }) {
   const id = useId();
   return (
     <fieldset className="min-w-0" disabled={disabled} data-testid={testId}>
-      <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-mist-400">{legend}</legend>
+      <legend className="mb-1.5 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-mist-400">
+        {legend}
+        {badge}
+      </legend>
       <div className="flex flex-wrap gap-1.5">
         {options.map((option) => {
           const optionId = `${id}-${String(option.value)}`;

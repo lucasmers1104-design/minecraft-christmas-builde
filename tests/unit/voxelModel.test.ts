@@ -46,7 +46,7 @@ describe('VoxelModel', () => {
     expect(collectVoxelIssues({ ...model, palette: [...model.palette, 'minecraft:bedrock'] }).join()).toMatch(/nicht freigegeben/);
     expect(collectVoxelIssues({ ...model, palette: [...model.palette, model.palette[1]!] }).join()).toMatch(/Doppelt/);
     expect(collectVoxelIssues({ ...model, dimensions: { width: 49, height: 1, length: 1 } }).join()).toMatch(/Limit/);
-    expect(() => createVoxelModel(DEFAULT_HOUSE_SPEC, { width: 1, height: 1, length: 1 }, ['minecraft:stone'], Uint16Array.from([0]))).toThrow(
+    expect(() => createVoxelModel(DEFAULT_HOUSE_SPEC, { width: 1, height: 1, length: 1 }, ['minecraft:bedrock'], Uint16Array.from([0]))).toThrow(
       VoxelModelError,
     );
   });

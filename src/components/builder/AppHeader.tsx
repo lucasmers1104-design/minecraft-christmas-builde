@@ -1,4 +1,4 @@
-import { DEFAULT_PROFILE } from '@/core/compat/profile';
+import type { CompatibilityProfile } from '@/core/compat/profile';
 
 export type BuilderStatus = 'bereit' | 'generiert' | 'exportiert' | 'fehler' | 'arbeitet';
 
@@ -10,7 +10,7 @@ const STATUS_STYLES: Record<BuilderStatus, string> = {
   fehler: 'border-holly-500/50 text-holly-300',
 };
 
-export function AppHeader({ status }: { status: BuilderStatus }) {
+export function AppHeader({ status, profile }: { status: BuilderStatus; profile: CompatibilityProfile }) {
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-white/6 bg-night-950/70 px-4 py-3 backdrop-blur lg:px-6">
       <div className="flex items-center gap-3">
@@ -38,8 +38,7 @@ export function AppHeader({ status }: { status: BuilderStatus }) {
           title="Aktives Kompatibilitätsprofil"
           data-testid="profile-badge"
         >
-          Java {DEFAULT_PROFILE.minecraftVersion} · DataVersion {DEFAULT_PROFILE.dataVersion} · Sponge v
-          {DEFAULT_PROFILE.schematicVersion}
+          Java {profile.minecraftVersion} · DataVersion {profile.dataVersion} · Sponge v{profile.schematicVersion}
         </span>
         <span className="rounded-full border border-fir-500/40 bg-fir-700/30 px-2.5 py-1 text-fir-300">
           Regelbasierter Generator

@@ -6,17 +6,14 @@ import { Priority } from '@/core/generator/geometry';
  * glass), so it can never overwrite structure, windows or the reserved door clearance.
  */
 export function decorateHouse(ctx: HouseContext): void {
-  placeInteriorLights(ctx);
-  if (ctx.spec.detailLevel >= 2) {
-    placeAtticWindows(ctx);
-    placeGarland(ctx, 'front');
-    placeChristmasTree(ctx);
-  }
-  if (ctx.spec.detailLevel >= 3) {
-    placeGarland(ctx, 'back');
-    placeFloorLights(ctx);
-  }
-  if (ctx.spec.style !== 'realistic') placeWreath(ctx);
+  const p = ctx.params;
+  if (p.lights) placeInteriorLights(ctx);
+  if (p.floorLights) placeFloorLights(ctx);
+  if (p.atticWindows) placeAtticWindows(ctx);
+  if (p.garland) placeGarland(ctx, 'front');
+  if (p.backGarland) placeGarland(ctx, 'back');
+  if (p.christmasTree) placeChristmasTree(ctx);
+  if (p.wreath) placeWreath(ctx);
 }
 
 /** Warm light hanging directly below the ridge, centred over the room. */
@@ -74,7 +71,7 @@ function placeWreath({ builder, layout, colors }: HouseContext): void {
  * no window there, so no window is blocked): trunk, three leaf tiers with seed-dependent
  * ornaments, a star/light on top, presents underneath.
  */
-function placeChristmasTree({ builder, layout, colors, random, spec }: HouseContext): void {
+function placeChristmasTree({ builder, layout, colors, random, params }: HouseContext): void {
   const tx = layout.xc;
   const tz = layout.z1 - 2;
 
@@ -116,7 +113,7 @@ function placeChristmasTree({ builder, layout, colors, random, spec }: HouseCont
   if (hasUpperTier) builder.setBlock(tx, 4, tz, colors.treeLeaves, Priority.DECOR);
   builder.setBlock(tx, hasUpperTier ? 5 : 4, tz, colors.treeTop, Priority.DECOR);
 
-  if (spec.detailLevel >= 3 && spec.style !== 'realistic') {
+  if (params.presents) {
     // Presents under the tree canopy (floor level, ring cells only – never the trunk).
     const count = random.int(2, 4);
     const slots = random.shuffle(ring).slice(0, count);

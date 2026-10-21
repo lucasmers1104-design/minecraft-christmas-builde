@@ -1,6 +1,6 @@
 import { gzipSync } from 'node:zlib';
 import * as nbt from 'prismarine-nbt';
-import { DEFAULT_PROFILE, type CompatibilityProfile } from '@/core/compat/profile';
+import { getProfileForVersion, type CompatibilityProfile } from '@/core/compat/profile';
 import { encodeVarIntArray } from '@/core/export/encodeVarInt';
 import { collectVoxelIssues, type VoxelModel } from '@/core/schema/voxelModel';
 
@@ -35,8 +35,10 @@ export function nbtString(value: string): Tag {
 const compound = (value: Record<string, Tag>): Tag => ({ type: 'compound', value }) as Tag;
 
 /** Builds the NBT tree exactly as laid out by the Sponge Schematic v3 specification. */
-export function buildSpongeV3Nbt(model: VoxelModel, profile: CompatibilityProfile = DEFAULT_PROFILE): nbt.NBT {
+export function buildSpongeV3Nbt(model: VoxelModel, requestedProfile?: CompatibilityProfile): nbt.NBT {
   const issues = collectVoxelIssues(model);
+  const profile = requestedProfile ?? getProfileForVersion(model.spec.targetMinecraftVersion);
+  if (!profile) throw new SchematicExportError([`Kein Exportprofil für Minecraft ${model.spec.targetMinecraftVersion}`]);
   if (model.spec.targetMinecraftVersion !== profile.minecraftVersion) {
     issues.push(
       `Modell zielt auf Minecraft ${model.spec.targetMinecraftVersion}, Exportprofil ist ${profile.minecraftVersion}`,
@@ -79,7 +81,7 @@ export function buildSpongeV3Nbt(model: VoxelModel, profile: CompatibilityProfil
 }
 
 /** Serialises big-endian NBT and gzips it. Throws SchematicExportError for invalid models. */
-export function writeSpongeV3(model: VoxelModel, profile: CompatibilityProfile = DEFAULT_PROFILE): Buffer {
+export function writeSpongeV3(model: VoxelModel, profile?: CompatibilityProfile): Buffer {
   const root = buildSpongeV3Nbt(model, profile);
   const raw = nbt.writeUncompressed(root, 'big');
   return gzipSync(raw, { level: 9 });

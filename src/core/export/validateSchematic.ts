@@ -1,6 +1,6 @@
 import { gunzipSync } from 'node:zlib';
 import { checkBlockState } from '@/core/blocks/registry';
-import { DEFAULT_PROFILE, type CompatibilityProfile } from '@/core/compat/profile';
+import { getProfileForVersion, PROFILES, type CompatibilityProfile } from '@/core/compat/profile';
 import { decodeVarIntArray, VarIntDecodeError } from '@/core/export/encodeVarInt';
 import { NbtReadError, readNbt, TAG, type NbtTag } from '@/core/export/nbtReader';
 import {
@@ -14,6 +14,8 @@ import {
 export interface DecodedSchematic {
   version: number;
   dataVersion: number;
+  /** Profile matching the file's DataVersion. */
+  minecraftVersion: string;
   dimensions: Dimensions;
   offset: [number, number, number];
   /** Palette ordered by palette id. */
@@ -64,7 +66,9 @@ export function validateSchematic(
   file: Uint8Array,
   options: { expected?: VoxelModel; profile?: CompatibilityProfile } = {},
 ): SchematicValidationReport {
-  const profile = options.profile ?? DEFAULT_PROFILE;
+  // Expected profile: explicit, else the expected model's target, else any supported profile.
+  const expectedProfile =
+    options.profile ?? (options.expected ? getProfileForVersion(options.expected.spec.targetMinecraftVersion) : undefined);
   const issues: string[] = [];
   const report: SchematicValidationReport = { ok: false, issues, compressedBytes: file.length, uncompressedBytes: 0 };
 
@@ -91,12 +95,16 @@ export function validateSchematic(
   if (root.tag.value.size !== 1) issues.push(`Root enthält ${root.tag.value.size} Einträge, erwartet nur "Schematic"`);
 
   const version = expectType(child(schematic, 'Version'), TAG.Int, 'Schematic.Version', issues);
-  if (version && version.value !== profile.schematicVersion) {
-    issues.push(`Schematic.Version ist ${version.value}, erwartet ${profile.schematicVersion}`);
-  }
+  if (version && version.value !== 3) issues.push(`Schematic.Version ist ${version.value}, erwartet 3`);
   const dataVersion = expectType(child(schematic, 'DataVersion'), TAG.Int, 'Schematic.DataVersion', issues);
-  if (dataVersion && dataVersion.value !== profile.dataVersion) {
-    issues.push(`DataVersion ist ${dataVersion.value}, erwartet ${profile.dataVersion} (Minecraft ${profile.minecraftVersion})`);
+  let profile: CompatibilityProfile | undefined;
+  if (dataVersion) {
+    profile = expectedProfile ?? PROFILES.find((p) => p.dataVersion === dataVersion.value);
+    if (!profile) {
+      issues.push(`DataVersion ${dataVersion.value} gehört zu keinem unterstützten Profil (${PROFILES.map((p) => `${p.minecraftVersion}=${p.dataVersion}`).join(', ')})`);
+    } else if (dataVersion.value !== profile.dataVersion) {
+      issues.push(`DataVersion ist ${dataVersion.value}, erwartet ${profile.dataVersion} (Minecraft ${profile.minecraftVersion})`);
+    }
   }
   if (schematic.value.has('BlockData') || schematic.value.has('Palette')) {
     issues.push('Sponge-v2-Felder (BlockData/Palette direkt im Schematic) gefunden – v3 erwartet sie unter Blocks');
@@ -105,7 +113,7 @@ export function validateSchematic(
   const w = expectType(child(schematic, 'Width'), TAG.Short, 'Schematic.Width', issues);
   const h = expectType(child(schematic, 'Height'), TAG.Short, 'Schematic.Height', issues);
   const l = expectType(child(schematic, 'Length'), TAG.Short, 'Schematic.Length', issues);
-  if (!w || !h || !l || !version || !dataVersion) return report;
+  if (!w || !h || !l || !version || !dataVersion || !profile) return report;
   const dimensions: Dimensions = { width: w.value & 0xffff, height: h.value & 0xffff, length: l.value & 0xffff };
   issues.push(...checkDimensions(dimensions));
 
@@ -182,6 +190,7 @@ export function validateSchematic(
   const decoded: DecodedSchematic = {
     version: version.value,
     dataVersion: dataVersion.value,
+    minecraftVersion: profile.minecraftVersion,
     dimensions,
     offset,
     palette: orderedPalette,

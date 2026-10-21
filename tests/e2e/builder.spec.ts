@@ -27,7 +27,7 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
     expect(bytes.length).toBeGreaterThan(100);
     expect(report.issues).toEqual([]);
     expect(report.decoded?.hash).toBe(hash);
-    expect(report.decoded?.dataVersion).toBe(3955);
+    expect(report.decoded?.dataVersion).toBe(4671);
     const nonAir = report.decoded!.indices.reduce((n, i) => n + (report.decoded!.palette[i] === 'minecraft:air' ? 0 : 1), 0);
     expect(nonAir).toBe(total);
     await expect(page.getByTestId('status')).toHaveAttribute('data-status', 'exportiert');
@@ -98,5 +98,53 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
     await page.getByTestId('reset-view').focus();
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('status')).toHaveAttribute('data-status', 'generiert');
+  });
+});
+
+test.describe('Phase 2: Freitext und Feinparameter', () => {
+  test('Text wird erkannt, Warnungen erscheinen, das Modell folgt dem Text', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('prompt-input').fill('Ein kleines Haus aus Eiche ohne Schnee, mit Pool');
+    const recognized = page.getByTestId('recognized-list');
+    await expect(recognized).toContainText('Größe: klein');
+    await expect(recognized).toContainText('Material: Eiche');
+    await expect(recognized).toContainText('kein Schnee');
+    await expect(page.getByTestId('parse-warnings')).toContainText('Pool');
+    await expect(page.getByTestId('control-size')).toContainText('aus Text');
+
+    await page.getByTestId('generate-button').click();
+    await waitForRenderedModel(page);
+    await expect(page.getByTestId('preview-dimensions')).toContainText('11 × 11 × 9');
+    const table = page.getByTestId('material-table');
+    await expect(table).toContainText('minecraft:oak_planks');
+    await expect(table).not.toContainText('minecraft:snow_block');
+  });
+
+  test('manuelle Einstellung hat Vorrang vor dem Text und lässt sich zurücksetzen', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('prompt-input').fill('kleines Haus');
+    await page.getByTestId('control-size').getByText('Groß').click();
+    await expect(page.getByTestId('control-size')).toContainText('manuell');
+    await expect(page.getByTestId('parse-conflicts')).toContainText('hat Vorrang');
+    await page.getByTestId('generate-button').click();
+    await waitForRenderedModel(page);
+    await expect(page.getByTestId('preview-dimensions')).toContainText('19 ×');
+    await page.getByTestId('reset-manual').click();
+    await expect(page.getByTestId('control-size')).toContainText('aus Text');
+    await expect(page.getByTestId('stale-hint')).toBeVisible();
+  });
+
+  test('Feinparameter: Breite und Dachmaterial wirken auf das Modell', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('toggle-fine').click();
+    await page.getByTestId('fine-options-width').selectOption('21');
+    await page.getByTestId('fine-options-materials-roof').selectOption('red_terracotta');
+    await page.getByTestId('generate-button').click();
+    await waitForRenderedModel(page);
+    await expect(page.getByTestId('preview-dimensions')).toContainText('23 ×');
+    await expect(page.getByTestId('material-table')).toContainText('minecraft:red_terracotta');
+    const { report } = await downloadSchematic(page);
+    expect(report.ok).toBe(true);
+    expect(report.decoded?.palette).toContain('minecraft:red_terracotta');
   });
 });

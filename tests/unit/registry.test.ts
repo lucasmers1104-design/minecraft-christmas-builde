@@ -2,35 +2,44 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { blockState, checkBlockState, formatBlockState, listBlockDefinitions, parseBlockState } from '@/core/blocks/registry';
 import { colorPalette, materialPalette } from '@/core/blocks/palettes';
-import { DEFAULT_PROFILE } from '@/core/compat/profile';
+import { DEFAULT_PROFILE, PROFILES } from '@/core/compat/profile';
 import { COLOR_THEMES, MATERIAL_THEMES } from '@/core/schema/buildSpec';
 
 const require = createRequire(import.meta.url);
-// minecraft-data (PrismarineJS) is used as independent reference for Java 1.21.1 block states.
-const mcData = require('minecraft-data')(DEFAULT_PROFILE.minecraftVersion) as {
+type McData = {
   version: { minecraftVersion: string; dataVersion: number };
   blocksByName: Record<string, { states: { name: string; type: string; values?: string[] }[] } | undefined>;
 };
+// minecraft-data (PrismarineJS) is the independent reference for Java block states per version.
+const mcData = (version: string) => require('minecraft-data')(version) as McData;
 const protocolVersions = require('minecraft-data/minecraft-data/data/pc/common/protocolVersions.json') as {
   minecraftVersion: string;
   dataVersion?: number;
 }[];
 
-describe('Kompatibilitätsprofil', () => {
-  it('DataVersion 3955 entspricht Minecraft Java 1.21.1 laut minecraft-data', () => {
-    expect(mcData.version.minecraftVersion).toBe('1.21.1');
-    expect(mcData.version.dataVersion).toBe(DEFAULT_PROFILE.dataVersion);
-    const entry = protocolVersions.find((v) => v.minecraftVersion === '1.21.1');
-    expect(entry?.dataVersion).toBe(3955);
+describe('Kompatibilitätsprofile', () => {
+  it('Standard ist Minecraft 1.21.11 (Server des Nutzers)', () => {
+    expect(DEFAULT_PROFILE.minecraftVersion).toBe('1.21.11');
+    expect(PROFILES.map((p) => p.minecraftVersion)).toEqual(['1.21.11', '1.21.1']);
   });
+
+  it.each(PROFILES.map((p) => [p.minecraftVersion, p.dataVersion] as const))(
+    'DataVersion von %s ist %i laut minecraft-data',
+    (version, dataVersion) => {
+      expect(mcData(version).version.minecraftVersion).toBe(version);
+      expect(mcData(version).version.dataVersion).toBe(dataVersion);
+      expect(protocolVersions.find((v) => v.minecraftVersion === version)?.dataVersion).toBe(dataVersion);
+    },
+  );
 });
 
-describe('Blockstate-Registry gegen minecraft-data 1.21.1', () => {
+describe.each(PROFILES.map((p) => p.minecraftVersion))('Blockstate-Registry gegen minecraft-data %s', (version) => {
   it('jeder Registry-Block existiert mit exakt denselben Eigenschaften und Werten', () => {
+    const data = mcData(version);
     for (const def of listBlockDefinitions()) {
       const name = def.id.replace(/^minecraft:/, '');
-      const ref = mcData.blocksByName[name];
-      expect(ref, `${def.id} fehlt in minecraft-data 1.21.1`).toBeDefined();
+      const ref = data.blocksByName[name];
+      expect(ref, `${def.id} fehlt in minecraft-data ${version}`).toBeDefined();
       const refProps = Object.fromEntries(
         ref!.states.map((s) => [s.name, s.type === 'bool' ? ['true', 'false'] : (s.values ?? [])]),
       );
@@ -40,7 +49,9 @@ describe('Blockstate-Registry gegen minecraft-data 1.21.1', () => {
       }
     }
   });
+});
 
+describe('Registry allgemein', () => {
   it('enthält genug Zustände für Paletten mit mehr als 127 Einträgen', () => {
     const states = listBlockDefinitions().reduce(
       (n, d) => n + Object.values(d.properties).reduce((m, v) => m * v.length, 1),

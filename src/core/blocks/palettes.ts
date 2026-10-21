@@ -1,4 +1,5 @@
 import { blockState } from '@/core/blocks/registry';
+import type { BuildOptions, WoodType } from '@/core/schema/buildOptions';
 import type { BuildStyle, ColorTheme, MaterialTheme } from '@/core/schema/buildSpec';
 
 /** Structural materials, chosen by the material theme. All states are validated by blockState(). */
@@ -70,9 +71,9 @@ export function materialPalette(theme: MaterialTheme): MaterialPalette {
         floor: blockState('spruce_planks'),
         wall: blockState('stone_bricks'),
         post: blockState('dark_oak_log', { axis: 'y' }),
-        beamX: blockState('stripped_spruce_log', { axis: 'x' }),
-        beamZ: blockState('stripped_spruce_log', { axis: 'z' }),
-        frame: blockState('stripped_spruce_log', { axis: 'y' }),
+        beamX: blockState('stripped_dark_oak_log', { axis: 'x' }),
+        beamZ: blockState('stripped_dark_oak_log', { axis: 'z' }),
+        frame: blockState('stripped_dark_oak_log', { axis: 'y' }),
         roof: blockState('deepslate_tiles'),
         chimney: blockState('cobblestone'),
         chimneyCap: blockState('smooth_stone'),
@@ -139,4 +140,40 @@ export function colorPalette(theme: ColorTheme): ColorPalette {
 
 export function roofMaterial(style: BuildStyle, materials: MaterialPalette, colors: ColorPalette): string {
   return style === 'fairytale' ? colors.fairytaleRoof : materials.roof;
+}
+
+export const DEFAULT_FRAME_WOOD: Record<MaterialTheme, WoodType> = { spruce: 'spruce', oak: 'oak', stone: 'dark_oak' };
+
+/** Posts, beams and door frame for one wood type. */
+export function framePalette(wood: WoodType): Pick<MaterialPalette, 'post' | 'beamX' | 'beamZ' | 'frame'> {
+  return {
+    post: blockState(`${wood}_log`, { axis: 'y' }),
+    beamX: blockState(`stripped_${wood}_log`, { axis: 'x' }),
+    beamZ: blockState(`stripped_${wood}_log`, { axis: 'z' }),
+    frame: blockState(`stripped_${wood}_log`, { axis: 'y' }),
+  };
+}
+
+/** Theme palettes with the per-part overrides from the options applied. */
+export function resolvePalettes(
+  theme: MaterialTheme,
+  colorTheme: ColorTheme,
+  style: BuildStyle,
+  options: BuildOptions,
+): { materials: MaterialPalette; colors: ColorPalette; roof: string } {
+  const m = options.materials ?? {};
+  const base = materialPalette(theme);
+  const materials: MaterialPalette = {
+    ...base,
+    ...framePalette(options.frameWood ?? DEFAULT_FRAME_WOOD[theme]),
+    ...(m.wall ? { wall: blockState(m.wall) } : {}),
+    ...(m.floor ? { floor: blockState(m.floor) } : {}),
+    ...(m.foundation ? { foundation: blockState(m.foundation), path: blockState(m.foundation) } : {}),
+  };
+  const baseColors = colorPalette(colorTheme);
+  const colors: ColorPalette = m.accent
+    ? { ...baseColors, primaryAccent: blockState(m.accent), garlandBow: blockState(m.accent) }
+    : baseColors;
+  const roof = m.roof ? blockState(m.roof) : roofMaterial(style, materials, colors);
+  return { materials, colors, roof };
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { countMaterials } from '@/core/analysis/materialCounts';
 import { checkBlockState } from '@/core/blocks/registry';
-import { buildHouse } from '@/core/generator/buildHouse';
+import { BuildLimitError, buildHouse } from '@/core/generator/buildHouse';
 import { generateBuilding, generateVariants, NotImplementedBuildingError } from '@/core/generator/generateBuilding';
 import {
   BUILD_SIZES,
@@ -177,5 +177,72 @@ describe('Strukturprüfung erkennt kaputte Häuser (Gegenprobe)', () => {
     expect(houseStructureProblems(withBlock(layout.xc, layout.wallTop - 1, layout.zc, planks), layout).join()).toMatch(/schwebende/);
     const pane = layout.windows.find((w) => w.wall === 'front')!.cells[0]!;
     expect(houseStructureProblems(withBlock(pane.x, pane.y, pane.z + 1, planks), layout).join()).toMatch(/innen verdeckt/);
+  });
+});
+
+describe('Feinparameter (options)', () => {
+  const base = generateBuilding(spec());
+  const withOptions = (options: BuildSpec['options']) => spec({ options });
+
+  it.each([
+    ['Breite 21', { width: 21 }],
+    ['Tiefe 15', { depth: 15 }],
+    ['Wandhöhe 6', { wallHeight: 6 }],
+    ['steiles Dach', { roofShape: 'steep' as const }],
+    ['wenige Fenster', { windows: 'few' as const }],
+    ['viele Fenster', { windows: 'many' as const }],
+    ['ohne Schnee', { snow: false }],
+    ['ohne Schornstein', { chimney: false }],
+    ['ohne Licht', { lights: false }],
+    ['ohne Girlande', { garland: false }],
+    ['ohne Baum', { christmasTree: false }],
+    ['ohne Geschenke', { presents: false }],
+    ['Birkenrahmen', { frameWood: 'birch' as const }],
+    ['Ziegelwände', { materials: { wall: 'bricks' as const } }],
+    ['rotes Dach', { materials: { roof: 'red_terracotta' as const } }],
+    ['Steinboden', { materials: { floor: 'smooth_stone' as const } }],
+    ['Fundament', { materials: { foundation: 'stone_bricks' as const } }],
+    ['blaue Akzente', { materials: { accent: 'blue_wool' as const } }],
+  ] as [string, BuildSpec['options']][])('%s verändert das Modell und bleibt strukturell gültig', (_name, options) => {
+    const s = withOptions(options);
+    const { builder, layout } = buildHouse(s);
+    const model = builder.toModel(s);
+    expect(model.hash).not.toBe(base.hash);
+    expect(houseStructureProblems(model, layout, { chimney: options.chimney !== false })).toEqual([]);
+  });
+
+  it('Maße aus den Optionen landen exakt im Modell', () => {
+    const { layout } = buildHouse(withOptions({ width: 21, depth: 9, wallHeight: 6 }));
+    expect(layout.x1 - layout.x0 + 1).toBe(21);
+    expect(layout.z1 - layout.z0 + 1).toBe(9);
+    expect(layout.wallTop).toBe(6);
+  });
+
+  it('Material-Wünsche erscheinen als echte Blöcke', () => {
+    const m = generateBuilding(withOptions({ materials: { wall: 'bricks', roof: 'red_terracotta' }, snow: false }));
+    expect(m.palette).toContain('minecraft:bricks');
+    expect(m.palette).toContain('minecraft:red_terracotta');
+    expect(m.palette).not.toContain('minecraft:snow_block');
+  });
+
+  it('zu große Kombinationen werden verständlich abgelehnt', () => {
+    expect(() => generateBuilding(withOptions({ depth: 25, wallHeight: 8, roofShape: 'steep' }))).toThrow(BuildLimitError);
+    expect(() => generateBuilding(withOptions({ depth: 25, wallHeight: 8, roofShape: 'steep' }))).toThrow(/passt nicht/);
+  });
+
+  it('alle Maß-Extreme innerhalb der Grenzen sind gültig (Satteldach)', () => {
+    for (const width of [7, 33])
+      for (const depth of [5, 25])
+        for (const wallHeight of [3, 8]) {
+          const s = withOptions({ width, depth, wallHeight });
+          const { builder, layout } = buildHouse(s);
+          expect(houseStructureProblems(builder.toModel(s), layout), `${width}x${depth}x${wallHeight}`).toEqual([]);
+        }
+  });
+
+  it('ungerade Maße werden im Schema erzwungen', () => {
+    expect(buildSpecSchema.safeParse(withOptions({ width: 14 })).success).toBe(false);
+    expect(buildSpecSchema.safeParse(withOptions({ depth: 4 })).success).toBe(false);
+    expect(buildSpecSchema.safeParse(withOptions({ materials: { wall: 'bedrock' as never } })).success).toBe(false);
   });
 });

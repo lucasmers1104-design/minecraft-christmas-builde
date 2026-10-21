@@ -45,7 +45,7 @@ describe('Sponge-v3-Export des Weihnachtshauses', () => {
     expect(schem.type).toBe('compound');
     const v = schem.value;
     expect(v.Version).toEqual({ type: 'int', value: 3 });
-    expect(v.DataVersion).toEqual({ type: 'int', value: 3955 });
+    expect(v.DataVersion).toEqual({ type: 'int', value: 4671 });
     expect(v.Width).toEqual({ type: 'short', value: house.dimensions.width });
     expect(v.Height).toEqual({ type: 'short', value: house.dimensions.height });
     expect(v.Length).toEqual({ type: 'short', value: house.dimensions.length });
@@ -88,6 +88,20 @@ describe('Sponge-v3-Export des Weihnachtshauses', () => {
     }
   });
 
+  it('schreibt die DataVersion des gewählten Profils (1.21.11 = 4671, 1.21.1 = 3955)', () => {
+    const old = generateBuilding({ ...DEFAULT_HOUSE_SPEC, targetMinecraftVersion: '1.21.1' });
+    const report = validateSchematic(writeSpongeV3(old), { expected: old });
+    expect(report.ok).toBe(true);
+    expect(report.decoded?.dataVersion).toBe(3955);
+    expect(report.decoded?.minecraftVersion).toBe('1.21.1');
+    expect(validateSchematic(writeSpongeV3(house)).decoded?.dataVersion).toBe(4671);
+    // Same blocks, different target => different file, same block hash.
+    expect(old.hash).toBe(house.hash);
+    expect(writeSpongeV3(old).equals(writeSpongeV3(house))).toBe(false);
+    // A 1.21.1 file is rejected when 1.21.11 is expected.
+    expect(validateSchematic(writeSpongeV3(old), { expected: house }).issues.join()).toMatch(/DataVersion/);
+  });
+
   it('ist deterministisch (gleiches Modell => identische Datei)', () => {
     expect(writeSpongeV3(house).equals(writeSpongeV3(house))).toBe(true);
   });
@@ -124,7 +138,7 @@ describe('Negative Fälle', () => {
       ['ungültige Eigenschaft', { ...house, palette: house.palette.map((p) => p.replace('axis=y', 'axis=up')) }, /Ungültiger Wert/],
       ['zu groß', { ...house, dimensions: { width: 64, height: 14, length: 13 } }, /Limit/],
       ['inkonsistente Palette', { ...house, palette: house.palette.slice(0, 3) }, /außerhalb der Palette/],
-      ['falsche Zielversion', { ...house, spec: { ...house.spec, targetMinecraftVersion: '1.20.4' } }, /Exportprofil/],
+      ['unbekannte Zielversion', { ...house, spec: { ...house.spec, targetMinecraftVersion: '1.20.4' } }, /Exportprofil/],
     ];
     for (const [name, model, reason] of cases) {
       let error: unknown;

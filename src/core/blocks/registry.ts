@@ -1,9 +1,9 @@
 /**
- * Curated block-state registry for the MVP (Minecraft Java 1.21.1, vanilla only).
+ * Curated block-state registry (Minecraft Java 1.21.11 and 1.21.1, vanilla only).
  *
  * Only blocks listed here may appear in a VoxelModel palette. Property names and the
  * allowed values are checked in tests/unit/registry.test.ts against minecraft-data's
- * pc/1.21.1 block list, so nothing in here is guessed. All blocks render as full cubes
+ * block lists for every supported profile, so nothing in here is guessed. All blocks render as full cubes
  * (or nothing, for air); non-cube shapes such as stairs, slabs, panes or snow layers are
  * deliberately not in the registry until renderer and exporter both support them.
  */
@@ -28,6 +28,8 @@ export interface BlockDefinition {
 
 const AXIS = ['x', 'y', 'z'] as const;
 const BOOL = ['true', 'false'] as const;
+const FACING_HORIZONTAL = ['north', 'south', 'west', 'east'] as const;
+const FACING_ALL = ['north', 'east', 'south', 'west', 'up', 'down'] as const;
 const LEAF_DISTANCE = ['1', '2', '3', '4', '5', '6', '7'] as const;
 
 function simple(id: string, label: string, render: BlockRender): BlockDefinition {
@@ -42,6 +44,15 @@ function log(id: string, label: string, color: string): BlockDefinition {
     defaults: { axis: 'y' },
     render: { kind: 'opaque', color },
   };
+}
+
+function axisBlock(id: string, label: string, render: BlockRender): BlockDefinition {
+  return { id: `minecraft:${id}`, label, properties: { axis: AXIS }, defaults: { axis: 'y' }, render };
+}
+
+/** Full cube whose texture depends on a horizontal facing (geometry is still a cube). */
+function facing(id: string, label: string, render: BlockRender): BlockDefinition {
+  return { id: `minecraft:${id}`, label, properties: { facing: FACING_HORIZONTAL }, defaults: { facing: 'north' }, render };
 }
 
 function leaves(id: string, label: string, color: string): BlockDefinition {
@@ -99,6 +110,13 @@ const DEFINITIONS: readonly BlockDefinition[] = [
   log('stripped_oak_log', 'Entrindeter Eichenstamm', '#b29157'),
   simple('dark_oak_planks', 'Schwarzeichenholzbretter', opaque('#432b14')),
   log('dark_oak_log', 'Schwarzeichenstamm', '#3c2e1a'),
+  log('stripped_dark_oak_log', 'Entrindeter Schwarzeichenstamm', '#493924'),
+  simple('birch_planks', 'Birkenholzbretter', opaque('#c0af79')),
+  log('birch_log', 'Birkenstamm', '#d8d7d2'),
+  log('stripped_birch_log', 'Entrindeter Birkenstamm', '#c5b077'),
+  log('spruce_wood', 'Fichtenholz', '#3a2a1a'),
+  log('oak_wood', 'Eichenholz', '#6d5532'),
+  log('dark_oak_wood', 'Schwarzeichenholz', '#3c2e1a'),
 
   // Stone
   simple('cobblestone', 'Bruchstein', opaque('#7a7a7a')),
@@ -107,6 +125,24 @@ const DEFINITIONS: readonly BlockDefinition[] = [
   simple('polished_andesite', 'Polierter Andesit', opaque('#848685')),
   simple('deepslate_tiles', 'Tiefenschieferfliesen', opaque('#373737')),
   simple('bricks', 'Ziegelsteine', opaque('#966153')),
+  simple('stone', 'Stein', opaque('#7e7e7e')),
+  simple('mossy_cobblestone', 'Bemooster Bruchstein', opaque('#6e775f')),
+  simple('chiseled_stone_bricks', 'Gemeißelte Steinziegel', opaque('#777777')),
+  simple('cracked_stone_bricks', 'Rissige Steinziegel', opaque('#767676')),
+  simple('polished_deepslate', 'Polierter Tiefenschiefer', opaque('#484849')),
+  simple('tuff_bricks', 'Tuffziegel', opaque('#636660')),
+  simple('mud_bricks', 'Lehmziegel', opaque('#89684f')),
+  simple('quartz_block', 'Quarzblock', opaque('#ece6df')),
+  simple('smooth_quartz', 'Glatter Quarz', opaque('#ece6df')),
+  simple('calcite', 'Calcit', opaque('#dfe0dc')),
+  simple('sandstone', 'Sandstein', opaque('#d8cb9b')),
+  simple('smooth_sandstone', 'Glatter Sandstein', opaque('#e0d6a9')),
+  simple('red_sandstone', 'Roter Sandstein', opaque('#b5621f')),
+  simple('iron_block', 'Eisenblock', opaque('#dcdcdc')),
+  simple('waxed_copper_block', 'Gewachster Kupferblock', opaque('#c06c50')),
+  simple('dirt', 'Erde', opaque('#866043')),
+  simple('coarse_dirt', 'Grobe Erde', opaque('#77553b')),
+  simple('moss_block', 'Moosblock', opaque('#596e2d')),
   simple('terracotta', 'Keramik', opaque('#985e43')),
 
   // Glass
@@ -123,6 +159,8 @@ const DEFINITIONS: readonly BlockDefinition[] = [
   // Winter
   simple('snow_block', 'Schneeblock', opaque('#f3fbfb')),
   simple('packed_ice', 'Packeis', opaque('#8db4f2')),
+  simple('blue_ice', 'Blaueis', opaque('#74a8fd')),
+  simple('ice', 'Eis', glass('#91b7fd', 0.6)),
   leaves('spruce_leaves', 'Fichtenlaub', '#3a5e3a'),
   leaves('oak_leaves', 'Eichenlaub', '#4f7a2a'),
 
@@ -130,6 +168,26 @@ const DEFINITIONS: readonly BlockDefinition[] = [
   simple('glowstone', 'Leuchtstein', light('#f9d49c')),
   simple('sea_lantern', 'Seelaterne', light('#c9e0d8')),
   simple('gold_block', 'Goldblock', opaque('#f6d03e')),
+  simple('shroomlight', 'Pilzlicht', light('#f19a49')),
+  axisBlock('ochre_froglight', 'Ockerfarbenes Froschlicht', light('#f6e8a8')),
+  axisBlock('pearlescent_froglight', 'Perlmuttfarbenes Froschlicht', light('#f2e6ec')),
+  axisBlock('verdant_froglight', 'Grünliches Froschlicht', light('#e5f4e1')),
+  facing('jack_o_lantern', 'Kürbislaterne', light('#e3901d')),
+
+  // Furnishing & goods (full cubes; facing only changes the texture)
+  simple('bookshelf', 'Bücherregal', opaque('#75603a')),
+  simple('crafting_table', 'Werkbank', opaque('#7a5a36')),
+  axisBlock('hay_block', 'Heuballen', opaque('#a68c18')),
+  {
+    id: 'minecraft:barrel',
+    label: 'Fass',
+    properties: { facing: FACING_ALL, open: BOOL },
+    defaults: { facing: 'up', open: 'false' },
+    render: opaque('#86643a'),
+  },
+  simple('pumpkin', 'Kürbis', opaque('#c6761c')),
+  facing('carved_pumpkin', 'Geschnitzter Kürbis', opaque('#c27318')),
+  simple('melon', 'Melone', opaque('#6f912a')),
 ];
 
 const BY_ID = new Map<string, BlockDefinition>(DEFINITIONS.map((d) => [d.id, d]));

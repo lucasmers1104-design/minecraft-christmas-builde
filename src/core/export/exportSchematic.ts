@@ -1,4 +1,4 @@
-import { DEFAULT_PROFILE, type CompatibilityProfile } from '@/core/compat/profile';
+import { requireProfile, type CompatibilityProfile } from '@/core/compat/profile';
 import { validateSchematic, type SchematicValidationReport } from '@/core/export/validateSchematic';
 import { SchematicExportError, writeSpongeV3 } from '@/core/export/writeSpongeV3';
 import type { VoxelModel } from '@/core/schema/voxelModel';
@@ -9,7 +9,7 @@ import type { VoxelModel } from '@/core/schema/voxelModel';
  */
 export function exportSchematic(
   model: VoxelModel,
-  profile: CompatibilityProfile = DEFAULT_PROFILE,
+  profile: CompatibilityProfile = requireProfile(model.spec.targetMinecraftVersion),
 ): { file: Buffer; report: SchematicValidationReport } {
   const file = writeSpongeV3(model, profile);
   const report = validateSchematic(file, { expected: model, profile });

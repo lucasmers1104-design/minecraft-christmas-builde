@@ -1,5 +1,6 @@
 'use client';
 
+import type { ParsedDescription } from '@/core/generator/parseDescription';
 import { MAX_DESCRIPTION_LENGTH } from '@/core/schema/buildSpec';
 import { Button } from '@/components/ui/Button';
 import { Panel } from '@/components/ui/Panel';
@@ -16,7 +17,8 @@ export function PromptPanel({
   onGenerate,
   busy,
   ready,
-  textInterpretationAvailable,
+  parsed,
+  conflicts,
 }: {
   description: string;
   onDescriptionChange: (value: string) => void;
@@ -24,7 +26,8 @@ export function PromptPanel({
   busy: boolean;
   /** False until the page is hydrated – the button would not work before that. */
   ready: boolean;
-  textInterpretationAvailable: boolean;
+  parsed: ParsedDescription;
+  conflicts: string[];
 }) {
   return (
     <Panel
@@ -46,14 +49,44 @@ export function PromptPanel({
         placeholder="z. B. Baue ein gemütliches Weihnachtshaus aus Fichtenholz …"
       />
       <div className="mt-1 flex justify-between text-[11px] text-mist-400">
-        <span>
-          {textInterpretationAvailable
-            ? 'Erkannte Wünsche werden in die Einstellungen übernommen.'
-            : 'Hinweis: Der Freitext wird in dieser Version noch nicht ausgewertet – es gelten die Einstellungen unten.'}
-        </span>
+        <span>Erkannte Wünsche werden in die Einstellungen übernommen.</span>
         <span aria-hidden="true">
           {description.length}/{MAX_DESCRIPTION_LENGTH}
         </span>
+      </div>
+
+      <div aria-live="polite" className="mt-2 flex flex-col gap-2" data-testid="parse-result">
+        {parsed.recognized.length > 0 ? (
+          <ul className="flex flex-wrap gap-1.5" aria-label="Erkannte Wünsche" data-testid="recognized-list">
+            {parsed.recognized.map((r, i) => (
+              <li
+                key={`${r.phrase}-${i}`}
+                className="rounded-full border border-ice-300/30 bg-ice-300/8 px-2 py-0.5 text-[11px] text-ice-200"
+                title={`„${r.phrase}“`}
+              >
+                {r.effect}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {parsed.warnings.length > 0 ? (
+          <ul className="flex flex-col gap-1 text-[11px] text-gold-300" aria-label="Nicht umgesetzte Wünsche" data-testid="parse-warnings">
+            {parsed.warnings.map((w) => (
+              <li key={w} className="rounded-md border border-gold-400/25 bg-gold-400/8 px-2 py-1">
+                ⚠ {w}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {conflicts.length > 0 ? (
+          <ul className="flex flex-col gap-1 text-[11px] text-mist-300" aria-label="Vorrang der Einstellungen" data-testid="parse-conflicts">
+            {conflicts.map((c) => (
+              <li key={c} className="rounded-md border border-white/10 bg-white/4 px-2 py-1">
+                {c}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
 
       <div className="mt-3">

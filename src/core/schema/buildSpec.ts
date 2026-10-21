@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DEFAULT_PROFILE, SUPPORTED_MINECRAFT_VERSIONS } from '@/core/compat/profile';
+import { buildOptionsSchema } from '@/core/schema/buildOptions';
 
 export const BUILDING_TYPES = ['house', 'tree', 'market_stall', 'station'] as const;
 export const BUILD_STYLES = ['realistic', 'fairytale', 'christmas'] as const;
@@ -28,6 +29,8 @@ export const buildSpecSchema = z
     targetMinecraftVersion: z.string().refine((v) => SUPPORTED_MINECRAFT_VERSIONS.includes(v), {
       message: `Nicht unterstützte Minecraft-Version. Unterstützt: ${SUPPORTED_MINECRAFT_VERSIONS.join(', ')}`,
     }),
+    /** Fine parameters; empty object = everything derived automatically. */
+    options: buildOptionsSchema,
   })
   .strict();
 
@@ -54,6 +57,7 @@ export const DEFAULT_HOUSE_SPEC: BuildSpec = {
   detailLevel: 3,
   seed: 1,
   targetMinecraftVersion: DEFAULT_PROFILE.minecraftVersion,
+  options: {},
 };
 
 export function isImplementedBuildingType(kind: BuildingType): boolean {
