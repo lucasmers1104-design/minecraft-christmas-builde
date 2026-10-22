@@ -110,7 +110,7 @@ export function BuilderApp() {
   const resolved = useMemo(() => {
     const base = { ...DEFAULT_HOUSE_SPEC, description, seed, targetMinecraftVersion: version };
     if (aiActive && aiPlan) {
-      const fromAi: ParsedDescription = { patch: aiPlan.patch, recognized: [], warnings: aiPlan.unsupported };
+      const fromAi: ParsedDescription = { patch: aiPlan.patch, recognized: [], warnings: [], unsupported: aiPlan.unsupported, explanation: aiPlan.explanation };
       return resolveSpec(base, fromAi, manual, 'ki');
     }
     return resolveSpec(base, parsed, manual);
@@ -118,7 +118,7 @@ export function BuilderApp() {
   const spec = resolved.spec;
   const model = variants[selected] ?? null;
   const stale = specChanged(spec, variants[0]?.spec);
-  const title = useMemo(() => (model ? buildingTitle(model.spec.kind, model.spec.style) : ''), [model]);
+  const title = useMemo(() => (model ? buildingTitle(model.spec.kind, model.spec.style, model.spec.theme) : ''), [model]);
 
   const content: ProjectContent = useMemo(
     () => ({
@@ -357,7 +357,7 @@ export function BuilderApp() {
           planner = plan.model;
           target = resolveSpec(
             { ...DEFAULT_HOUSE_SPEC, description, seed, targetMinecraftVersion: version },
-            { patch: plan.patch, recognized: [], warnings: plan.unsupported },
+            { patch: plan.patch, recognized: [], warnings: [], unsupported: plan.unsupported, explanation: plan.explanation },
             manual,
             'ki',
           ).spec;

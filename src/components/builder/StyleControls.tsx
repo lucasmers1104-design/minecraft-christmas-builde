@@ -4,27 +4,20 @@ import { PROFILES } from '@/core/compat/profile';
 import { variantSeeds } from '@/core/generator/generateBuilding';
 import {
   BUILD_SIZES,
-  BUILD_STYLES,
   BUILDING_TYPES,
-  COLOR_THEMES,
   DETAIL_LEVELS,
   isImplementedBuildingType,
-  MATERIAL_THEMES,
   MAX_SEED,
+  STYLE_IDS,
+  THEMES,
   type BuildSpec,
 } from '@/core/schema/buildSpec';
+import { STYLES } from '@/core/style/styles';
 import { sourceOf, type SettingPath, type SettingSource } from '@/core/schema/resolveSpec';
 import { Panel } from '@/components/ui/Panel';
 import { Segmented } from '@/components/ui/Segmented';
 import { SourceBadge } from '@/components/ui/SourceBadge';
-import {
-  BUILDING_TYPE_LABELS,
-  COLOR_LABELS,
-  DETAIL_LABELS,
-  MATERIAL_LABELS,
-  SIZE_LABELS,
-  STYLE_LABELS,
-} from '@/components/builder/labels';
+import { BUILDING_TYPE_LABELS, DETAIL_LABELS, SIZE_LABELS, STYLE_LABELS, THEME_LABELS } from '@/components/builder/labels';
 
 export interface SettingsBinding {
   spec: BuildSpec;
@@ -95,7 +88,20 @@ export function StyleControls({
           disabled={disabled}
           badge={badge('style', 'Stil')}
           onChange={(style) => set('style', style)}
-          options={BUILD_STYLES.map((v) => ({ value: v, label: STYLE_LABELS[v] }))}
+          options={STYLE_IDS.map((v) => ({ value: v, label: STYLE_LABELS[v] }))}
+        />
+        <p className="-mt-2 text-[11px] text-mist-400" data-testid="style-summary">
+          {STYLES[spec.style].summary}
+        </p>
+        <Segmented
+          legend="Thema"
+          name="theme"
+          testId="control-theme"
+          value={spec.theme}
+          disabled={disabled}
+          badge={badge('theme', 'Thema')}
+          onChange={(theme) => set('theme', theme)}
+          options={THEMES.map((v) => ({ value: v, label: THEME_LABELS[v] }))}
         />
         <Segmented
           legend="Größe"
@@ -106,26 +112,6 @@ export function StyleControls({
           badge={badge('size', 'Größe')}
           onChange={(size) => set('size', size)}
           options={BUILD_SIZES.map((v) => ({ value: v, label: SIZE_LABELS[v] }))}
-        />
-        <Segmented
-          legend="Material"
-          name="materialTheme"
-          testId="control-material"
-          value={spec.materialTheme}
-          disabled={disabled}
-          badge={badge('materialTheme', 'Material')}
-          onChange={(materialTheme) => set('materialTheme', materialTheme)}
-          options={MATERIAL_THEMES.map((v) => ({ value: v, label: MATERIAL_LABELS[v] }))}
-        />
-        <Segmented
-          legend="Farbthema"
-          name="colorTheme"
-          testId="control-color"
-          value={spec.colorTheme}
-          disabled={disabled}
-          badge={badge('colorTheme', 'Farbthema')}
-          onChange={(colorTheme) => set('colorTheme', colorTheme)}
-          options={COLOR_THEMES.map((v) => ({ value: v, label: COLOR_LABELS[v] }))}
         />
         <Segmented
           legend="Detailgrad"

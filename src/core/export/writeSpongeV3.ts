@@ -1,4 +1,5 @@
 import { gzipSync } from 'node:zlib';
+import { STYLE_LABELS } from '@/core/style/styles';
 import * as nbt from 'prismarine-nbt';
 import { getProfileForVersion, type CompatibilityProfile } from '@/core/compat/profile';
 import { encodeVarIntArray } from '@/core/export/encodeVarInt';
@@ -16,10 +17,11 @@ export class SchematicExportError extends Error {
 export const SCHEMATIC_AUTHOR = 'Minecraft Christmas Builder';
 
 const SCHEMATIC_NAMES: Record<VoxelModel['spec']['kind'], string> = {
-  house: 'Weihnachtshaus',
+  house: 'Haus',
   tree: 'Weihnachtsbaum',
-  market_stall: 'Weihnachtsmarktstand',
-  station: 'Winterbahnhof',
+  market_stall: 'Marktstand',
+  station: 'Bahnhof',
+  tower: 'Turm',
 };
 
 type Tag = nbt.Tags[nbt.TagType];
@@ -70,7 +72,7 @@ export function buildSpongeV3Nbt(model: VoxelModel, requestedProfile?: Compatibi
     Version: int(profile.schematicVersion),
     DataVersion: int(profile.dataVersion),
     Metadata: compound({
-      Name: nbtString(`${SCHEMATIC_NAMES[model.spec.kind]} (Seed ${model.spec.seed})`),
+      Name: nbtString(`${SCHEMATIC_NAMES[model.spec.kind]} (${STYLE_LABELS[model.spec.style]}, Seed ${model.spec.seed})`),
       Author: nbtString(SCHEMATIC_AUTHOR),
       MCBVoxelHash: nbtString(model.hash),
       MCBMinecraftVersion: nbtString(profile.minecraftVersion),

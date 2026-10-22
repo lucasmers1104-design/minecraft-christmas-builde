@@ -28,3 +28,6 @@ tests/worldedit/.build/
 .DS_Store
 npm-debug.log*
 .minecraft-assets/
+
+# iso renders of the test tool (MCB_RENDER=1)
+render-out/

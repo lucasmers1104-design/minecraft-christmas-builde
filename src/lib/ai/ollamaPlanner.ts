@@ -1,11 +1,14 @@
-import { aiPlanJsonSchema, aiPlanSchema, normalizeAiPlan, type AiPlan } from '@/core/ai/planSchema';
-import { plannerSystemPrompt } from '@/core/ai/prompt';
+import { normalizePlan, planJsonSchema, planSchema, type BuildPlan } from '@/core/ai/planSchema';
+import { plannerMessages, type ChatMessage } from '@/core/ai/prompt';
 
 /**
  * Optional planning through a LOCAL language model served by Ollama (no API key, no cloud,
  * no costs). Server-side only; the endpoint is configured through environment variables and
- * never taken from the browser. If the model is off, unreachable, too slow or returns an
- * invalid plan, callers fall back to the rule-based parser and say so.
+ * never taken from the browser. The model fills the flat catalogue plan (planSchema.ts):
+ * structured output with the plan's JSON schema, temperature 0, few-shot examples, Zod
+ * validation after normalisation (clamping), one repair round with the validation errors.
+ * If the model is off, unreachable, too slow or returns an invalid plan, the client falls
+ * back to the rule-based parser and says so.
  */
 
 export interface AiConfig {
@@ -19,6 +22,8 @@ export interface AiConfig {
 }
 
 export const DEFAULT_OLLAMA_MODEL = 'qwen3:14b';
+/** Context for system prompt + few-shot examples + answer (the prompt alone is ~4k tokens). */
+export const PLANNER_NUM_CTX = 8192;
 
 export function readAiConfig(env: Record<string, string | undefined> = process.env): AiConfig {
   const provider = (env.MCB_AI_PROVIDER ?? 'off').trim().toLowerCase() === 'ollama' ? 'ollama' : 'off';
@@ -115,10 +120,29 @@ export function extractJson(content: string): unknown {
 }
 
 export interface AiPlanResult {
-  plan: AiPlan;
+  plan: BuildPlan;
   model: string;
   durationMs: number;
+  /** 1 = valid at once, 2 = valid after the repair round. */
   attempts: number;
+  /** Few-shot examples sent with the prompt. */
+  examples: string[];
+  /** The answer was taken from the `thinking` field (known Ollama issue with format + think). */
+  fromThinking: boolean;
+  /** The request was repeated without "think" because the model does not support it. */
+  thinkDropped: boolean;
+}
+
+interface OllamaChatBody {
+  message?: { content?: string; thinking?: string };
+}
+
+/** The plan text of a reply: content, or – if that holds no JSON – the thinking field. */
+function replyText(body: OllamaChatBody): { text: string; fromThinking: boolean } {
+  const content = body.message?.content ?? '';
+  const thinking = body.message?.thinking ?? '';
+  if (!content.includes('{') && thinking.includes('{')) return { text: thinking, fromThinking: true };
+  return { text: content, fromThinking: false };
 }
 
 /** Asks the local model for a plan; one repair round if the first answer is invalid. */
@@ -126,19 +150,20 @@ export async function requestAiPlan(config: AiConfig, description: string, fetch
   if (!config.enabled) throw new AiPlanError('disabled', 'Lokale KI ist nicht aktiviert (MCB_AI_PROVIDER=ollama).');
   const started = Date.now();
   const deadline = started + config.timeoutMs;
-  const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
-    { role: 'system', content: plannerSystemPrompt() },
-    { role: 'user', content: `Beschreibung des Bauwerks:\n"""${description}"""` },
-  ];
+  const prompt = plannerMessages(description);
+  const messages: ChatMessage[] = [...prompt.messages];
+  const format = planJsonSchema();
   let think = config.think;
+  let thinkDropped = false;
   let lastIssues: string[] = [];
   const maxAttempts = 2;
   let attempts = 0;
+  const timeoutError = () => new AiPlanError('timeout', `Die lokale KI hat nicht innerhalb von ${Math.round(config.timeoutMs / 1000)} s geantwortet.`);
 
   while (attempts < maxAttempts) {
     attempts++;
     const remaining = deadline - Date.now();
-    if (remaining <= 0) throw new AiPlanError('timeout', `Die lokale KI hat nicht innerhalb von ${Math.round(config.timeoutMs / 1000)} s geantwortet.`);
+    if (remaining <= 0) throw timeoutError();
     let res: Response;
     try {
       res = await fetchImpl(`${config.baseUrl}/api/chat`, {
@@ -148,22 +173,23 @@ export async function requestAiPlan(config: AiConfig, description: string, fetch
           model: config.model,
           messages,
           stream: false,
-          format: aiPlanJsonSchema(),
-          options: { temperature: 0.2, seed: 7 },
+          format,
+          options: { temperature: 0, seed: 7, num_ctx: PLANNER_NUM_CTX },
           keep_alive: '10m',
           ...(think === undefined ? {} : { think }),
         }),
         signal: AbortSignal.timeout(remaining),
       });
     } catch (error) {
-      if (isAbort(error)) throw new AiPlanError('timeout', `Die lokale KI hat nicht innerhalb von ${Math.round(config.timeoutMs / 1000)} s geantwortet.`);
+      if (isAbort(error)) throw timeoutError();
       throw new AiPlanError('unreachable', `Ollama ist unter ${config.baseUrl} nicht erreichbar: ${(error as Error).message}`);
     }
     if (!res.ok) {
       const text = (await res.text().catch(() => '')).slice(0, 300);
-      // Models without reasoning support reject the "think" flag – retry once without it.
+      // Models without reasoning support reject the "think" flag – repeat once without it.
       if (think !== undefined && /think/i.test(text)) {
         think = undefined;
+        thinkDropped = true;
         attempts--;
         continue;
       }
@@ -172,21 +198,29 @@ export async function requestAiPlan(config: AiConfig, description: string, fetch
       }
       throw new AiPlanError('http', `Ollama antwortete mit HTTP ${res.status}.`, [text]);
     }
-    const body = (await res.json()) as { message?: { content?: string } };
-    const content = body.message?.content ?? '';
+    let body: OllamaChatBody;
+    try {
+      body = (await res.json()) as OllamaChatBody;
+    } catch (error) {
+      if (isAbort(error)) throw timeoutError();
+      throw new AiPlanError('http', 'Ollama lieferte keine lesbare Antwort.', [(error as Error).message]);
+    }
+    const { text, fromThinking } = replyText(body);
     let parsed: unknown;
     try {
-      parsed = normalizeAiPlan(extractJson(content));
+      parsed = normalizePlan(extractJson(text));
     } catch (error) {
       lastIssues = [(error as Error).message];
-      messages.push({ role: 'assistant', content }, { role: 'user', content: `Ungültig: ${lastIssues.join('; ')}. Antworte nur mit gültigem JSON nach dem Schema.` });
+      messages.push({ role: 'assistant', content: text.slice(0, 2000) }, { role: 'user', content: `Ungültig: ${lastIssues.join('; ')}. Antworte nur mit gültigem JSON nach dem Schema.` });
       continue;
     }
-    const result = aiPlanSchema.safeParse(parsed);
-    if (result.success) return { plan: result.data, model: config.model, durationMs: Date.now() - started, attempts };
+    const result = planSchema.safeParse(parsed);
+    if (result.success) {
+      return { plan: result.data, model: config.model, durationMs: Date.now() - started, attempts, examples: prompt.exampleIds, fromThinking, thinkDropped };
+    }
     lastIssues = result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
     messages.push(
-      { role: 'assistant', content },
+      { role: 'assistant', content: text.slice(0, 4000) },
       { role: 'user', content: `Die Antwort passt nicht zum Schema: ${lastIssues.slice(0, 6).join('; ')}. Antworte nur mit korrigiertem JSON.` },
     );
   }

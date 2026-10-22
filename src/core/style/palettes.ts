@@ -1,0 +1,498 @@
+/**
+ * Palettes: building roles → weighted materials (ids from materials.ts). One material per
+ * role is chosen per building (seeded); texture variation inside a wall comes from the
+ * material's weathering list, not from mixing unrelated blocks ("palette chaos").
+ *
+ * Sources: reports/Minecraft Bautechniken für Generator.md (role table) and
+ * research_notes/…/paletten.md; checked by the palette lints (lints.ts) against the measured
+ * brightness (textureStats.ts): frame or roof at least ΔL* 15 away from the wall, roof ≠ wall,
+ * roof only from families with stairs, 3–5 main blocks.
+ */
+
+export const ROLES = [
+  'plinth', // Sockel
+  'wall', // Hauptwand (Erdgeschoss)
+  'upperWall', // Wand der Obergeschosse (z. B. Holz über Stein-EG)
+  'infill', // Fachwerkfüllung
+  'frame', // Pfosten, Ständer, Fensterrahmen-Stämme (Holz-Outline)
+  'beam', // liegende Balken an Geschosslinien
+  'roof', // Dachfläche (Treppenfamilie)
+  'roofTrim', // Dachkante / Ortgang / Traufe im Kontrast
+  'ridge', // First
+  'soffit', // Untersicht (Kopfüber-Treppen)
+  'window', // Glas
+  'shutter', // Fensterläden (Falltüren)
+  'door', // Tür (Holz- oder Metallfamilie)
+  'floor', // Geschossdecken
+  'path', // Weg vor der Tür
+  'chimney', // Schornstein
+  'accent', // ≤ 10 % Akzent
+] as const;
+
+export type Role = (typeof ROLES)[number];
+
+export type Weighted = readonly [material: string, weight: number];
+
+export interface Palette {
+  id: string;
+  label: string;
+  roles: Readonly<Record<Role, readonly Weighted[]>>;
+}
+
+const one = (m: string): Weighted[] => [[m, 1]];
+
+export const PALETTES: readonly Palette[] = [
+  // ---------------------------------------------------------------- Mittelalter
+  {
+    id: 'medieval_timber',
+    label: 'Fachwerk über Stein',
+    roles: {
+      plinth: [['cobblestone', 3], ['cobbled_deepslate', 1]],
+      wall: one('stone_bricks'),
+      upperWall: one('white_terracotta'),
+      infill: one('white_terracotta'),
+      frame: [['dark_oak_log', 2], ['stripped_dark_oak_log', 1]],
+      beam: one('stripped_dark_oak_log'),
+      roof: [['spruce_planks', 2], ['dark_oak_planks', 1]],
+      roofTrim: one('dark_oak_planks'),
+      ridge: one('dark_oak_planks'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('spruce_planks'),
+      door: one('spruce_planks'),
+      floor: one('spruce_planks'),
+      path: one('cobblestone'),
+      chimney: one('cobblestone'),
+      accent: one('red_wool'),
+    },
+  },
+  {
+    id: 'medieval_stone',
+    label: 'Steinhaus mit Schieferdach',
+    roles: {
+      plinth: one('cobblestone'),
+      wall: one('stone_bricks'),
+      upperWall: one('stone_bricks'),
+      infill: one('stone_bricks'),
+      frame: [['stripped_spruce_log', 2], ['spruce_log', 1]],
+      beam: one('stripped_spruce_log'),
+      roof: one('deepslate_tiles'),
+      roofTrim: one('stone_bricks'),
+      ridge: one('deepslate_tiles'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('spruce_planks'),
+      door: one('spruce_planks'),
+      floor: one('spruce_planks'),
+      path: one('cobblestone'),
+      chimney: one('stone_bricks'),
+      accent: one('red_wool'),
+    },
+  },
+  {
+    id: 'medieval_tudor',
+    label: 'Tudor mit Holzschindeln',
+    roles: {
+      plinth: [['cobblestone', 2], ['stone', 1]],
+      wall: one('cobblestone'),
+      upperWall: one('white_terracotta'),
+      infill: one('white_terracotta'),
+      frame: one('spruce_log'),
+      beam: one('stripped_spruce_log'),
+      roof: one('dark_oak_planks'),
+      roofTrim: one('spruce_planks'),
+      ridge: one('spruce_planks'),
+      soffit: one('dark_oak_planks'),
+      window: one('glass'),
+      shutter: one('dark_oak_planks'),
+      door: one('dark_oak_planks'),
+      floor: one('oak_planks'),
+      path: one('cobblestone'),
+      chimney: one('bricks'),
+      accent: one('red_wool'),
+    },
+  },
+  // ---------------------------------------------------------------- Fantasy / Märchen
+  {
+    id: 'fantasy_storybook',
+    label: 'Märchenhaus mit dunklem Dach',
+    roles: {
+      plinth: [['mossy_cobblestone', 2], ['cobblestone', 1]],
+      wall: one('white_terracotta'),
+      upperWall: one('white_terracotta'),
+      infill: one('white_terracotta'),
+      frame: one('stripped_dark_oak_log'),
+      beam: one('dark_oak_log'),
+      roof: one('dark_oak_planks'),
+      roofTrim: one('spruce_planks'),
+      ridge: one('spruce_planks'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('spruce_planks'),
+      door: one('spruce_planks'),
+      floor: one('oak_planks'),
+      path: one('mossy_cobblestone'),
+      chimney: one('cobblestone'),
+      accent: one('moss_block'),
+    },
+  },
+  {
+    id: 'fantasy_crimson',
+    label: 'Hexenhaus mit Karmesin-Dach',
+    roles: {
+      plinth: [['mossy_cobblestone', 1], ['cobbled_deepslate', 1]],
+      wall: one('calcite'),
+      upperWall: one('calcite'),
+      infill: one('calcite'),
+      frame: one('dark_oak_log'),
+      beam: one('stripped_dark_oak_log'),
+      roof: one('crimson_planks'),
+      roofTrim: one('dark_oak_planks'),
+      ridge: one('dark_oak_planks'),
+      soffit: one('dark_oak_planks'),
+      window: one('purple_stained_glass'),
+      shutter: one('dark_oak_planks'),
+      door: one('dark_oak_planks'),
+      floor: one('spruce_planks'),
+      path: one('cobbled_deepslate'),
+      chimney: one('cobbled_deepslate'),
+      accent: one('moss_block'),
+    },
+  },
+  {
+    id: 'fantasy_warped',
+    label: 'Feenhaus mit türkisem Dach',
+    roles: {
+      plinth: one('mossy_stone_bricks'),
+      wall: one('white_terracotta'),
+      upperWall: one('white_terracotta'),
+      infill: one('white_terracotta'),
+      frame: one('stripped_spruce_log'),
+      beam: one('spruce_log'),
+      roof: one('warped_planks'),
+      roofTrim: one('dark_oak_planks'),
+      ridge: one('dark_oak_planks'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('spruce_planks'),
+      door: one('spruce_planks'),
+      floor: one('spruce_planks'),
+      path: one('mossy_cobblestone'),
+      chimney: one('cobblestone'),
+      accent: one('moss_block'),
+    },
+  },
+  // ---------------------------------------------------------------- Rustikal
+  {
+    id: 'rustic_spruce',
+    label: 'Fichtenhütte',
+    roles: {
+      plinth: [['cobblestone', 2], ['mossy_cobblestone', 1]],
+      wall: one('spruce_planks'),
+      upperWall: one('spruce_planks'),
+      infill: one('spruce_planks'),
+      frame: one('spruce_log'),
+      beam: one('stripped_spruce_log'),
+      roof: one('dark_oak_planks'),
+      roofTrim: one('spruce_planks'),
+      ridge: one('spruce_planks'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('spruce_planks'),
+      door: one('spruce_planks'),
+      floor: one('oak_planks'),
+      path: one('cobblestone'),
+      chimney: one('cobblestone'),
+      accent: one('red_wool'),
+    },
+  },
+  {
+    id: 'rustic_oak',
+    label: 'Eichen-Cottage',
+    roles: {
+      plinth: [['cobblestone', 1], ['stone', 1]],
+      wall: one('oak_planks'),
+      upperWall: one('oak_planks'),
+      infill: one('oak_planks'),
+      frame: one('dark_oak_log'),
+      beam: one('stripped_dark_oak_log'),
+      roof: one('spruce_planks'),
+      roofTrim: one('dark_oak_planks'),
+      ridge: one('dark_oak_planks'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('spruce_planks'),
+      door: one('spruce_planks'),
+      floor: one('spruce_planks'),
+      path: one('cobblestone'),
+      chimney: one('bricks'),
+      accent: one('red_wool'),
+    },
+  },
+  {
+    id: 'rustic_logs',
+    label: 'Blockhaus aus Stämmen',
+    roles: {
+      plinth: one('cobblestone'),
+      wall: one('stripped_spruce_log'),
+      upperWall: one('stripped_spruce_log'),
+      infill: one('stripped_spruce_log'),
+      frame: one('spruce_log'),
+      beam: one('spruce_log'),
+      roof: one('dark_oak_planks'),
+      roofTrim: one('spruce_planks'),
+      ridge: one('spruce_planks'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('dark_oak_planks'),
+      door: one('dark_oak_planks'),
+      floor: one('spruce_planks'),
+      path: one('cobblestone'),
+      chimney: one('cobblestone'),
+      accent: one('red_wool'),
+    },
+  },
+  // ---------------------------------------------------------------- Nordisch
+  {
+    id: 'nordic_longhouse',
+    label: 'Langhaus aus Fichte',
+    roles: {
+      plinth: [['cobbled_deepslate', 2], ['blackstone', 1]],
+      wall: one('spruce_planks'),
+      upperWall: one('spruce_planks'),
+      infill: one('spruce_planks'),
+      frame: one('dark_oak_log'),
+      beam: one('dark_oak_log'),
+      roof: one('dark_oak_planks'),
+      roofTrim: one('spruce_planks'),
+      ridge: one('spruce_log'),
+      soffit: one('spruce_planks'),
+      window: one('gray_stained_glass'),
+      shutter: one('dark_oak_planks'),
+      door: one('dark_oak_planks'),
+      floor: one('spruce_planks'),
+      path: one('cobbled_deepslate'),
+      chimney: one('cobbled_deepslate'),
+      accent: one('red_wool'),
+    },
+  },
+  {
+    id: 'nordic_dark',
+    label: 'Dunkle Halle',
+    roles: {
+      plinth: [['cobbled_deepslate', 1], ['cobblestone', 1]],
+      wall: one('dark_oak_planks'),
+      upperWall: one('dark_oak_planks'),
+      infill: one('dark_oak_planks'),
+      frame: one('stripped_spruce_log'),
+      beam: one('stripped_spruce_log'),
+      roof: one('spruce_planks'),
+      roofTrim: one('dark_oak_planks'),
+      ridge: one('stripped_spruce_log'),
+      soffit: one('dark_oak_planks'),
+      window: one('brown_stained_glass'),
+      shutter: one('spruce_planks'),
+      door: one('spruce_planks'),
+      floor: one('spruce_planks'),
+      path: one('cobbled_deepslate'),
+      chimney: one('cobbled_deepslate'),
+      accent: one('red_wool'),
+    },
+  },
+  // ---------------------------------------------------------------- Japanisch
+  {
+    id: 'japanese_classic',
+    label: 'Klassisch mit Schieferdach',
+    roles: {
+      plinth: [['stone_bricks', 2], ['andesite', 1]],
+      wall: one('white_concrete'),
+      upperWall: one('white_concrete'),
+      infill: one('white_concrete'),
+      frame: one('stripped_dark_oak_log'),
+      beam: one('dark_oak_log'),
+      roof: one('deepslate_tiles'),
+      roofTrim: one('dark_oak_planks'),
+      ridge: one('deepslate_tiles'),
+      soffit: one('dark_oak_planks'),
+      window: one('white_stained_glass'),
+      shutter: one('dark_oak_planks'),
+      door: one('dark_oak_planks'),
+      floor: one('spruce_planks'),
+      path: one('smooth_stone'),
+      chimney: one('stone_bricks'),
+      accent: one('red_terracotta'),
+    },
+  },
+  {
+    id: 'japanese_temple',
+    label: 'Tempel mit roten Akzenten',
+    roles: {
+      plinth: one('stone_bricks'),
+      wall: one('calcite'),
+      upperWall: one('calcite'),
+      infill: one('calcite'),
+      frame: one('dark_oak_log'),
+      beam: one('stripped_dark_oak_log'),
+      roof: one('dark_oak_planks'),
+      roofTrim: one('red_nether_bricks'),
+      ridge: one('dark_oak_planks'),
+      soffit: one('dark_oak_planks'),
+      window: one('white_stained_glass'),
+      shutter: one('dark_oak_planks'),
+      door: one('dark_oak_planks'),
+      floor: one('dark_oak_planks'),
+      path: one('smooth_stone'),
+      chimney: one('stone_bricks'),
+      accent: one('red_terracotta'),
+    },
+  },
+  // ---------------------------------------------------------------- Kirschblüte
+  {
+    id: 'cherry_slate',
+    label: 'Kirsche mit Schieferdach',
+    roles: {
+      plinth: [['stone_bricks', 2], ['polished_deepslate', 1]],
+      wall: one('cherry_planks'),
+      upperWall: one('cherry_planks'),
+      infill: one('cherry_planks'),
+      frame: one('cherry_log'),
+      beam: one('cherry_log'),
+      roof: one('deepslate_tiles'),
+      roofTrim: one('dark_oak_planks'),
+      ridge: one('deepslate_tiles'),
+      soffit: one('dark_oak_planks'),
+      window: one('white_stained_glass'),
+      shutter: one('cherry_planks'),
+      door: one('cherry_planks'),
+      floor: one('cherry_planks'),
+      path: one('stone_bricks'),
+      chimney: one('stone_bricks'),
+      accent: one('pink_stained_glass'),
+    },
+  },
+  {
+    id: 'cherry_white',
+    label: 'Weiß mit Kirschholz',
+    roles: {
+      plinth: one('polished_deepslate'),
+      wall: one('white_concrete'),
+      upperWall: one('white_concrete'),
+      infill: one('white_concrete'),
+      frame: one('cherry_log'),
+      beam: one('stripped_cherry_log'),
+      roof: one('cherry_planks'),
+      roofTrim: one('dark_oak_planks'),
+      ridge: one('dark_oak_planks'),
+      soffit: one('cherry_planks'),
+      window: one('glass'),
+      shutter: one('cherry_planks'),
+      door: one('cherry_planks'),
+      floor: one('cherry_planks'),
+      path: one('polished_deepslate'),
+      chimney: one('stone_bricks'),
+      accent: one('pink_stained_glass'),
+    },
+  },
+  // ---------------------------------------------------------------- Modern
+  {
+    id: 'modern_white',
+    label: 'Weißer Kubus',
+    roles: {
+      plinth: one('polished_deepslate'),
+      wall: one('white_concrete'),
+      upperWall: one('white_concrete'),
+      infill: one('white_concrete'),
+      frame: one('black_concrete'),
+      beam: one('black_concrete'),
+      roof: one('polished_deepslate'),
+      roofTrim: one('black_concrete'),
+      ridge: one('smooth_stone'),
+      soffit: one('smooth_stone'),
+      window: one('glass'),
+      shutter: one('iron'),
+      door: one('iron'),
+      floor: one('smooth_stone'),
+      path: one('smooth_stone'),
+      chimney: one('gray_concrete'),
+      accent: one('spruce_planks'),
+    },
+  },
+  {
+    id: 'modern_wood',
+    label: 'Weiß mit Holzverkleidung',
+    roles: {
+      plinth: one('smooth_stone'),
+      wall: one('white_concrete'),
+      upperWall: one('spruce_planks'),
+      infill: one('white_concrete'),
+      frame: one('gray_concrete'),
+      beam: one('gray_concrete'),
+      roof: one('polished_deepslate'),
+      roofTrim: one('gray_concrete'),
+      ridge: one('smooth_stone'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('iron'),
+      door: one('dark_oak_planks'),
+      floor: one('spruce_planks'),
+      path: one('smooth_stone'),
+      chimney: one('gray_concrete'),
+      accent: one('spruce_planks'),
+    },
+  },
+  // ---------------------------------------------------------------- Mediterran
+  {
+    id: 'mediterranean_white',
+    label: 'Weiß mit Ziegeldach',
+    roles: {
+      plinth: [['stone_bricks', 1], ['sandstone', 1]],
+      wall: one('white_concrete'),
+      upperWall: one('white_concrete'),
+      infill: one('white_concrete'),
+      frame: one('stripped_oak_log'),
+      beam: one('stripped_oak_log'),
+      roof: one('bricks'),
+      roofTrim: one('smooth_quartz'),
+      ridge: one('bricks'),
+      soffit: one('oak_planks'),
+      window: one('glass'),
+      shutter: one('warped_planks'),
+      door: one('spruce_planks'),
+      floor: one('oak_planks'),
+      path: one('sandstone'),
+      chimney: one('white_concrete'),
+      accent: one('light_blue_stained_glass'),
+    },
+  },
+  {
+    id: 'mediterranean_warm',
+    label: 'Sandstein mit Terrakotta-Dach',
+    roles: {
+      plinth: one('stone_bricks'),
+      wall: one('smooth_sandstone'),
+      upperWall: one('smooth_sandstone'),
+      infill: one('smooth_sandstone'),
+      frame: one('stripped_spruce_log'),
+      beam: one('stripped_spruce_log'),
+      roof: one('bricks'),
+      roofTrim: one('sandstone'),
+      ridge: one('bricks'),
+      soffit: one('spruce_planks'),
+      window: one('glass'),
+      shutter: one('warped_planks'),
+      door: one('spruce_planks'),
+      floor: one('spruce_planks'),
+      path: one('sandstone'),
+      chimney: one('smooth_sandstone'),
+      accent: one('light_blue_stained_glass'),
+    },
+  },
+];
+
+const BY_ID = new Map(PALETTES.map((p) => [p.id, p]));
+
+export function getPalette(id: string): Palette {
+  const p = BY_ID.get(id);
+  if (!p) throw new Error(`Unbekannte Palette: ${id}`);
+  return p;
+}

@@ -154,21 +154,30 @@ function* around(x: number, y: number, z: number, r: number): Generator<[number,
     }
 }
 
+/** Highest block light any source within reach gives at (x, y, z) (light − Manhattan distance, ≥ 12 only). */
+export function strongLightAt(get: (x: number, y: number, z: number) => string, x: number, y: number, z: number): number {
+  let best = 0;
+  for (const [nx, ny, nz] of around(x, y, z, 3)) {
+    const light = emittedLight(get(nx, ny, nz));
+    if (light === 0) continue;
+    best = Math.max(best, light - (Math.abs(nx - x) + Math.abs(ny - y) + Math.abs(nz - z)));
+  }
+  return best;
+}
+
+/** True if a snow layer can stay on `below` (full top face, not ice). */
+export function snowCanRestOn(below: string): boolean {
+  return below !== AIR && !SNOW_CANNOT_SURVIVE_ON.has(blockIdOf(below)) && isFaceFull(below, 'up', 'collision');
+}
+
 function meltProblem(grid: MutableGrid, x: number, y: number, z: number, state: string): { fix: string; reason: string } | null {
   const id = blockIdOf(state);
   // Snow layers melt at block light >= 12, ice at > 11 (vanilla random ticks).
   if (id !== 'minecraft:snow' && id !== 'minecraft:ice') return null;
-  for (const [nx, ny, nz] of around(x, y, z, 3)) {
-    const light = emittedLight(grid.get(nx, ny, nz));
-    if (light === 0) continue;
-    const dist = Math.abs(nx - x) + Math.abs(ny - y) + Math.abs(nz - z);
-    if (light - dist >= 12) {
-      return id === 'minecraft:snow'
-        ? { fix: AIR, reason: 'Schneeschicht zu nah an einer Lichtquelle (würde schmelzen) entfernt' }
-        : { fix: blockState('packed_ice'), reason: 'Eis neben einer Lichtquelle (würde schmelzen) durch Packeis ersetzt' };
-    }
-  }
-  return null;
+  if (strongLightAt((a, b, c) => grid.get(a, b, c), x, y, z) < 12) return null;
+  return id === 'minecraft:snow'
+    ? { fix: AIR, reason: 'Schneeschicht zu nah an einer Lichtquelle (würde schmelzen) entfernt' }
+    : { fix: blockState('packed_ice'), reason: 'Eis neben einer Lichtquelle (würde schmelzen) durch Packeis ersetzt' };
 }
 
 /**

@@ -5,7 +5,7 @@ import { buildSpecSchema, type BuildSpec } from '@/core/schema/buildSpec';
 
 /** Validates stored or transmitted manual settings (same fields as the text parser fills). */
 export const specPatchSchema = buildSpecSchema
-  .pick({ kind: true, style: true, size: true, materialTheme: true, colorTheme: true, detailLevel: true })
+  .pick({ kind: true, style: true, theme: true, size: true, detailLevel: true })
   .partial()
   .extend({ options: buildOptionsSchema.optional() })
   .strict() satisfies z.ZodType<SpecPatch>;
@@ -22,7 +22,7 @@ export interface ResolvedSpec {
   conflicts: string[];
 }
 
-const TOP_LEVEL = ['kind', 'style', 'size', 'materialTheme', 'colorTheme', 'detailLevel'] as const;
+const TOP_LEVEL = ['kind', 'style', 'theme', 'size', 'detailLevel'] as const;
 
 /** Flattens a patch into "path -> value" pairs. */
 export function flattenPatch(patch: SpecPatch): Map<SettingPath, unknown> {

@@ -6,9 +6,10 @@ import { Button } from '@/components/ui/Button';
 import { Panel } from '@/components/ui/Panel';
 
 export const EXAMPLE_PROMPTS = [
-  'Baue ein gemütliches Weihnachtshaus aus Fichtenholz, mit verschneitem Dach, roten Akzenten, leuchtenden Fenstern und einem Schornstein.',
-  'Eine kleine verschneite Hütte aus Eiche mit eisblauen Fenstern.',
-  'Großes Steinhaus im Märchenstil mit festlicher Dekoration.',
+  'Baue ein gemütliches Weihnachtshaus aus Fichtenholz mit roten Akzenten, vielen Laternen und einem Schornstein.',
+  'Mittelalterliches Fachwerkhaus mit zwei Geschossen, Erker und rundem Turm vorne links.',
+  'Japanisches Teehaus mit Shoji-Fenstern und Walmdach, winterlich.',
+  'Großes Steinhaus im Märchenstil mit Gauben und festlicher Dekoration.',
 ];
 
 export function PromptPanel({
@@ -78,6 +79,20 @@ export function PromptPanel({
                 title={`„${r.phrase}“`}
               >
                 {r.effect}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {!aiActive && parsed.explanation ? (
+          <p className="text-[11px] text-mist-300" data-testid="parse-explanation">
+            {parsed.explanation}
+          </p>
+        ) : null}
+        {!aiActive && parsed.unsupported.length > 0 ? (
+          <ul className="flex flex-col gap-1 text-[11px] text-gold-300" aria-label="Nicht umsetzbare Wünsche" data-testid="parse-unsupported">
+            {parsed.unsupported.map((w) => (
+              <li key={w} className="rounded-md border border-gold-400/25 bg-gold-400/8 px-2 py-1">
+                ⚠ Nicht umsetzbar: {w}
               </li>
             ))}
           </ul>

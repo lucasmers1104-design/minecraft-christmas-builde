@@ -7,7 +7,7 @@ import { validateSchematic } from '@/core/export/validateSchematic';
 import { buildSpongeV3Nbt, nbtString, SchematicExportError, writeSpongeV3 } from '@/core/export/writeSpongeV3';
 import { generateBuilding, generateVariants } from '@/core/generator/generateBuilding';
 import { DEFAULT_HOUSE_SPEC } from '@/core/schema/buildSpec';
-import { computeVoxelHash, linearIndex, MAX_PALETTE_SIZE, type VoxelModel } from '@/core/schema/voxelModel';
+import { computeVoxelHash, createVoxelModel, linearIndex, MAX_PALETTE_SIZE, type VoxelModel } from '@/core/schema/voxelModel';
 import { largePaletteModel } from '../helpers/syntheticModels';
 
 const house = generateBuilding(DEFAULT_HOUSE_SPEC);
@@ -218,10 +218,17 @@ describe('Negative Fälle', () => {
   });
 
   it('Validator erkennt Abweichungen gegenüber dem erwarteten Modell', () => {
-    const other = generateBuilding({ ...DEFAULT_HOUSE_SPEC, seed: 2 });
-    const report = validateSchematic(writeSpongeV3(other), { expected: house });
+    // Same volume, one block different.
+    const indices = house.indices.slice();
+    indices[0] = indices[0] === 0 ? 1 : 0;
+    const report = validateSchematic(writeSpongeV3(createVoxelModel(house.spec, house.dimensions, house.palette, indices)), { expected: house });
     expect(report.ok).toBe(false);
     expect(report.issues.join()).toMatch(/Blöcke weichen ab|Hash/);
+    // Another seed: other measurements.
+    const other = generateBuilding({ ...DEFAULT_HOUSE_SPEC, seed: 2 });
+    if (other.dimensions.width !== house.dimensions.width || other.dimensions.length !== house.dimensions.length) {
+      expect(validateSchematic(writeSpongeV3(other), { expected: house }).issues.join()).toMatch(/Maße/);
+    }
   });
 });
 

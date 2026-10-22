@@ -1,149 +1,136 @@
 import { describe, expect, it } from 'vitest';
 import { countMaterials } from '@/core/analysis/materialCounts';
-import { blockIdOf } from '@/core/blocks/registry';
-import { buildMarketStall } from '@/core/generator/buildMarketStall';
-import { buildStation } from '@/core/generator/buildStation';
-import { buildTree } from '@/core/generator/buildTree';
-import { generateBuilding, generateVariants, generationNotes } from '@/core/generator/generateBuilding';
-import {
-  BUILD_SIZES,
-  BUILD_STYLES,
-  COLOR_THEMES,
-  DEFAULT_HOUSE_SPEC,
-  DETAIL_LEVELS,
-  MATERIAL_THEMES,
-  type BuildingType,
-  type BuildSpec,
-} from '@/core/schema/buildSpec';
-import { blockAt, collectVoxelIssues } from '@/core/schema/voxelModel';
-import { countFloatingBlocks, idAt, isAir } from '../helpers/houseInspection';
+import { floatingBlocks, resolverChanges } from '@/core/analysis/buildingLints';
+import { blockIdOf, propsOf } from '@/core/blocks/registry';
+import { generateBuilding, generateBuildingWithReport } from '@/core/generator/generateBuilding';
+import { DEFAULT_HOUSE_SPEC, STYLE_IDS, type BuildSpec } from '@/core/schema/buildSpec';
+import { blockAt } from '@/core/schema/voxelModel';
+import { lintHouse } from '@/core/analysis/buildingLints';
+import { battlementSymmetric, circle } from '@/core/geometry';
+import { towerCentre } from '@/core/generator/house/roundTower';
 
-const spec = (kind: BuildingType, patch: Partial<BuildSpec> = {}): BuildSpec => ({ ...DEFAULT_HOUSE_SPEC, kind, ...patch });
+const spec = (kind: BuildSpec['kind'], over: Partial<BuildSpec> = {}): BuildSpec => ({ ...DEFAULT_HOUSE_SPEC, kind, ...over, options: {} });
+const ids = (s: BuildSpec) => new Set(countMaterials(generateBuilding(s)).byBlock.map((b) => b.blockId));
 
-describe.each(['tree', 'market_stall', 'station'] as const)('Bauwerkstyp %s', (kind) => {
-  it('alle Kombinationen sind gültig, in den Grenzen und ohne schwebende Blöcke', () => {
-    const failures: string[] = [];
-    for (const size of BUILD_SIZES)
-      for (const style of BUILD_STYLES)
-        for (const materialTheme of MATERIAL_THEMES)
-          for (const colorTheme of COLOR_THEMES)
-            for (const detailLevel of DETAIL_LEVELS) {
-              const s = spec(kind, { size, style, materialTheme, colorTheme, detailLevel });
-              const m = generateBuilding(s);
-              const issues = [...collectVoxelIssues(m)];
-              const floating = countFloatingBlocks(m);
-              if (floating > 0) issues.push(`${floating} schwebende Blöcke`);
-              if (issues.length > 0) failures.push(`${size}/${style}/${materialTheme}/${colorTheme}/${detailLevel}: ${issues.join('; ')}`);
-            }
-    expect(failures).toEqual([]);
-  });
-
-  it('ist deterministisch; Seeds variieren Details', () => {
-    const a = generateBuilding(spec(kind));
-    expect(generateBuilding(spec(kind)).hash).toBe(a.hash);
-    const hashes = generateVariants(spec(kind)).map((m) => m.hash);
-    expect(new Set(hashes).size).toBe(3);
-  });
-
-  it('Größe, Stil, Farbe und Schalter verändern das Modell', () => {
-    const base = generateBuilding(spec(kind));
-    for (const patch of [
-      { size: 'small' as const },
-      { size: 'large' as const },
-      { colorTheme: 'ice_blue' as const },
-      { options: { snow: false } },
-      { options: { lights: false } },
-    ]) {
-      expect(generateBuilding(spec(kind, patch)).hash, JSON.stringify(patch)).not.toBe(base.hash);
+describe.each(['tree', 'market_stall', 'station', 'tower'] as const)('Bauwerkstyp %s', (kind) => {
+  it.each(['small', 'medium', 'large'] as const)('Größe %s: gültig, ohne Reparaturen, nichts schwebt, Resolver-Fixpunkt', (size) => {
+    for (const theme of ['none', 'christmas'] as const) {
+      const r = generateBuildingWithReport(spec(kind, { size, theme, style: 'rustic' }));
+      expect(r.repairs, `${kind} ${size} ${theme}`).toEqual([]);
+      expect(floatingBlocks(r.model), `${kind} ${size} ${theme}`).toBe(0);
+      expect(resolverChanges(r.model)).toBe(0);
     }
+  });
+
+  it('funktioniert in allen Stilen', () => {
+    for (const style of STYLE_IDS) expect(generateBuildingWithReport(spec(kind, { style })).repairs, style).toEqual([]);
   });
 });
 
 describe('Weihnachtsbaum', () => {
-  it('Stamm durchgehend, Stufen verjüngen sich, Stern ganz oben', () => {
-    for (const size of BUILD_SIZES) {
-      const s = spec('tree', { size });
-      const { builder, layout } = buildTree(s);
-      const m = builder.toModel(s);
-      const c = layout.center;
-      for (let y = 1; y <= layout.trunkTop; y++) expect(blockIdOf(blockAt(m, c, y, c)), `${size} y=${y}`).toBe('minecraft:spruce_log');
-      expect(idAt(m, c, layout.starY, c)).toBe('minecraft:gold_block');
-      // Within each tier the radius shrinks; overall the top is narrower than the bottom.
-      const radii = layout.radiusAt.filter((r) => r > 0);
-      expect(radii[0]!).toBeGreaterThan(radii.at(-1)!);
-      for (let i = 0; i < layout.tierStarts.length - 1; i++) {
-        expect(layout.radiusAt[layout.tierStarts[i + 1]!]!).toBeLessThanOrEqual(layout.radiusAt[layout.tierStarts[i]!]!);
+  it('Stufenprofil mit Stamm, Stern aus Gold, Kugeln und Lichtern im persistenten Laub', () => {
+    const m = generateBuilding(spec('tree', { size: 'large', detailLevel: 3 }));
+    const set = new Set(m.palette.map(blockIdOf));
+    for (const id of ['minecraft:spruce_log', 'minecraft:gold_block', 'minecraft:end_rod', 'minecraft:ochre_froglight']) expect(set, id).toContain(id);
+    expect(m.palette.filter((s) => s.includes('_leaves[')).every((s) => propsOf(s).persistent === 'true')).toBe(true);
+    // The radius grows towards the bottom: the widest leaf layer is in the lower half.
+    const { width, height, length } = m.dimensions;
+    let widestY = 0;
+    let widest = 0;
+    for (let y = 1; y < height; y++) {
+      let n = 0;
+      for (let x = 0; x < width; x++) for (let z = 0; z < length; z++) if (blockAt(m, x, y, z).includes('spruce_leaves')) n++;
+      if (n > widest) {
+        widest = n;
+        widestY = y;
       }
-      expect(m.dimensions.height).toBeLessThanOrEqual(32);
     }
+    expect(widestY).toBeLessThan(height / 2);
   });
 
-  it('enthält Schmuck, Lichter und Geschenke im festlichen Stil', () => {
-    const m = generateBuilding(spec('tree', { detailLevel: 3 }));
-    const ids = new Set(countMaterials(m).byBlock.map((b) => b.blockId));
-    expect(ids).toContain('minecraft:glowstone');
-    expect(ids).toContain('minecraft:red_wool');
-    expect(ids).toContain('minecraft:snow_block');
+  it('ohne Thema ist der Baum natürlich (keine Kugeln, kein Stern)', () => {
+    const set = ids(spec('tree', { theme: 'none' }));
+    expect(set.has('minecraft:red_wool')).toBe(false);
+    expect(set.has('minecraft:gold_block')).toBe(false);
   });
 });
 
 describe('Marktstand', () => {
-  it('Anzahl Buden je Größe, Theke, freier Platz dahinter, Dach über allem', () => {
-    for (const [size, booths] of [
-      ['small', 1],
-      ['medium', 2],
-      ['large', 3],
-    ] as const) {
-      const s = spec('market_stall', { size });
-      const { builder, layout } = buildMarketStall(s);
-      const m = builder.toModel(s);
-      expect(layout.booths).toHaveLength(booths);
-      for (const b of layout.booths) {
-        const mid = Math.round((b.x0 + b.x1) / 2);
-        expect(isAir(m, mid, layout.counterY, layout.front)).toBe(false); // counter
-        expect(isAir(m, mid, layout.counterY + 1, layout.front)).toBe(true); // serving hatch
-        expect(isAir(m, mid, 3, layout.front)).toBe(true); // open front
-        expect(isAir(m, mid, 1, layout.front + 1)).toBe(true); // vendor space
-        expect(isAir(m, mid, 2, layout.front + 1)).toBe(true);
-        let roofed = false;
-        for (let y = layout.roofBaseY; y < m.dimensions.height; y++) if (!isAir(m, mid, y, layout.front + 1)) roofed = true;
-        expect(roofed).toBe(true);
-      }
-      // Striped roof: two alternating roof colours.
-      expect(countMaterials(m).byBlock.map((e) => e.blockId)).toEqual(expect.arrayContaining(['minecraft:red_wool', 'minecraft:white_wool']));
-    }
+  it('Buden mit rot-weißer Treppenmarkise, Theke, Waren und Laternen über der Theke', () => {
+    const set = ids(spec('market_stall', { size: 'large' }));
+    for (const id of ['minecraft:red_nether_brick_stairs', 'minecraft:smooth_quartz_stairs', 'minecraft:lantern', 'minecraft:barrel']) expect(set, id).toContain(id);
   });
 });
 
 describe('Bahnhof', () => {
-  it('Gleise mit echten Schienen auf festem Grund, Bahnsteig, Gebäude mit Tür zum Bahnsteig', () => {
-    for (const size of BUILD_SIZES) {
-      const s = spec('station', { size });
-      const { builder, layout } = buildStation(s);
-      const m = builder.toModel(s);
-      expect(layout.tracks).toHaveLength(size === 'large' ? 2 : 1);
-      for (const t of layout.tracks)
-        for (let x = 0; x < m.dimensions.width; x++) {
-          expect(blockAt(m, x, 1, t.z)).toBe('minecraft:rail[shape=east_west,waterlogged=false]');
-          expect(isAir(m, x, 0, t.z)).toBe(false); // rails need a solid block below
-        }
-      const d = layout.door;
-      for (let y = d.yFrom; y <= d.yTo; y++) {
-        expect(isAir(m, d.x, y, d.z)).toBe(true);
-        expect(isAir(m, d.x, y, d.z - 1)).toBe(true); // platform side
-        expect(isAir(m, d.x, y, d.z + 1)).toBe(true); // inside
-      }
-      expect(isAir(m, d.x, 1, d.z - 1)).toBe(false); // platform surface in front of the door
-      const p = layout.platform;
-      expect(idAt(m, p.x0 + 3, 1, p.z0)).toBe('minecraft:yellow_concrete');
-      for (const x of layout.canopyPosts) expect(isAir(m, x, 6, p.z0 + 1)).toBe(false); // canopy roof
-    }
+  it('Gleis auf festem Grund, Bahnsteigkante, Bahnsteigdach mit Laternen, Uhr, Abschnittsdächer', () => {
+    const r = generateBuildingWithReport(spec('station', { size: 'large', style: 'medieval' }));
+    const m = r.model;
+    expect(m.palette.filter((s) => blockIdOf(s) === 'minecraft:rail')).toEqual(['minecraft:rail[shape=east_west,waterlogged=false]']);
+    const set = new Set(m.palette.map(blockIdOf));
+    for (const id of ['minecraft:yellow_concrete', 'minecraft:lantern', 'minecraft:black_concrete', 'minecraft:white_concrete']) expect(set, id).toContain(id);
+    // Section roofs: a hall and two lower wings instead of one giant roof.
+    expect(r.house!.sections.filter((s) => ['main', 'wing_left', 'wing_right'].includes(s.id))).toHaveLength(3);
+    expect(r.house!.roof.ridgeY.main!).toBeGreaterThan(r.house!.roof.ridgeY.wing_left!);
   });
 });
 
-describe('Hinweise zu Optionen', () => {
-  it('meldet Haus-Optionen, die bei anderen Bauwerken keine Wirkung haben', () => {
-    expect(generationNotes(spec('tree', { options: { tower: 'left', width: 15 } })).join()).toMatch(/Turm.*Breite|Breite.*Turm/);
-    expect(generationNotes(spec('house', { options: { tower: 'left' } }))).toEqual([]);
+describe('Turm', () => {
+  it('ist deutlich höher als ein Haus', () => {
+    const m = generateBuilding(spec('tower', { size: 'large', style: 'medieval' }));
+    expect(m.dimensions.height).toBeGreaterThan(24);
+  });
+
+  it('alle Stile und Größen: ohne Reparaturen und ohne Lint-Befund (Tür komplett, Laterne am Eingang)', () => {
+    for (const style of STYLE_IDS)
+      for (const size of ['small', 'medium', 'large', 'huge'] as const) {
+        const r = generateBuildingWithReport(spec('tower', { style, size }));
+        expect(r.repairs, `${style} ${size}`).toEqual([]);
+        expect(lintHouse(r.model, r.house!), `${style} ${size}`).toEqual([]);
+        expect(r.house!.openings.doors, `${style} ${size}`).toHaveLength(1);
+      }
+  });
+
+  it('Rundturm: Wandring ist der dicke Kreis der Geometriebibliothek, Zinnen nur bei symmetrischem Durchmesser', () => {
+    for (const size of ['small', 'medium', 'large', 'huge'] as const) {
+      const r = generateBuildingWithReport(spec('tower', { style: 'medieval', size, theme: 'none' }));
+      const mass = r.house!.plan.masses[0]!;
+      const { cx, cz, r: radius, spec: round } = towerCentre(mass);
+      expect(round.roof).toBe(battlementSymmetric(round.d) ? 'battlement' : 'cone');
+      // A storey row between bands: every ring cell is wall or window, inside is free.
+      const y = r.house!.plan.plinth + 2;
+      const ring = circle(round.d, 'thick');
+      for (let x = cx - radius; x <= cx + radius; x++)
+        for (let z = cz - radius; z <= cz + radius; z++) {
+          const s = blockAt(r.model, x, y, z);
+          if (ring.has(x - cx + radius, z - cz + radius)) expect(s, `${size} ${x},${z}`).not.toBe('minecraft:air');
+        }
+    }
+  });
+
+  it('echte Böden und eine Leiter, die an der Wand lehnt', () => {
+    const r = generateBuildingWithReport(spec('tower', { style: 'rustic', size: 'medium', theme: 'none' }));
+    expect(r.model.palette.some((s) => s.startsWith('minecraft:ladder['))).toBe(true);
+    const { cx, cz } = towerCentre(r.house!.plan.masses[0]!);
+    const plan = r.house!.plan;
+    for (let k = 1; k < plan.masses[0]!.floors; k++) expect(blockAt(r.model, cx, plan.plinth + k * plan.floorHeight, cz)).not.toBe('minecraft:air');
+  });
+});
+
+describe('Haus mit Rundturm', () => {
+  it('alle Stile: der Turm steht an einer Ecke, ohne Reparaturen und ohne Lint-Befund', () => {
+    for (const style of STYLE_IDS)
+      for (const towerPosition of ['front_left', 'back_right'] as const) {
+        const t = generateBuildingWithReport({ ...spec('house', { style, size: 'large', seed: 2 }), options: { tower: 'round', towerPosition } });
+        expect(t.house!.plan.masses.some((m) => m.round), style).toBe(true);
+        expect(t.repairs, style).toEqual([]);
+        expect(lintHouse(t.model, t.house!), `${style} ${towerPosition}`).toEqual([]);
+      }
+  });
+
+  it('eine belegte Ecke wird mit Hinweis gewechselt', () => {
+    const r = generateBuildingWithReport({ ...spec('house', { style: 'rustic', size: 'small', seed: 1 }), options: { tower: 'round', towerPosition: 'front_left' } });
+    expect(r.house!.plan.masses.some((m) => m.round)).toBe(true);
+    expect(r.notes.some((n) => n.startsWith('Rundturm an eine freie Ecke verschoben'))).toBe(true);
   });
 });

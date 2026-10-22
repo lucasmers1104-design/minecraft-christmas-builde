@@ -19,15 +19,25 @@ import { buildVoxelMesh } from '@/components/preview/buildVoxelMesh';
 
 const model = generateBuilding(DEFAULT_HOUSE_SPEC);
 const gold = blockState('gold_block');
+// The upper corner of the bounding box is free air (the roof sits in the middle).
+const corner = { x: 0, y: model.dimensions.height - 1, z: 0 };
+/** Topmost block above the centre of the house (ridge). */
+function ridgeCell() {
+  const x = Math.floor(model.dimensions.width / 2);
+  const z = Math.floor(model.dimensions.length / 2);
+  for (let y = model.dimensions.height - 1; y >= 0; y--) if (blockAtCell(model, { x, y, z }) !== 'minecraft:air') return { x, y, z };
+  throw new Error('kein Dach');
+}
 
 describe('Editor-Operationen', () => {
   it('Block setzen ergibt ein valides, neu gehashtes Modell; Rückgängig stellt den Hash wieder her', () => {
     const history = new EditHistory();
-    const cmd = setBlockCommand(model, { x: 0, y: 0, z: 0 }, gold)!;
+    expect(blockAtCell(model, corner)).toBe('minecraft:air');
+    const cmd = setBlockCommand(model, corner, gold)!;
     const edited = history.execute(model, cmd);
     expect(collectVoxelIssues(edited)).toEqual([]);
     expect(edited.hash).not.toBe(model.hash);
-    expect(blockAtCell(edited, { x: 0, y: 0, z: 0 })).toBe(gold);
+    expect(blockAtCell(edited, corner)).toBe(gold);
     expect(countMaterials(edited).totalBlocks).toBe(countMaterials(model).totalBlocks + 1);
     const undone = history.undo(edited);
     expect(undone.hash).toBe(model.hash);
@@ -38,16 +48,18 @@ describe('Editor-Operationen', () => {
   });
 
   it('Entfernen, Ersetzen-Alle und Bereich füllen', () => {
-    const roof = blockState('dark_oak_planks');
+    // The most common plain full block of the house (no block state properties).
+    const roof = countMaterials(model).entries.find((e) => !e.state.includes('['))!.state;
     const history = new EditHistory();
-    let m = history.execute(model, removeBlockCommand(model, { x: 7, y: 0, z: 0 })!); // path block
-    expect(blockAtCell(m, { x: 7, y: 0, z: 0 })).toBe('minecraft:air');
+    const ridge = ridgeCell();
+    let m = history.execute(model, removeBlockCommand(model, ridge)!);
+    expect(blockAtCell(m, ridge)).toBe('minecraft:air');
     const replace = replaceAllCommand(m, roof, blockState('red_terracotta'))!;
     expect(replace.changes.length).toBe(countMaterials(model).entries.find((e) => e.state === roof)!.count);
     m = history.execute(m, replace);
     expect(m.palette).not.toContain(roof);
-    const goldBefore = countMaterials(m).entries.find((e) => e.state === gold)?.count ?? 0; // tree star
-    m = history.execute(m, fillBoxCommand(m, { x: 0, y: 0, z: 0 }, { x: 1, y: 1, z: 1 }, gold)!);
+    const goldBefore = countMaterials(m).entries.find((e) => e.state === gold)?.count ?? 0;
+    m = history.execute(m, fillBoxCommand(m, { x: 0, y: corner.y - 1, z: 0 }, { x: 1, y: corner.y, z: 1 }, gold)!);
     expect(countMaterials(m).entries.find((e) => e.state === gold)!.count).toBe(goldBefore + 8);
     // Undo everything in order.
     m = history.undo(history.undo(history.undo(m)));
@@ -65,9 +77,9 @@ describe('Editor-Operationen', () => {
     expect(() => setBlockCommand(model, { x: 0, y: 0, z: 0 }, 'minecraft:bedrock')).toThrow(EditError);
     expect(() => setBlockCommand(model, { x: 0, y: 0, z: 0 }, 'minecraft:spruce_log')).toThrow(EditError);
     expect(() => setBlockCommand(model, { x: -1, y: 0, z: 0 }, gold)).toThrow(/außerhalb/);
-    expect(() => setBlockCommand(model, { x: 0, y: 99, z: 0 }, gold)).toThrow(/außerhalb/);
-    expect(setBlockCommand(model, { x: 0, y: 0, z: 0 }, 'minecraft:air')).toBeNull(); // no-op
-    const cmd = setBlockCommand(model, { x: 0, y: 0, z: 0 }, gold)!;
+    expect(() => setBlockCommand(model, { x: 0, y: model.dimensions.height, z: 0 }, gold)).toThrow(/außerhalb/);
+    expect(setBlockCommand(model, corner, 'minecraft:air')).toBeNull(); // no-op
+    const cmd = setBlockCommand(model, corner, gold)!;
     const edited = applyCommand(model, cmd);
     expect(() => applyCommand(edited, cmd)).toThrow(/passt nicht mehr/);
   });

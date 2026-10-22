@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { buildSpecSchema } from '@/core/schema/buildSpec';
+import { migrateSpecLike } from '@/core/schema/migrateSpec';
 import {
   collectVoxelIssues,
   MAX_DIMENSIONS,
@@ -64,7 +65,8 @@ export const voxelTransportSchema = z
     indexEncoding: z.enum(INDEX_ENCODINGS),
     indices: z.string().max(MAX_INDICES_BASE64_LENGTH),
     origin: z.object({ x: z.literal(0), y: z.literal(0), z: z.literal(0) }).strict(),
-    spec: buildSpecSchema,
+    // Old transports (saved before BuildSpec v2) carry a v1 spec; it is migrated before validation.
+    spec: z.preprocess(migrateSpecLike, buildSpecSchema),
     hash: z.string().regex(/^[0-9a-f]{64}$/),
   })
   .strict();

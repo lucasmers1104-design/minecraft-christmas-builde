@@ -1,5 +1,6 @@
 import type { AiPlanResponse } from '@/app/api/ai/plan/route';
 import type { AiStatus } from '@/lib/ai/ollamaPlanner';
+import { planSchema, type BuildPlan } from '@/core/ai/planSchema';
 
 export type { AiStatus };
 
@@ -10,6 +11,10 @@ export interface AiPlanState {
   explanation: string;
   unsupported: string[];
   patch: AiPlanResponse['patch'];
+  /** The checked catalogue plan (shown field by field). */
+  plan?: BuildPlan;
+  /** 1 = valid at once, 2 = after the repair round. */
+  attempts?: number;
 }
 
 export async function fetchAiStatus(): Promise<AiStatus> {
@@ -47,5 +52,8 @@ export async function requestAiPlan(description: string, signal?: AbortSignal): 
     explanation: body.plan.explanation,
     unsupported: body.plan.unsupported,
     patch: body.patch,
+    // Shown field by field only if it is a complete, valid plan.
+    ...(planSchema.safeParse(body.plan).success ? { plan: body.plan } : {}),
+    attempts: body.attempts ?? 1,
   };
 }

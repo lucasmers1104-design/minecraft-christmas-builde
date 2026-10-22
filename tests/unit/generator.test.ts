@@ -1,341 +1,216 @@
 import { describe, expect, it } from 'vitest';
 import { countMaterials } from '@/core/analysis/materialCounts';
-import { checkBlockState } from '@/core/blocks/registry';
-import { BuildLimitError, buildHouse, resolveHouseParameters } from '@/core/generator/buildHouse';
-import { generateBuilding, generateVariants } from '@/core/generator/generateBuilding';
-import {
-  BUILD_SIZES,
-  BUILD_STYLES,
-  buildSpecSchema,
-  COLOR_THEMES,
-  DEFAULT_HOUSE_SPEC,
-  DETAIL_LEVELS,
-  MATERIAL_THEMES,
-  type BuildSpec,
-} from '@/core/schema/buildSpec';
-import { collectVoxelIssues, MAX_DIMENSIONS } from '@/core/schema/voxelModel';
-import { houseStructureProblems, idAt, isAir, isGlass } from '../helpers/houseInspection';
+import { floatingBlocks, lintHouse } from '@/core/analysis/buildingLints';
+import { blockIdOf, checkBlockState, propsOf } from '@/core/blocks/registry';
+import { generateBuilding, generateBuildingWithReport, generateVariants } from '@/core/generator/generateBuilding';
+import { floorY, storeyRect } from '@/core/generator/house/plan';
+import { DEFAULT_HOUSE_SPEC, STYLE_IDS, type BuildSpec } from '@/core/schema/buildSpec';
+import { blockAt, MAX_DIMENSIONS, type VoxelModel } from '@/core/schema/voxelModel';
 
-const spec = (patch: Partial<BuildSpec> = {}): BuildSpec => ({ ...DEFAULT_HOUSE_SPEC, ...patch });
+const spec = (over: Partial<BuildSpec> = {}, options: BuildSpec['options'] = {}): BuildSpec => ({ ...DEFAULT_HOUSE_SPEC, ...over, options });
+const ids = (m: VoxelModel) => new Set(countMaterials(m).byBlock.map((b) => b.blockId));
+const has = (m: VoxelModel, fragment: string) => [...ids(m)].some((id) => id.includes(fragment));
 
-describe('Determinismus', () => {
-  it('gleiche Spec + gleicher Seed => bit-identische Blockdaten und Hash', () => {
-    const a = generateBuilding(spec());
-    const b = generateBuilding(spec());
-    expect(a.dimensions).toEqual(b.dimensions);
-    expect(a.palette).toEqual(b.palette);
-    expect(Buffer.from(a.indices.buffer).equals(Buffer.from(b.indices.buffer))).toBe(true);
-    expect(a.hash).toBe(b.hash);
-    expect(a.hash).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it('Seeds 1, 2, 3 ergeben reproduzierbar unterschiedliche, gültige Varianten', () => {
-    const [v1, v2, v3] = generateVariants(spec({ seed: 1 }));
-    expect(new Set([v1!.hash, v2!.hash, v3!.hash]).size).toBe(3);
-    for (const v of [v1!, v2!, v3!]) {
-      expect(collectVoxelIssues(v)).toEqual([]);
-      expect(houseStructureProblems(v, buildHouse(v.spec).layout)).toEqual([]);
-    }
-    expect([v1!.spec.seed, v2!.spec.seed, v3!.spec.seed]).toEqual([1, 2, 3]);
-    // Same seed again => same result.
-    expect(generateBuilding(spec({ seed: 2 })).hash).toBe(v2!.hash);
-  });
-});
-
-describe('Weihnachtshaus-Struktur (Standard-Spec)', () => {
-  const { builder, layout } = buildHouse(spec());
-  const model = builder.toModel(spec());
-
-  it('hat Fundament, vier Wände, Eingang, Fenster, Dach, Schornstein und keinen massiven Innenraum', () => {
-    expect(houseStructureProblems(model, layout)).toEqual([]);
-  });
-
-  it('nutzt nur gültige Blockstates und bleibt in den MVP-Grenzen', () => {
-    for (const state of model.palette) expect(checkBlockState(state)).toEqual({ ok: true, canonical: state });
-    expect(model.dimensions.width).toBeLessThanOrEqual(MAX_DIMENSIONS.width);
-    expect(model.dimensions.height).toBeLessThanOrEqual(MAX_DIMENSIONS.height);
-    expect(model.dimensions.length).toBeLessThanOrEqual(MAX_DIMENSIONS.length);
-    expect(model.indices.length).toBe(model.dimensions.width * model.dimensions.height * model.dimensions.length);
-    expect(model.palette[0]).toBe('minecraft:air');
-  });
-
-  it('enthält Weihnachtsdetails aus Vanilla-Blöcken', () => {
-    const ids = new Set(countMaterials(model).byBlock.map((b) => b.blockId));
-    for (const id of [
-      'minecraft:red_wool',
-      'minecraft:spruce_leaves',
-      'minecraft:snow_block',
-      'minecraft:glowstone',
-      'minecraft:glass',
-      'minecraft:bricks',
-    ])
-      expect(ids).toContain(id);
-  });
-
-  it('Mittelgröße hat die geplante Grundfläche 13 x 11', () => {
-    expect(layout.x1 - layout.x0 + 1).toBe(13);
-    expect(layout.z1 - layout.z0 + 1).toBe(11);
-  });
-});
-
-describe('alle Kombinationen aus Größe, Stil, Material, Farbe, Detailgrad', () => {
-  const combos: BuildSpec[] = [];
-  for (const size of BUILD_SIZES)
-    for (const style of BUILD_STYLES)
-      for (const materialTheme of MATERIAL_THEMES)
-        for (const colorTheme of COLOR_THEMES)
-          for (const detailLevel of DETAIL_LEVELS) combos.push(spec({ size, style, materialTheme, colorTheme, detailLevel }));
-
-  it(`erzeugen ${combos.length} strukturell gültige Häuser`, () => {
-    const failures: string[] = [];
-    for (const s of combos) {
-      for (const seed of [1, 2, 3]) {
-        const withSeed = { ...s, seed };
-        const { builder, layout } = buildHouse(withSeed);
-        const model = builder.toModel(withSeed);
-        const problems = [...collectVoxelIssues(model), ...houseStructureProblems(model, layout)];
-        if (problems.length > 0) failures.push(`${JSON.stringify({ ...withSeed, description: undefined })}: ${problems.slice(0, 3).join(' | ')}`);
+describe('Haus: alle Stile, Größen und Themen', () => {
+  it.each(STYLE_IDS.flatMap((style) => (['small', 'medium', 'large'] as const).flatMap((size) => (['none', 'christmas'] as const).map((theme) => [style, size, theme] as const))))(
+    '%s / %s / %s: gültig, ohne Reparaturen und ohne Lint-Befund',
+    (style, size, theme) => {
+      for (const seed of [1, 2]) {
+        const r = generateBuildingWithReport(spec({ style, size, theme, seed }));
+        expect(r.repairs, `${style} ${size} ${theme} ${seed}`).toEqual([]);
+        for (const state of r.model.palette) expect(checkBlockState(state, '1.21.11').ok, state).toBe(true);
+        expect(lintHouse(r.model, r.house!), `${style} ${size} ${theme} ${seed}`).toEqual([]);
       }
+    },
+  );
+
+  it('riesige Häuser und viele Geschosse passen in die Grenzen und bleiben gültig', () => {
+    for (const style of ['medieval', 'modern', 'japanese'] as const) {
+      const r = generateBuildingWithReport(spec({ style, size: 'huge', seed: 5 }));
+      expect(r.repairs).toEqual([]);
+      expect(lintHouse(r.model, r.house!)).toEqual([]);
+      const d = r.model.dimensions;
+      expect(d.width <= MAX_DIMENSIONS.width && d.height <= MAX_DIMENSIONS.height && d.length <= MAX_DIMENSIONS.length).toBe(true);
     }
-    expect(failures).toEqual([]);
+    const tall = generateBuildingWithReport(spec({ style: 'rustic', seed: 2 }, { floors: 6, width: 15, depth: 13 }));
+    expect(tall.repairs).toEqual([]);
+    expect(lintHouse(tall.model, tall.house!)).toEqual([]);
   });
 
-  it('jede einzelne Einstellung verändert das Blockmodell messbar', () => {
-    const base = generateBuilding(spec());
-    const variations: Partial<BuildSpec>[] = [
-      { size: 'small' },
-      { size: 'large' },
-      { style: 'fairytale' },
-      { style: 'realistic' },
-      { materialTheme: 'oak' },
-      { materialTheme: 'stone' },
-      { colorTheme: 'ice_blue' },
-      { colorTheme: 'natural' },
-      { detailLevel: 1 },
-      { detailLevel: 2 },
-    ];
-    for (const patch of variations) {
-      expect(generateBuilding(spec(patch)).hash, JSON.stringify(patch)).not.toBe(base.hash);
-    }
-    expect(generateBuilding(spec({ size: 'small' })).dimensions.width).toBeLessThan(base.dimensions.width);
-    expect(generateBuilding(spec({ size: 'large' })).dimensions.width).toBeGreaterThan(base.dimensions.width);
-    expect(generateBuilding(spec({ style: 'fairytale' })).dimensions.height).toBeGreaterThan(base.dimensions.height);
+  it('ist deterministisch; Seeds ergeben verschiedene Varianten', () => {
+    expect(generateBuilding(DEFAULT_HOUSE_SPEC).hash).toBe(generateBuilding(DEFAULT_HOUSE_SPEC).hash);
+    const hashes = generateVariants(DEFAULT_HOUSE_SPEC).map((m) => m.hash);
+    expect(new Set(hashes).size).toBe(3);
   });
 
-  it('der Generator liest den Freitext nicht selbst (er wirkt nur über Parser bzw. KI-Plan in der Spec)', () => {
-    const a = generateBuilding(spec({ description: 'irgendwas' }));
-    const b = generateBuilding(spec({ description: 'etwas ganz anderes' }));
-    expect(a.hash).toBe(b.hash);
+  it('jeder Stil sieht anders aus (andere Hauptmaterialien)', () => {
+    const signatures = STYLE_IDS.map((style) => {
+      const m = generateBuilding(spec({ style, theme: 'none', seed: 1 }));
+      return countMaterials(m)
+        .byBlock.slice(0, 6)
+        .map((b) => b.blockId)
+        .sort()
+        .join(',');
+    });
+    expect(new Set(signatures).size).toBe(STYLE_IDS.length);
   });
 });
 
-describe('Eingabevalidierung', () => {
-  it('lehnt ungültige Specs ab', () => {
-    const bad: unknown[] = [
-      {},
-      { ...DEFAULT_HOUSE_SPEC, kind: 'castle' },
-      { ...DEFAULT_HOUSE_SPEC, seed: -1 },
-      { ...DEFAULT_HOUSE_SPEC, seed: 1.5 },
-      { ...DEFAULT_HOUSE_SPEC, seed: 2 ** 31 },
-      { ...DEFAULT_HOUSE_SPEC, detailLevel: 4 },
-      { ...DEFAULT_HOUSE_SPEC, targetMinecraftVersion: '1.20.4' },
-      { ...DEFAULT_HOUSE_SPEC, description: 'x'.repeat(601) },
-      { ...DEFAULT_HOUSE_SPEC, extra: true },
-      { ...DEFAULT_HOUSE_SPEC, schemaVersion: 2 },
-    ];
-    for (const input of bad) expect(buildSpecSchema.safeParse(input).success, JSON.stringify(input).slice(0, 80)).toBe(false);
-    expect(() => generateBuilding({ ...DEFAULT_HOUSE_SPEC, seed: -5 })).toThrow();
-  });
-
-  it('alle Bauwerkstypen sind implementiert; unbekannte Typen werden abgelehnt', () => {
-    for (const kind of ['house', 'tree', 'market_stall', 'station'] as const) {
-      expect(collectVoxelIssues(generateBuilding(spec({ kind })))).toEqual([]);
-    }
-    expect(() => generateBuilding({ ...spec(), kind: 'castle' as never })).toThrow();
-  });
-});
-
-describe('Strukturprüfung erkennt kaputte Häuser (Gegenprobe)', () => {
-  const { builder, layout } = buildHouse(spec());
-  const model = builder.toModel(spec());
-  const withBlock = (x: number, y: number, z: number, state: string) => {
-    let index = model.palette.indexOf(state);
-    const palette = [...model.palette];
-    if (index === -1) {
-      index = palette.length;
-      palette.push(state);
-    }
-    const indices = model.indices.slice();
-    indices[x + model.dimensions.width * (z + model.dimensions.length * y)] = index;
-    return { ...model, palette, indices };
-  };
-
-  it('Loch in der Wand, blockierter Eingang, schwebender Block, verdecktes Fenster', () => {
-    const air = 'minecraft:air';
-    const planks = 'minecraft:spruce_planks';
-    expect(houseStructureProblems(withBlock(layout.x0, 1, layout.zc + 3, air), layout).join()).toMatch(/Loch in der Wand/);
-    expect(houseStructureProblems(withBlock(layout.door.x, 1, layout.door.z, planks), layout).join()).toMatch(/Eingang blockiert/);
-    expect(houseStructureProblems(withBlock(layout.xc, layout.wallTop - 1, layout.zc, planks), layout).join()).toMatch(/schwebende/);
-    const pane = layout.windows.find((w) => w.wall === 'front')!.cells[0]!;
-    expect(houseStructureProblems(withBlock(pane.x, pane.y, pane.z + 1, planks), layout).join()).toMatch(/innen verdeckt/);
-  });
-});
-
-describe('Feinparameter (options)', () => {
-  const base = generateBuilding(spec());
-  const withOptions = (options: BuildSpec['options']) => spec({ options });
-
-  it.each([
-    ['Breite 21', { width: 21 }],
-    ['Tiefe 15', { depth: 15 }],
-    ['Wandhöhe 6', { wallHeight: 6 }],
-    ['steiles Dach', { roofShape: 'steep' as const }],
-    ['wenige Fenster', { windows: 'few' as const }],
-    ['viele Fenster', { windows: 'many' as const }],
-    ['ohne Schnee', { snow: false }],
-    ['ohne Schornstein', { chimney: false }],
-    ['ohne Licht', { lights: false }],
-    ['ohne Girlande', { garland: false }],
-    ['ohne Baum', { christmasTree: false }],
-    ['ohne Geschenke', { presents: false }],
-    ['Birkenrahmen', { frameWood: 'birch' as const }],
-    ['Ziegelwände', { materials: { wall: 'bricks' as const } }],
-    ['rotes Dach', { materials: { roof: 'red_terracotta' as const } }],
-    ['Steinboden', { materials: { floor: 'smooth_stone' as const } }],
-    ['Fundament', { materials: { foundation: 'stone_bricks' as const } }],
-    ['blaue Akzente', { materials: { accent: 'blue_wool' as const } }],
-  ] as [string, BuildSpec['options']][])('%s verändert das Modell und bleibt strukturell gültig', (_name, options) => {
-    const s = withOptions(options);
-    const { builder, layout } = buildHouse(s);
-    const model = builder.toModel(s);
-    expect(model.hash).not.toBe(base.hash);
-    expect(houseStructureProblems(model, layout, { chimney: options.chimney !== false })).toEqual([]);
-  });
-
-  it('Maße aus den Optionen landen exakt im Modell', () => {
-    const { layout } = buildHouse(withOptions({ width: 21, depth: 9, wallHeight: 6 }));
-    expect(layout.x1 - layout.x0 + 1).toBe(21);
-    expect(layout.z1 - layout.z0 + 1).toBe(9);
-    expect(layout.wallTop).toBe(6);
-  });
-
-  it('Material-Wünsche erscheinen als echte Blöcke', () => {
-    const m = generateBuilding(withOptions({ materials: { wall: 'bricks', roof: 'red_terracotta' }, snow: false }));
-    expect(m.palette).toContain('minecraft:bricks');
-    expect(m.palette).toContain('minecraft:red_terracotta');
-    expect(m.palette).not.toContain('minecraft:snow_block');
-  });
-
-  it('die größte Kombination passt seit den neuen Grenzen (Höhe 384) ins Volumen', () => {
-    expect(() => generateBuilding(withOptions({ depth: 25, wallHeight: 8, roofShape: 'steep' }))).not.toThrow();
-    expect(new BuildLimitError('x').name).toBe('BuildLimitError');
-  });
-
-  it('alle Maß-Extreme innerhalb der Grenzen sind gültig (Satteldach)', () => {
-    for (const width of [7, 33])
-      for (const depth of [5, 25])
-        for (const wallHeight of [3, 8]) {
-          const s = withOptions({ width, depth, wallHeight });
-          const { builder, layout } = buildHouse(s);
-          expect(houseStructureProblems(builder.toModel(s), layout), `${width}x${depth}x${wallHeight}`).toEqual([]);
-        }
-  });
-
-  it('ungerade Maße werden im Schema erzwungen', () => {
-    expect(buildSpecSchema.safeParse(withOptions({ width: 14 })).success).toBe(false);
-    expect(buildSpecSchema.safeParse(withOptions({ depth: 4 })).success).toBe(false);
-    expect(buildSpecSchema.safeParse(withOptions({ materials: { wall: 'bedrock' as never } })).success).toBe(false);
-  });
-});
-
-describe('Phase 4: Bauteile (Turm, Anbau, Vordach, Hecke, Walmdach)', () => {
-  const variants: [string, BuildSpec['options']][] = [
-    ['Turm links', { tower: 'left' }],
-    ['Turm rechts', { tower: 'right' }],
-    ['Anbau links', { annex: 'left' }],
+describe('Haus: Bauteile und Feinparameter wirken', () => {
+  const base = spec({ style: 'medieval', size: 'medium', seed: 4 });
+  const options: [string, BuildSpec['options']][] = [
+    ['Breite', { width: 15 }],
+    ['Tiefe', { depth: 13 }],
+    ['Geschosse', { floors: 3 }],
+    ['Dachform Walm', { roofType: 'hip' }],
+    ['Dachform Mansard', { roofType: 'mansard' }],
+    ['Überstand', { overhang: 2 }],
+    ['ohne Gauben', { dormers: 0 }],
+    ['Flügel L', { wings: 'L' }],
+    ['Flügel U', { wings: 'U' }],
     ['Anbau rechts', { annex: 'right' }],
-    ['Vordach', { porch: true }],
-    ['Hecke', { hedge: true }],
-    ['Walmdach', { roofShape: 'hip' }],
-    ['alles zusammen', { tower: 'left', annex: 'right', porch: true, hedge: true }],
-    ['Walmdach + Turm + Vordach', { roofShape: 'hip', tower: 'right', porch: true }],
-    ['steil + Turm', { roofShape: 'steep', tower: 'left' }],
+    ['Fensterfamilie Bogen', { windowFamily: 'arched' }],
+    ['Fensterfamilie Läden', { windowFamily: 'shuttered' }],
+    ['Türfamilie Oberlicht', { doorFamily: 'transom' }],
+    ['Turm', { tower: 'square', towerPosition: 'front_left' }],
+    ['Rundturm', { tower: 'round', towerPosition: 'back_right' }],
+    ['verwinkelt', { symmetry: 'rambling' }],
+    ['Veranda', { porch: true }],
+    ['Schornstein aus', { chimney: false }],
+    ['viele Laternen', { lanternDensity: 'many' }],
+    ['Seelenlaternen', { soulLanterns: true }],
+    ['ohne Garten', { garden: false }],
+    ['Palette', { palette: 'medieval_tudor' }],
+    ['Material Wand', { materials: { wall: 'bricks' } }],
   ];
+  it.each(options)('%s verändert das Modell und bleibt gültig', (_name, o) => {
+    const a = generateBuildingWithReport({ ...base, options: o });
+    expect(a.model.hash).not.toBe(generateBuilding(base).hash);
+    expect(a.repairs).toEqual([]);
+    expect(lintHouse(a.model, a.house!)).toEqual([]);
+  });
 
-  it.each(variants)('%s: gültig in allen Größen, verändert das Modell', (_name, options) => {
-    for (const size of BUILD_SIZES) {
-      const base = generateBuilding(spec({ size }));
-      const s = spec({ size, options });
-      const { builder, layout } = buildHouse(s);
-      const model = builder.toModel(s);
-      expect(collectVoxelIssues(model)).toEqual([]);
-      expect(houseStructureProblems(model, layout), `${size}`).toEqual([]);
-      const params = resolveHouseParameters(s);
-      if (options.annex && params.annex === 'none') {
-        // Too shallow for an annex: skipped with an explanation, model unchanged.
-        expect(params.notes.join()).toMatch(/Anbau/);
-      } else expect(model.hash).not.toBe(base.hash);
+  it('Dachprofil verändert ein Satteldach; bei Dachformen mit festem Querschnitt gibt es einen Hinweis', () => {
+    const gable = generateBuilding({ ...base, options: { roofType: 'gable' } });
+    for (const roofProfile of ['bell', 'standard', 'shallow'] as const) {
+      const r = generateBuildingWithReport({ ...base, options: { roofType: 'gable', roofProfile } });
+      expect(r.model.hash, roofProfile).not.toBe(gable.hash);
+      expect(r.repairs).toEqual([]);
+      expect(lintHouse(r.model, r.house!)).toEqual([]);
     }
+    const gambrel = generateBuildingWithReport({ ...base, options: { roofType: 'gambrel', roofProfile: 'bell' } });
+    expect(gambrel.notes.some((n) => n.startsWith('Dachprofil ohne Wirkung'))).toBe(true);
   });
 
-  it('Turm: Schacht ist vom Haus aus begehbar, Dach ragt über den First', () => {
-    const s = spec({ options: { tower: 'left' } });
-    const { builder, layout } = buildHouse(s);
-    const m = builder.toModel(s);
-    const tower = layout.components.find((c) => c.kind === 'tower')!;
-    // Interior of the tower (centre = house corner) is free at walking height.
-    expect(isAir(m, layout.x0, 1, layout.z0)).toBe(true);
-    expect(isAir(m, layout.x0, 2, layout.z0)).toBe(true);
-    // Doorway towards the main room.
-    expect(isAir(m, layout.x0 + 2, 1, layout.z0 + 1)).toBe(true);
-    // Tower roof is the highest structure.
-    let top = 0;
-    for (let y = 0; y < m.dimensions.height; y++) if (!isAir(m, layout.x0, y, layout.z0)) top = y;
-    expect(top).toBeGreaterThan(layout.roof.ridgeY);
-    expect(tower.x0).toBe(layout.x0 - 3);
+  it('gewählte Fenster- und Türfamilie erscheint am Haus', () => {
+    const r = generateBuildingWithReport({ ...base, options: { windowFamily: 'arched', doorFamily: 'transom' } });
+    const templates = r.house!.openings.templates;
+    expect(templates.some((id) => id.startsWith('W07') || id.startsWith('W17'))).toBe(true);
+    expect(templates[0]).toBe('T02');
   });
 
-  it('Anbau: Durchgang offen, eigenes Dach und Fenster', () => {
-    const s = spec({ options: { annex: 'right' } });
-    const { builder, layout } = buildHouse(s);
-    const m = builder.toModel(s);
-    for (let y = 1; y <= 2; y++) {
-      expect(isAir(m, layout.x1, y, layout.zc)).toBe(true);
-      expect(isAir(m, layout.x1 + 1, y, layout.zc)).toBe(true);
+  it('Erker und Balkon im Obergeschoss in allen Stilen, ohne Reparatur und Lint-Befund', () => {
+    for (const style of STYLE_IDS)
+      for (const size of ['small', 'large'] as const) {
+        const r = generateBuildingWithReport(spec({ style, size, seed: 3 }, { oriel: true, balcony: true, floors: 2 }));
+        const placed = r.house!.openings.templates;
+        expect(placed, `${style} ${size}`).toContain('W09');
+        expect(placed.some((id) => id.startsWith('B01')), `${style} ${size}`).toBe(true);
+        expect(r.repairs).toEqual([]);
+        expect(lintHouse(r.model, r.house!), `${style} ${size}`).toEqual([]);
+      }
+    // The wish implies an upper storey; with one storey fixed there is a note.
+    expect(generateBuildingWithReport(spec({}, { oriel: true })).house!.plan.input.floors).toBe(2);
+    expect(generateBuildingWithReport(spec({}, { oriel: true, floors: 1 })).notes.some((n) => n.includes('Obergeschoss'))).toBe(true);
+  });
+
+  it('echte Geschossdecken: jedes Geschoss hat einen Boden, Treppe oder Leiter verbindet sie', () => {
+    const r = generateBuildingWithReport({ ...base, options: { floors: 3, width: 13, depth: 11 } });
+    const plan = r.house!.plan;
+    const main = plan.masses[0]!;
+    for (let k = 1; k < 3; k++) {
+      const rect = storeyRect(main, k);
+      const y = floorY(plan, k);
+      let floor = 0;
+      for (let x = rect.x0 + 1; x < rect.x1; x++) for (let z = rect.z0 + 1; z < rect.z1; z++) if (blockAt(r.model, x, y, z) !== 'minecraft:air') floor++;
+      expect(floor).toBeGreaterThan((rect.x1 - rect.x0 - 1) * (rect.z1 - rect.z0 - 1) * 0.6);
     }
-    const farX = layout.x1 + 6;
-    expect(isGlass(m, farX, 2, layout.zc)).toBe(true);
-    expect(isAir(m, farX - 2, 1, layout.zc)).toBe(true);
-    // Roof above the annex interior.
-    let covered = false;
-    for (let y = 3; y < m.dimensions.height; y++) if (!isAir(m, farX - 2, y, layout.zc)) covered = true;
-    expect(covered).toBe(true);
+    expect(has(r.model, '_stairs') || has(r.model, 'ladder')).toBe(true);
   });
 
-  it('Vordach überdacht den Eingang, Durchgang bleibt frei', () => {
-    const s = spec({ options: { porch: true } });
-    const { builder, layout } = buildHouse(s);
-    const m = builder.toModel(s);
-    for (let z = layout.z0 - 3; z < layout.z0; z++) {
-      expect(isAir(m, layout.xc, 1, z)).toBe(true);
-      expect(isAir(m, layout.xc, 2, z)).toBe(true);
-      expect(isAir(m, layout.xc, 4, z)).toBe(false);
+  it('Mittelalter: Obergeschoss kragt auf Konsolen aus (Jetty)', () => {
+    const r = generateBuildingWithReport(spec({ style: 'medieval', size: 'medium', seed: 1 }, { floors: 2, jetty: true }));
+    const main = r.house!.plan.masses[0]!;
+    const lower = storeyRect(main, 0);
+    const upper = storeyRect(main, 1);
+    expect(upper.z0).toBe(lower.z0 - 1);
+  });
+
+  it('Dächer bestehen aus Treppen und Stufen mit Innen- und Außenecken', () => {
+    const m = generateBuilding(spec({ style: 'japanese', size: 'medium', seed: 1 }, { roofType: 'hip' }));
+    const shapes = new Set(m.palette.filter((s) => s.includes('_stairs[')).map((s) => propsOf(s).shape));
+    expect(shapes).toContain('outer_left');
+    expect(shapes).toContain('straight');
+    const l = generateBuilding(spec({ style: 'rustic', size: 'large', seed: 1 }, { wings: 'L' }));
+    expect(l.palette.some((s) => s.includes('_stairs[') && /inner_/.test(propsOf(s).shape ?? ''))).toBe(true);
+  });
+});
+
+describe('Thema: Weihnachten und Winter', () => {
+  it('Weihnachten: Girlanden aus persistentem Laub mit Lichtern und Schleifen, Laternen an Ketten', () => {
+    const m = generateBuilding(spec({ style: 'nordic', theme: 'christmas', detailLevel: 3 }));
+    expect(has(m, 'spruce_leaves')).toBe(true);
+    expect(m.palette.filter((s) => s.includes('_leaves[')).every((s) => propsOf(s).persistent === 'true')).toBe(true);
+    expect(has(m, 'red_wool')).toBe(true);
+    expect(has(m, 'froglight') || has(m, 'glowstone')).toBe(true);
+    expect(has(m, 'iron_chain')).toBe(true);
+  });
+
+  it('Winter: keine roten Schleifen, aber Laternen; kein Schnee auf Dächern und keine Eiszapfen', () => {
+    const m = generateBuilding(spec({ style: 'nordic', theme: 'winter' }));
+    expect(has(m, 'red_wool')).toBe(false);
+    expect(has(m, 'lantern')).toBe(true);
+    for (const s of ['minecraft:snow', 'minecraft:snow_block', 'minecraft:pointed_dripstone']) expect(ids(m).has(s)).toBe(false);
+    expect(m.palette.some((s) => blockIdOf(s) === 'minecraft:end_rod' && propsOf(s).facing === 'down')).toBe(false);
+  });
+
+  it('Schnee nur auf ausdrücklichen Wunsch – dann Bodenfläche und Schneeschichten, wo sie im Spiel liegen bleiben', () => {
+    expect(ids(generateBuilding(spec())).has('minecraft:snow_block')).toBe(false);
+    expect(ids(generateBuilding(spec())).has('minecraft:snow')).toBe(false);
+    for (const style of STYLE_IDS) {
+      const r = generateBuildingWithReport(spec({ style, theme: 'winter' }, { snow: true }));
+      expect(ids(r.model).has('minecraft:snow_block'), style).toBe(true);
+      expect(ids(r.model).has('minecraft:snow'), style).toBe(true);
+      // No layer melts or falls off: the validator had nothing to repair.
+      expect(r.repairs, style).toEqual([]);
+      expect(lintHouse(r.model, r.house!), style).toEqual([]);
     }
+    for (const kind of ['tree', 'market_stall', 'station', 'tower'] as const) expect(generateBuildingWithReport({ ...spec({ kind }, { snow: true }) }).repairs, kind).toEqual([]);
   });
 
-  it('Hecke mit Lücke und Weg zur Tür', () => {
-    const s = spec({ options: { hedge: true } });
-    const { builder, layout } = buildHouse(s);
-    const m = builder.toModel(s);
-    expect(idAt(m, 0, 0, 5)).toBe('minecraft:spruce_leaves');
-    expect(idAt(m, layout.xc, 0, 0)).not.toBe('minecraft:spruce_leaves');
-    for (let z = 0; z < layout.z0; z++) expect(isAir(m, layout.xc, 0, z)).toBe(false);
-    expect(isAir(m, layout.xc, 1, 0)).toBe(true);
+  it('ohne Thema: keine Weihnachtsdeko', () => {
+    const m = generateBuilding(spec({ style: 'medieval', theme: 'none' }));
+    expect(has(m, 'red_wool')).toBe(false);
+    expect(has(m, 'froglight')).toBe(false);
   });
 
-  it('Turm und Anbau auf derselben Seite werden aufgelöst und gemeldet', () => {
-    const s = spec({ options: { tower: 'left', annex: 'left' } });
-    expect(resolveHouseParameters(s).annex).toBe('right');
-    expect(resolveHouseParameters(s).notes.join()).toMatch(/derselben Seite/);
+  it('Profil 1.21.1 nutzt chain statt iron_chain', () => {
+    const r = generateBuildingWithReport(spec({ targetMinecraftVersion: '1.21.1', theme: 'christmas', style: 'nordic' }));
+    expect(r.repairs).toEqual([]);
+    expect(ids(r.model).has('minecraft:chain')).toBe(true);
+    expect(ids(r.model).has('minecraft:iron_chain')).toBe(false);
+  });
+});
+
+describe('Leistung', () => {
+  it('ein normales Haus entsteht in unter 2 Sekunden', () => {
+    const start = performance.now();
+    generateBuilding(spec({ style: 'medieval', size: 'large' }));
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+
+  it('nichts schwebt (auch nicht mit allen Bauteilen)', () => {
+    const m = generateBuilding(spec({ style: 'fantasy', size: 'large' }, { tower: 'square', annex: 'right', porch: true, dormers: 3, symmetry: 'rambling' }));
+    expect(floatingBlocks(m)).toBe(0);
   });
 });

@@ -74,15 +74,15 @@ test.describe('Editor', () => {
     await page.getByTestId('block-search').fill('Weiße Wolle');
     await page.getByTestId('block-search').fill('wool');
     await page.getByTestId('block-option-white_wool').click();
-    await page.getByTestId('replace-from').selectOption('minecraft:snow_block');
+    await page.getByTestId('replace-from').selectOption('minecraft:red_wool');
     await page.getByTestId('replace-all').click();
     await waitForRenderedModel(page);
-    await expect(page.getByTestId('material-table')).not.toContainText('minecraft:snow_block');
+    await expect(page.getByTestId('material-table')).not.toContainText('minecraft:red_wool');
 
     const { report } = await downloadSchematic(page);
     const d = report.decoded!;
     expect(d.palette[d.indices[0]!]).toBe('minecraft:gold_block');
-    expect(d.palette).not.toContain('minecraft:snow_block');
+    expect(d.palette).not.toContain('minecraft:red_wool');
 
     const facesAll = Number(await page.getByTestId('scene').getAttribute('data-face-count'));
     await page.getByTestId('layer-toggle').check();

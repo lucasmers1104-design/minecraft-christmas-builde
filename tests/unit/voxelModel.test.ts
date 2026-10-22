@@ -112,8 +112,9 @@ describe('Vorschau-Mesh', () => {
     const mesh = buildVoxelMesh(model);
     expect(mesh.translucent.faceCount).toBeGreaterThan(0);
     expect(mesh.emissive.faceCount).toBeGreaterThan(0);
-    // Upper bound: 6 faces per non-air block; culling must remove a substantial share.
-    expect(mesh.faceCount).toBeLessThan(countMaterials(model).totalBlocks * 6 * 0.6);
+    // Upper bound: 6 faces per non-air block; culling must remove a substantial share (shaped
+    // blocks – stairs, slabs, fences, lanterns – keep most of their faces).
+    expect(mesh.faceCount).toBeLessThan(countMaterials(model).totalBlocks * 6 * 0.7);
     expect(mesh.opaque.positions.length).toBe(mesh.opaque.faceCount * 4 * 3);
     expect(mesh.translucent.colors.length).toBe(mesh.translucent.faceCount * 4 * 4);
     expect(mesh.opaque.indices.length).toBe(mesh.opaque.faceCount * 6);

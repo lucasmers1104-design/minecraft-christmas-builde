@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import { z } from 'zod';
+import { migrateSpecLike } from '@/core/schema/migrateSpec';
 import { SUPPORTED_MINECRAFT_VERSIONS } from '@/core/compat/profile';
 import type { SpecPatch } from '@/core/generator/parseDescription';
 import { MAX_DESCRIPTION_LENGTH, MAX_SEED } from '@/core/schema/buildSpec';
@@ -40,12 +41,16 @@ const PROJECT_INDEXES = 'id, updatedAt, name';
 // MIGRATION HOOK – migrateStoredSpec
 // Applied to every stored BuildSpec (variants[].spec) and every stored spec patch
 // (manual, aiPlan.patch) of a project record BEFORE zod parsing, on every load.
-// Identity for now. When BuildSpec gets schemaVersion 2, convert older shapes here
-// (input: whatever was stored, possibly outdated or corrupt; output: the current shape,
-// or the input unchanged so that zod reports it). Must be pure and must not throw.
+// Converts BuildSpec v1 shapes (style christmas/fairytale/realistic, material and colour
+// themes, wallHeight …) to v2 (input: whatever was stored, possibly outdated or corrupt;
+// output: the current shape, or the input unchanged so that zod reports it). Pure, no throw.
 // ===================================================================================
 export function migrateStoredSpec(raw: unknown): unknown {
-  return raw;
+  try {
+    return migrateSpecLike(raw);
+  } catch {
+    return raw;
+  }
 }
 
 /** A local-AI plan the project was generated from (kept so reopening restores the same settings). */

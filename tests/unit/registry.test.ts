@@ -11,9 +11,7 @@ import {
   parseBlockState,
   profileBlockId,
 } from '@/core/blocks/registry';
-import { colorPalette, materialPalette } from '@/core/blocks/palettes';
 import { DEFAULT_PROFILE, PROFILES } from '@/core/compat/profile';
-import { COLOR_THEMES, MATERIAL_THEMES } from '@/core/schema/buildSpec';
 
 const require = createRequire(import.meta.url);
 type McBlock = { states: { name: string; type: string; values?: string[] }[]; defaultState: number; minStateId: number };
@@ -142,13 +140,6 @@ describe('Registry allgemein', () => {
     expect(states).toBeGreaterThan(127);
   });
 
-  it('alle Themen-Paletten bestehen aus gültigen Blockstates', () => {
-    for (const t of MATERIAL_THEMES) for (const s of Object.values(materialPalette(t))) expect(checkBlockState(s).ok).toBe(true);
-    for (const t of COLOR_THEMES)
-      for (const v of Object.values(colorPalette(t))) {
-        for (const s of Array.isArray(v) ? v : v === null ? [] : [v]) expect(checkBlockState(s).ok, s).toBe(true);
-      }
-  });
 });
 
 describe('checkBlockState', () => {

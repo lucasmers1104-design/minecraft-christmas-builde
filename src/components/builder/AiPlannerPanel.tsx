@@ -1,5 +1,6 @@
 'use client';
 
+import { planEntries } from '@/core/ai/planSchema';
 import type { AiPlanState, AiStatus } from '@/lib/client/aiApi';
 import { Panel } from '@/components/ui/Panel';
 
@@ -78,6 +79,17 @@ export function AiPlannerPanel({
             Plan von {plan.model} ({(plan.durationMs / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} s)
           </p>
           {plan.explanation ? <p className="mt-1 text-mist-300">{plan.explanation}</p> : null}
+          {plan.plan ? (
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[11px]" data-testid="ai-plan-fields">
+              {planEntries(plan.plan).map((e) => (
+                <div key={e.field} className="contents">
+                  <dt className="text-mist-400">{e.label}</dt>
+                  <dd className="text-snow-50">{e.value}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+          {(plan.attempts ?? 1) > 1 ? <p className="mt-1 text-[11px] text-mist-400">Erst die zweite Antwort war gültig (Reparaturrunde).</p> : null}
           {plan.unsupported.length > 0 ? (
             <ul className="mt-2 flex flex-col gap-1 text-[11px] text-gold-300" data-testid="ai-unsupported">
               {plan.unsupported.map((u) => (

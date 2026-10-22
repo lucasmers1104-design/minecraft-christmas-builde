@@ -13,10 +13,10 @@ import { EditHistory, replaceAllCommand, setBlockCommand } from '@/core/editor/e
 import { requireProfile } from '@/core/compat/profile';
 import { buildSpongeV3Nbt, writeSpongeV3 } from '@/core/export/writeSpongeV3';
 import { generateBuilding, generateVariants } from '@/core/generator/generateBuilding';
-import { DEFAULT_HOUSE_SPEC, type BuildSpec } from '@/core/schema/buildSpec';
+import { DEFAULT_HOUSE_SPEC, STYLE_IDS, type BuildSpec } from '@/core/schema/buildSpec';
 import { MAX_DIMENSIONS, type VoxelModel } from '@/core/schema/voxelModel';
 import { largeBuildingModel } from '../helpers/largeModels';
-import { largePaletteModel } from '../helpers/syntheticModels';
+import { allStateModels, largePaletteModel } from '../helpers/syntheticModels';
 
 /**
  * Opens our exported .schem files with the real EngineHub WorldEdit 7.4.2 reader
@@ -102,22 +102,24 @@ describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub 
     if (dir) await rm(dir, { recursive: true, force: true });
   });
 
+  // Every style (Christmas and plain), every building type, both profiles and feature combinations.
   const specs: [string, BuildSpec][] = [
-    ['klein/realistisch/eiche/natur', { ...DEFAULT_HOUSE_SPEC, size: 'small', style: 'realistic', materialTheme: 'oak', colorTheme: 'natural', detailLevel: 1 }],
-    ['groß/märchenhaft/stein/eisblau', { ...DEFAULT_HOUSE_SPEC, size: 'large', style: 'fairytale', materialTheme: 'stone', colorTheme: 'ice_blue', detailLevel: 3 }],
+    ...STYLE_IDS.flatMap((style): [string, BuildSpec][] => [
+      [`Haus ${style} weihnachtlich`, { ...DEFAULT_HOUSE_SPEC, style, theme: 'christmas', size: 'medium' }],
+      [`Haus ${style} groß, ohne Thema`, { ...DEFAULT_HOUSE_SPEC, style, theme: 'none', size: 'large', detailLevel: 2 }],
+    ]),
     ['Profil 1.21.1 (DataVersion 3955)', { ...DEFAULT_HOUSE_SPEC, targetMinecraftVersion: '1.21.1' }],
-    ['Haus mit Turm, Anbau, Vordach, Hecke und Walmdach', { ...DEFAULT_HOUSE_SPEC, size: 'large', options: { tower: 'left', annex: 'right', porch: true, hedge: true, roofShape: 'hip' } }],
+    ['Haus verwinkelt mit Turm, Anbau, Veranda, Gauben, Walmdach', { ...DEFAULT_HOUSE_SPEC, style: 'medieval', size: 'large', options: { tower: 'square', towerPosition: 'front_left', annex: 'right', porch: true, dormers: 2, roofType: 'hip', symmetry: 'rambling' } }],
+    ['Haus Winter, Seelenlaternen, viele Laternen', { ...DEFAULT_HOUSE_SPEC, style: 'nordic', theme: 'winter', options: { soulLanterns: true, lanternDensity: 'many' } }],
     ['Weihnachtsbaum groß', { ...DEFAULT_HOUSE_SPEC, kind: 'tree', size: 'large', detailLevel: 3 }],
     ['Marktstand groß', { ...DEFAULT_HOUSE_SPEC, kind: 'market_stall', size: 'large' }],
-    ['Bahnhof groß mit Schienen (1.21.11)', { ...DEFAULT_HOUSE_SPEC, kind: 'station', size: 'large' }],
+    ['Bahnhof groß mit Schienen (1.21.11)', { ...DEFAULT_HOUSE_SPEC, kind: 'station', style: 'medieval', size: 'large' }],
     ['Bahnhof klein mit Schienen (1.21.1)', { ...DEFAULT_HOUSE_SPEC, kind: 'station', size: 'small', targetMinecraftVersion: '1.21.1' }],
-    [
-      'Feinparameter (Birke, Ziegel, rotes Dach, viele Fenster)',
-      {
-        ...DEFAULT_HOUSE_SPEC,
-        options: { width: 21, frameWood: 'birch', windows: 'many', materials: { wall: 'bricks', roof: 'red_terracotta', accent: 'blue_wool' } },
-      },
-    ],
+    ['Turm', { ...DEFAULT_HOUSE_SPEC, kind: 'tower', style: 'fantasy', size: 'large' }],
+    ['Turm mit Zinnen', { ...DEFAULT_HOUSE_SPEC, kind: 'tower', style: 'medieval', size: 'medium' }],
+    ['Haus mit Rundturm, Erker, Balkon, Bogenfenstern', { ...DEFAULT_HOUSE_SPEC, style: 'medieval', size: 'large', options: { tower: 'round', towerPosition: 'back_right', oriel: true, balcony: true, floors: 2, windowFamily: 'arched' } }],
+    ['Schnee auf Wunsch (Schneeschichten)', { ...DEFAULT_HOUSE_SPEC, style: 'nordic', theme: 'winter', options: { snow: true } }],
+    ['Feinparameter (Ziegel, Kupferdach, Geschosse)', { ...DEFAULT_HOUSE_SPEC, options: { width: 21, floors: 3, windows: 'many', materials: { wall: 'bricks', roof: 'waxed_weathered_cut_copper', accent: 'red_wool' } } }],
   ];
 
   it('liest die drei Standard-Varianten Block für Block identisch', async () => {
@@ -130,7 +132,7 @@ describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub 
     });
   });
 
-  it.each(specs)('liest weitere Stil-/Größenvarianten identisch (%s)', async (_name, spec) => {
+  it.each(specs)('liest Stile, Bauwerke und Feinparameter identisch (%s)', { timeout: 120_000 }, async (_name, spec) => {
     const model = generateBuilding(spec);
     const { code, out } = await readWithWorldEdit('variant.schem', writeSpongeV3(model));
     expect(code).toBe(0);
@@ -141,11 +143,27 @@ describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub 
     const base = generateBuilding(DEFAULT_HOUSE_SPEC);
     const history = new EditHistory();
     let model = history.execute(base, setBlockCommand(base, { x: 0, y: 0, z: 0 }, blockState('jack_o_lantern', { facing: 'east' }))!);
-    model = history.execute(model, replaceAllCommand(model, blockState('snow_block'), blockState('hay_block', { axis: 'x' }))!);
+    model = history.execute(model, replaceAllCommand(model, model.palette[1]!, blockState('hay_block', { axis: 'x' }))!);
     const { code, out } = await readWithWorldEdit('edited.schem', writeSpongeV3(model));
     expect(code).toBe(0);
     expectIdenticalToModel(out, model);
   });
+
+  it.each(['1.21.11', '1.21.1'])(
+    'liest jeden Registry-Zustand aller Formklassen identisch (Minecraft %s)',
+    { timeout: 300_000 },
+    async (version) => {
+      const models = allStateModels(version);
+      let states = 0;
+      for (const [i, model] of models.entries()) {
+        const { code, out } = await readWithWorldEdit(`all-states-${version}-${i}.schem`, writeSpongeV3(model));
+        expect(code, out.errors?.join('\n')).toBe(0);
+        expectIdenticalToModel(out, model);
+        states += model.palette.length - 1;
+      }
+      expect(states).toBeGreaterThan(5000);
+    },
+  );
 
   it('liest Paletten mit >127 Einträgen (Mehrbyte-VarInts) identisch', async () => {
     const model = largePaletteModel();

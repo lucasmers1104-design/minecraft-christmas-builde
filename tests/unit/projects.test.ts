@@ -228,7 +228,7 @@ describe('Migration von IndexedDB-Version 1 (u16le-base64)', () => {
     expect(upgradeStoredVariantEncoding({ variants: [{ indexEncoding: 'u16le-base64', indices: 'AAAA', dimensions: { width: -1 } }] })).toBe(0);
   });
 
-  it('migrateStoredSpec ist vorerst die Identität', () => {
+  it('migrateStoredSpec lässt v2-Specs unverändert', () => {
     const spec = { ...DEFAULT_HOUSE_SPEC };
     expect(migrateStoredSpec(spec)).toBe(spec);
     expect(migrateStoredSpec(undefined)).toBeUndefined();

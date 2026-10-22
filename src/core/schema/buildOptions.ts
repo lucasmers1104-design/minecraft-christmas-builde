@@ -1,138 +1,81 @@
 import { z } from 'zod';
+import { hasMaterial } from '@/core/style/materials';
+import { ROOF_PROFILES, ROOF_TYPES } from '@/core/style/styles';
 
 /**
- * Fine-grained, optional building parameters. Every field is optional: `undefined` means
- * "derive from size / style / detail level". The same structure is filled by the UI, the
- * free-text parser and (later) the local AI planner, and every field changes real blocks.
+ * Fine-grained, optional building parameters (BuildSpec v2). Every field is optional:
+ * `undefined` means "the style decides" (priors, proportions, detail level). The same flat
+ * structure is filled by the UI, the free-text parser and the local AI planner; materials are
+ * catalogue ids (never free block ids) and only offered in the UI.
  */
 
-export const ROOF_SHAPES = ['gable', 'steep', 'hip'] as const;
-export const TOWER_POSITIONS = ['none', 'left', 'right'] as const;
+export const WING_LAYOUTS = ['none', 'L', 'T', 'U'] as const;
 export const ANNEX_SIDES = ['none', 'left', 'right'] as const;
+export const TOWER_KINDS = ['none', 'square', 'round'] as const;
+export const TOWER_POSITIONS = ['front_left', 'front_right', 'back_left', 'back_right'] as const;
+export const SYMMETRIES = ['auto', 'symmetric', 'asymmetric', 'rambling'] as const;
 export const WINDOW_DENSITIES = ['few', 'normal', 'many'] as const;
-export const WOOD_TYPES = ['spruce', 'oak', 'dark_oak', 'birch'] as const;
-
-/** Allowed materials per building part (short block ids, all in the registry). */
-export const MATERIAL_CHOICES = {
-  wall: [
-    'spruce_planks',
-    'oak_planks',
-    'dark_oak_planks',
-    'birch_planks',
-    'stone_bricks',
-    'cobblestone',
-    'stone',
-    'bricks',
-    'mud_bricks',
-    'tuff_bricks',
-    'quartz_block',
-    'calcite',
-    'sandstone',
-    'white_terracotta',
-    'white_concrete',
-  ],
-  roof: [
-    'dark_oak_planks',
-    'spruce_planks',
-    'oak_planks',
-    'birch_planks',
-    'deepslate_tiles',
-    'bricks',
-    'stone_bricks',
-    'mud_bricks',
-    'red_terracotta',
-    'green_terracotta',
-    'blue_terracotta',
-    'black_terracotta',
-    'red_concrete',
-    'gray_concrete',
-    'packed_ice',
-  ],
-  floor: [
-    'spruce_planks',
-    'oak_planks',
-    'dark_oak_planks',
-    'birch_planks',
-    'stone_bricks',
-    'smooth_stone',
-    'polished_andesite',
-    'polished_deepslate',
-  ],
-  foundation: [
-    'cobblestone',
-    'stone_bricks',
-    'mossy_cobblestone',
-    'stone',
-    'polished_andesite',
-    'smooth_stone',
-    'deepslate_tiles',
-    'bricks',
-  ],
-  accent: [
-    'red_wool',
-    'green_wool',
-    'white_wool',
-    'light_blue_wool',
-    'blue_wool',
-    'yellow_wool',
-    'orange_wool',
-    'purple_wool',
-    'black_wool',
-  ],
-} as const;
-
-export type MaterialPart = keyof typeof MATERIAL_CHOICES;
-export const MATERIAL_PARTS = Object.keys(MATERIAL_CHOICES) as MaterialPart[];
-
-const enumOf = <T extends readonly [string, ...string[]]>(values: T) => z.enum(values);
+export const LANTERN_DENSITIES = ['none', 'few', 'normal', 'many'] as const;
+export const WINDOW_FAMILIES = ['auto', 'simple', 'shuttered', 'framed', 'arched', 'round', 'shoji', 'band', 'leaded'] as const;
+export const DOOR_FAMILIES = ['auto', 'simple', 'transom', 'arched', 'double', 'porch', 'genkan'] as const;
+export type WindowFamily = (typeof WINDOW_FAMILIES)[number];
+export type DoorFamily = (typeof DOOR_FAMILIES)[number];
+export const MATERIAL_ROLES_UI = ['wall', 'roof', 'frame', 'plinth', 'accent'] as const;
 
 export const FOOTPRINT_LIMITS = {
-  width: { min: 7, max: 33 },
-  depth: { min: 5, max: 25 },
-  wallHeight: { min: 3, max: 8 },
+  width: { min: 5, max: 61 },
+  depth: { min: 5, max: 61 },
+  floors: { min: 1, max: 8 },
+  floorHeight: { min: 4, max: 6 },
+  overhang: { min: 0, max: 3 },
+  dormers: { min: 0, max: 6 },
 } as const;
+
+const oddInt = (limits: { min: number; max: number }, message: string) =>
+  z.number().int().min(limits.min).max(limits.max).refine((v) => v % 2 === 1, { message });
+const int = (limits: { min: number; max: number }) => z.number().int().min(limits.min).max(limits.max);
+const materialId = z.string().max(64).refine((id) => hasMaterial(id), { message: 'Unbekanntes Material' });
 
 export const buildOptionsSchema = z
   .object({
-    width: z
-      .number()
-      .int()
-      .min(FOOTPRINT_LIMITS.width.min)
-      .max(FOOTPRINT_LIMITS.width.max)
-      .refine((v) => v % 2 === 1, { message: 'Breite muss ungerade sein (mittige Tür)' })
-      .optional(),
-    depth: z
-      .number()
-      .int()
-      .min(FOOTPRINT_LIMITS.depth.min)
-      .max(FOOTPRINT_LIMITS.depth.max)
-      .refine((v) => v % 2 === 1, { message: 'Tiefe muss ungerade sein (mittiger First)' })
-      .optional(),
-    wallHeight: z.number().int().min(FOOTPRINT_LIMITS.wallHeight.min).max(FOOTPRINT_LIMITS.wallHeight.max).optional(),
-    roofShape: z.enum(ROOF_SHAPES).optional(),
+    width: oddInt(FOOTPRINT_LIMITS.width, 'Breite muss ungerade sein (mittige Tür)').optional(),
+    depth: oddInt(FOOTPRINT_LIMITS.depth, 'Tiefe muss ungerade sein (mittiger First)').optional(),
+    floors: int(FOOTPRINT_LIMITS.floors).optional(),
+    floorHeight: int(FOOTPRINT_LIMITS.floorHeight).optional(),
+    roofType: z.enum(ROOF_TYPES).optional(),
+    roofProfile: z.enum(ROOF_PROFILES).optional(),
+    overhang: int(FOOTPRINT_LIMITS.overhang).optional(),
+    dormers: int(FOOTPRINT_LIMITS.dormers).optional(),
+    wings: z.enum(WING_LAYOUTS).optional(),
+    annex: z.enum(ANNEX_SIDES).optional(),
+    tower: z.enum(TOWER_KINDS).optional(),
+    towerPosition: z.enum(TOWER_POSITIONS).optional(),
+    symmetry: z.enum(SYMMETRIES).optional(),
     windows: z.enum(WINDOW_DENSITIES).optional(),
-    snow: z.boolean().optional(),
+    windowFamily: z.enum(WINDOW_FAMILIES).optional(),
+    doorFamily: z.enum(DOOR_FAMILIES).optional(),
+    jetty: z.boolean().optional(),
+    oriel: z.boolean().optional(),
+    porch: z.boolean().optional(),
+    balcony: z.boolean().optional(),
     chimney: z.boolean().optional(),
-    lights: z.boolean().optional(),
+    lanternDensity: z.enum(LANTERN_DENSITIES).optional(),
+    soulLanterns: z.boolean().optional(),
     garland: z.boolean().optional(),
     christmasTree: z.boolean().optional(),
     presents: z.boolean().optional(),
-    /** Square tower with pyramid roof on a front corner (house only). */
-    tower: z.enum(TOWER_POSITIONS).optional(),
-    /** Smaller gabled wing on one side, connected by an open doorway (house only). */
-    annex: z.enum(ANNEX_SIDES).optional(),
-    /** Roofed porch in front of the entrance (house only). */
-    porch: z.boolean().optional(),
-    /** Hedge around the plot with a path to the door (house only). */
-    hedge: z.boolean().optional(),
-    frameWood: z.enum(WOOD_TYPES).optional(),
+    /** Snow only on explicit request, and only where it holds (user decision). */
+    snow: z.boolean().optional(),
+    garden: z.boolean().optional(),
+    /** Palette id of the style (see src/core/style/palettes.ts). */
+    palette: z.string().max(40).optional(),
     materials: z
       .object({
-        wall: enumOf(MATERIAL_CHOICES.wall).optional(),
-        roof: enumOf(MATERIAL_CHOICES.roof).optional(),
-        floor: enumOf(MATERIAL_CHOICES.floor).optional(),
-        foundation: enumOf(MATERIAL_CHOICES.foundation).optional(),
-        accent: enumOf(MATERIAL_CHOICES.accent).optional(),
+        wall: materialId.optional(),
+        roof: materialId.optional(),
+        frame: materialId.optional(),
+        plinth: materialId.optional(),
+        accent: materialId.optional(),
       })
       .strict()
       .optional(),
@@ -140,13 +83,14 @@ export const buildOptionsSchema = z
   .strict();
 
 export type BuildOptions = z.infer<typeof buildOptionsSchema>;
-export type RoofShape = (typeof ROOF_SHAPES)[number];
+export type WingLayout = (typeof WING_LAYOUTS)[number];
+export type TowerKind = (typeof TOWER_KINDS)[number];
 export type TowerPosition = (typeof TOWER_POSITIONS)[number];
-export type AnnexSide = (typeof ANNEX_SIDES)[number];
+export type SymmetryOption = (typeof SYMMETRIES)[number];
 export type WindowDensity = (typeof WINDOW_DENSITIES)[number];
-export type WoodType = (typeof WOOD_TYPES)[number];
+export type MaterialRoleUi = (typeof MATERIAL_ROLES_UI)[number];
 
-/** Rounds to the nearest allowed odd value within limits (used by parser and UI). */
+/** Rounds to the nearest allowed odd value within limits (used by parser, AI and UI). */
 export function clampOdd(value: number, limits: { min: number; max: number }): number {
   let v = Math.round(value);
   if (v % 2 === 0) v += 1;

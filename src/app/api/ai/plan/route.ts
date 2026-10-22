@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { aiPlanToPatch, type AiPlan } from '@/core/ai/planSchema';
+import { planToPatch, type BuildPlan } from '@/core/ai/planSchema';
 import { MAX_DESCRIPTION_LENGTH } from '@/core/schema/buildSpec';
 import { specPatchSchema } from '@/core/schema/resolveSpec';
 import { AiPlanError, readAiConfig, requestAiPlan } from '@/lib/ai/ollamaPlanner';
@@ -17,7 +17,12 @@ export interface AiPlanResponse {
   model: string;
   durationMs: number;
   attempts: number;
-  plan: AiPlan;
+  examples: string[];
+  fromThinking: boolean;
+  thinkDropped: boolean;
+  /** The flat catalogue plan (same format as the parser's plan). */
+  plan: BuildPlan;
+  /** The plan as spec patch ("auto"/null dropped), validated. */
   patch: SpecPatch;
 }
 
@@ -43,7 +48,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const result = await requestAiPlan(readAiConfig(), parsed.data.description);
-    const patch = specPatchSchema.parse(aiPlanToPatch(result.plan));
+    const patch = specPatchSchema.parse(planToPatch(result.plan));
     const response: AiPlanResponse = { source: 'ollama', ...result, patch };
     return NextResponse.json(response, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

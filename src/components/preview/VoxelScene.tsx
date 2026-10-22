@@ -349,6 +349,33 @@ function CameraRig({
     }
   });
 
+  // Scripted views for the screenshot tool (scripts/screenshots.mjs): azimuth 0° looks at the
+  // front (from −Z), 90° from the east; distance as a multiple of the framing distance.
+  useEffect(() => {
+    const w = window as unknown as { __mcbSetView?: (azimuth: number, elevation: number, zoom?: number, targetY?: number) => void };
+    w.__mcbSetView = (azimuth, elevation, zoom = 1, targetY = 0.42) => {
+      if (!(camera instanceof THREE.PerspectiveCamera)) return;
+      const { size } = getState();
+      const aspect = size.width / Math.max(1, size.height);
+      const vFov = THREE.MathUtils.degToRad(camera.fov);
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+      const distance = (radius / Math.sin(Math.min(vFov, hFov) / 2)) * 1.02 * zoom;
+      const target = new THREE.Vector3(0, height * targetY, 0);
+      const az = THREE.MathUtils.degToRad(azimuth);
+      const el = THREE.MathUtils.degToRad(elevation);
+      const direction = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+      camera.position.copy(target).addScaledVector(direction, distance);
+      camera.lookAt(target);
+      if (controls.current) {
+        controls.current.target.copy(target);
+        controls.current.update();
+      }
+    };
+    return () => {
+      delete w.__mcbSetView;
+    };
+  }, [camera, controls, getState, height, radius]);
+
   // Button-driven rotation/zoom (keyboard and touch users).
   useEffect(() => {
     if (!cameraAction || !controls.current) return;

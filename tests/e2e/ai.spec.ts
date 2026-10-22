@@ -53,7 +53,7 @@ test('mit bereiter lokaler KI: Plan wird angezeigt, angewendet und gekennzeichne
   await expect(page.getByTestId('generator-mode')).toContainText('lokale KI (qwen3:14b)');
   await page.getByTestId('prompt-input').fill('Ein kleiner Bahnhof mit Dampflok');
   await page.getByTestId('generate-button').click();
-  await expect(page.getByTestId('building-title')).toHaveText('Winterbahnhof');
+  await expect(page.getByTestId('building-title')).toHaveText('Weihnachtlicher Bahnhof · Rustikal');
   await waitForRenderedModel(page);
   await expect(page.getByTestId('ai-plan')).toContainText('Ein kleiner Winterbahnhof.');
   await expect(page.getByTestId('ai-unsupported')).toContainText('Dampflok');
@@ -77,5 +77,5 @@ test('KI-Fehler: regelbasierter Fallback mit Hinweis', async ({ page }) => {
   await waitForRenderedModel(page);
   await expect(page.getByTestId('ai-notice')).toContainText('regelbasiert erzeugt');
   await expect(page.getByTestId('planner-badge')).toHaveText('Regelbasierter Generator');
-  await expect(page.getByTestId('preview-dimensions')).toContainText('11 × 11 × 9');
+  await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 16 × 24');
 });

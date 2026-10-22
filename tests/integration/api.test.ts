@@ -14,7 +14,7 @@ import { largeBuildingModel } from '../helpers/largeModels';
 const limit = vi.hoisted(() => ({ exceed: false }));
 vi.mock('@/core/generator/generateBuilding', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/core/generator/generateBuilding')>();
-  const { BuildLimitError } = await import('@/core/generator/buildHouse');
+  const { BuildLimitError } = await import('@/core/generator/generateBuilding');
   return {
     ...actual,
     generateVariants: (...args: Parameters<typeof actual.generateVariants>) => {
@@ -48,7 +48,7 @@ describe('POST /api/generate', () => {
   });
 
   it('meldet Fehler als echte HTTP-Fehler', async () => {
-    expect((await generateRoute(post({ spec: { ...DEFAULT_HOUSE_SPEC, size: 'huge' } }))).status).toBe(400);
+    expect((await generateRoute(post({ spec: { ...DEFAULT_HOUSE_SPEC, size: 'gigantisch' } }))).status).toBe(400);
     expect((await generateRoute(post(undefined, '{not json'))).status).toBe(400);
     expect((await generateRoute(post({ spec: DEFAULT_HOUSE_SPEC, extra: 1 }))).status).toBe(400);
     limit.exceed = true;
