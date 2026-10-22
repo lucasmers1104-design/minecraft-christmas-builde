@@ -41,8 +41,8 @@ Zielversion ist **Minecraft Java 1.21.11** (DataVersion 4671); 1.21.1 ist als zw
 
 1. **Node.js 22 LTS** von <https://nodejs.org> installieren (Standardoptionen).
 2. Den Projektordner herunterladen, z. B. per Git oder als ZIP von GitHub, und entpacken.
-3. **`start-windows.cmd` doppelklicken.** Beim ersten Mal werden die Abhängigkeiten installiert und die App gebaut. Danach öffnet sich <http://localhost:3000> im Browser.
-4. Zum Beenden das schwarze Fenster schließen.
+3. **`start-windows.cmd` doppelklicken.** Beim ersten Mal werden die Abhängigkeiten installiert und die App gebaut. Sobald die App antwortet, öffnet sich <http://localhost:3000> im Browser.
+4. Zum Beenden das schwarze Fenster schließen. Bricht die App mit einem Fehler ab, bleibt das Fenster offen und zeigt die Meldung.
 
 Optional für die lokale KI: [`docs/LOCAL_AI.md`](docs/LOCAL_AI.md), also Ollama installieren, ein Modell laden und `.env.local` anlegen.
 
