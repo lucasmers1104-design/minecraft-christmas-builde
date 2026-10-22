@@ -123,5 +123,6 @@ docs/                    Architektur, Kompatibilität, Import, lokale KI, Testbe
 - [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md): Import in Minecraft
 - [`docs/LOCAL_AI.md`](docs/LOCAL_AI.md): lokale KI mit Ollama einrichten (Windows)
 - [`docs/TEXTURES.md`](docs/TEXTURES.md): echte Minecraft-Texturen in der Vorschau
+- [`reports/Minecraft Bautechniken für Generator.md`](<reports/Minecraft Bautechniken für Generator.md>): Recherche zu Minecraft-Bautechniken und Umsetzungsplan für den nächsten Generator (Quellennotizen in `research_notes/`)
 - [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md): ausgeführte Prüfungen mit Ergebnissen
 - [`tests/worldedit/README.md`](tests/worldedit/README.md): Aufbau des WorldEdit-Readers
