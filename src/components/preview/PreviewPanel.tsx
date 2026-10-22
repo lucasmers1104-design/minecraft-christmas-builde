@@ -7,6 +7,8 @@ import { EditToolbar, PreviewToolbar } from '@/components/preview/PreviewToolbar
 import type { CameraAction, CellAction } from '@/components/preview/VoxelScene';
 import type { EditMode } from '@/components/editor/EditorPanel';
 import { SceneErrorBoundary } from '@/components/preview/SceneErrorBoundary';
+import { TextureSetup } from '@/components/preview/textures/TextureSetup';
+import { useActiveTexturePack } from '@/components/preview/textures/TextureProvider';
 
 const VoxelScene = dynamic(() => import('@/components/preview/VoxelScene').then((m) => m.VoxelScene), {
   ssr: false,
@@ -63,6 +65,7 @@ export function PreviewPanel({
   const [showGrid, setShowGrid] = useState(true);
   const [rendered, setRendered] = useState<{ hash: string; faces: number } | null>(null);
   const reducedMotion = useReducedMotion();
+  const texturePack = useActiveTexturePack();
   const onRendered = useCallback((hash: string, faces: number) => setRendered({ hash, faces }), []);
 
   return (
@@ -113,6 +116,7 @@ export function PreviewPanel({
         data-model-hash={model?.hash ?? ''}
         data-rendered-hash={rendered && model && rendered.hash === model.hash ? rendered.hash : ''}
         data-face-count={rendered && model && rendered.hash === model.hash ? rendered.faces : 0}
+        data-render-mode={texturePack ? 'textures' : 'colors'}
       >
         {model ? (
           <SceneErrorBoundary>
@@ -124,6 +128,7 @@ export function PreviewPanel({
               mode={editing.mode}
               layerY={effectiveLayer}
               cameraAction={cameraAction}
+              texturePack={texturePack}
               onRendered={onRendered}
               onCellAction={editing.onCellAction}
             />
@@ -142,10 +147,13 @@ export function PreviewPanel({
           </div>
         ) : null}
       </div>
-      <p className="border-t border-white/6 px-4 py-2 text-[11px] text-mist-400">
-        Vereinfachte Voxel-Darstellung (keine Original-Texturen). Ziehen = drehen, Mausrad/Pinch = zoomen, Rechtsklick/zwei Finger = verschieben.
-        Im Bearbeitungsmodus bearbeitet ein kurzer Klick den markierten Block.
-      </p>
+      <div className="flex flex-col gap-1.5 border-t border-white/6 px-4 py-2">
+        <TextureSetup />
+        <p className="text-[11px] text-mist-400">
+          Ziehen = drehen, Mausrad/Pinch = zoomen, Rechtsklick/zwei Finger = verschieben. Im Bearbeitungsmodus bearbeitet ein kurzer Klick den
+          markierten Block.
+        </p>
+      </div>
     </section>
   );
 }

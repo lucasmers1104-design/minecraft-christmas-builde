@@ -1,6 +1,6 @@
 # Testbericht
 
-**Stand:** 2026-10-21, alle Phasen (0–5) plus Editor und Windows-Start. Alle Ergebnisse unten stammen aus tatsächlich ausgeführten Befehlen in der Entwicklungsumgebung (Linux-Container, kein Windows, keine Grafikkarte).
+**Stand:** 2026-10-22, alle Phasen (0–5) plus Editor, Windows-Start und echte Minecraft-Texturen. Alle Ergebnisse unten stammen aus tatsächlich ausgeführten Befehlen in der Entwicklungsumgebung (Linux-Container, kein Windows, keine Grafikkarte).
 
 ## Umgebung
 
@@ -19,17 +19,17 @@
 
 ## Ausgeführte Befehle und Ergebnisse
 
-Abschlusslauf am 2026-10-21, nacheinander auf demselben Stand:
+Abschlusslauf am 2026-10-22, nacheinander auf demselben Stand:
 
 | Befehl | Ergebnis |
 |---|---|
 | `npm run typecheck` | ✅ keine Fehler |
 | `npm run lint` | ✅ 0 Fehler, 0 Warnungen |
-| `npx vitest run` (= `npm test`) | ✅ 15 Dateien, **187/187 Tests bestanden**, inkl. der 13 WorldEdit-Tests (der Reader war gebaut) |
+| `MCB_MINECRAFT_JAR=<1.21.11.jar> npx vitest run` (= `npm test` mit echter Client-Datei) | ✅ 17 Dateien, **213/213 Tests bestanden**, inkl. der 13 WorldEdit-Tests und des Tests gegen die echte Minecraft-1.21.11-Client-Datei |
 | `npm run test:worldedit` | ✅ 1 Datei, **13/13 bestanden** (echter WorldEdit-Reader, Pflichtmodus) |
-| `python3 tests/worldedit/fixtures-src/selftest.py` | ✅ **26/26 Fixture-Erwartungen erfüllt**, Reader „EngineHub WorldEdit 7.4.2“ |
-| `npm run build` | ✅ Produktionsbuild erfolgreich (`/` statisch; `/api/generate`, `/api/export`, `/api/ai/status`, `/api/ai/plan` dynamisch) |
-| `npm run test:e2e` | ✅ **24/24 bestanden** (23 Desktop, 1 Mobil/Pixel 7), Laufzeit 1,6 min |
+| `python3 tests/worldedit/fixtures-src/selftest.py` | ✅ **26/26 Fixture-Erwartungen erfüllt**, Reader „EngineHub WorldEdit 7.4.2“ (Lauf vom 2026-10-21, Reader seitdem unverändert) |
+| `npm run build` | ✅ Produktionsbuild erfolgreich (`/` statisch; `/api/generate`, `/api/export`, `/api/ai/*`, `/api/textures*` dynamisch) |
+| `npm run test:e2e` | ✅ **25/25 bestanden** (24 Desktop, 1 Mobil/Pixel 7), Laufzeit 2,4 min |
 | `npm audit --omit=dev` | ✅ 0 Schwachstellen in Laufzeitabhängigkeiten |
 
 `npm audit` über alle Abhängigkeiten meldet 5 „high“-Funde. Sie liegen ausschließlich in der Dev-Toolchain (`eslint-config-next` → `fast-glob` → `micromatch` → `braces`). Der einzige von npm angebotene Fix wäre ein Downgrade auf `eslint-config-next@14`, das nicht zu Next 16 passt.
@@ -120,6 +120,31 @@ Getestet wird gegen einen HTTP-Server im Test, der Ollamas `/api/tags` und `/api
 - **Verständliche Fehler** für Unsinn, Zeitüberschreitung, fehlendes Modell, nicht erreichbar und deaktiviert.
 - **API-Routen:** `/api/ai/status` und `/api/ai/plan`; ohne Aktivierung antwortet `/api/ai/plan` mit 503, und die App fällt auf den regelbasierten Generator zurück.
 
+### Echte Minecraft-Texturen (Unit, Integration, E2E)
+
+Details: `docs/TEXTURES.md`.
+
+- **Unit** (`tests/unit/textures.test.ts`, 19 Tests):
+  - ZIP-Leser inklusive CRC-Prüfung.
+  - Variantenwahl, gewichtete Varianten, Multipart mit `OR`/`AND`/Verneinung.
+  - Modellvererbung und Texturverweise.
+  - Ausrichtung von Stämmen (Achse) und Kürbislaternen (facing).
+  - Standard-UVs und Eckenreihenfolge, gedrehte Kreuz-Elemente, `uvlock`.
+  - Flächen-Ausblendung: fest/fest, Glas/Glas, Laub/Laub, Glas/fest.
+  - Helligkeit je Richtung, Laubfärbung und Ebenenschnitt.
+  - Launcher-Suche (Pfadmuster, Mods-Ordner ausgeschlossen, Versionsvorrang).
+  - Alle Registry-Blöcke mit einer selbst erzeugten Test-Datei im Minecraft-Format.
+- **Integration** (`tests/integration/textures.test.ts`):
+  - Status ohne Installation.
+  - Datei-Übernahme und Ablehnung fremder Dateien.
+  - Automatischer Fund im Launcher-Ordner und Vorrang von `MINECRAFT_JAR`.
+  - Mojang-Download nur mit Zustimmung, nur von Mojang-Hosts, Prüfsumme kontrolliert (simulierter Server).
+- **Echte Client-Datei:** Mit der offiziellen 1.21.11-Client-Datei (SHA-1 `ba2df812…`, von Mojangs Servern in die Testumgebung geladen und nicht ins Projekt übernommen) wurden **alle 248 Blockzustände** der App vollständig aus den Original-Modellen gebacken: keine fehlenden Modelle oder Texturen, Kürbislaterne und Stämme richtig ausgerichtet.
+- **E2E** (`tests/e2e/textures.spec.ts`):
+  - Datei im Browser auswählen, danach ist die Vorschau texturiert.
+  - Symbole in der Materialliste, Umschalten an/aus, nach dem Neuladen sofort aktiv.
+- **Sichtprüfung:** Screenshots von Haus, Weihnachtsbaum, Marktstand und Bahnhof mit Original-Texturen, darunter Fichtenholz, Stämme, Bruchstein, Glas, eingefärbtes Laub und Schienen auf dem Gleisbett.
+
 ### Echter WorldEdit-Reader (Integration, `tests/integration/worldedit.test.ts`)
 
 Das Java-Harness öffnet jede exportierte `.schem` mit `ClipboardFormats.findByFile` und `SpongeSchematicV3Reader` von EngineHub WorldEdit 7.4.2 auf der `worldedit-cli`-Plattform. Erwartet wird in jedem Fall:
@@ -207,6 +232,7 @@ Die 26 Fixtures des Harness zeigen zusätzlich, dass es WorldEdits stille Fehler
 - **Browser und Touch:**
   - Andere Browser als Chromium sind nicht getestet.
   - Echte Touch-Gesten (Drehen mit einem Finger, Pinch-Zoom) sind nur über die OrbitControls-Standardkonfiguration abgedeckt, nicht automatisiert gemessen.
+- **Texturen unter Windows:** Die automatische Suche in den Ordnern von CurseForge, Modrinth und Prism wurde nicht auf einem echten Windows-PC getestet, nur mit nachgebauten Ordnern. Fallback ist die Dateiauswahl in der App.
 - **Leistung auf echter Grafikkarte:** Die Tests liefen mit Software-WebGL (SwiftShader). Auf einer echten GPU sollte die Vorschau schneller sein, gemessen wurde das nicht.
 
 ## In-Game-Abnahme (manuell auszufüllen)

@@ -11,7 +11,7 @@ Seed, Minecraft-Version ──────────────────�
 BuildSpec (Zod-validiert, inkl. options)
         ▼ generateBuilding (deterministisch)
 kanonisches VoxelModel ◄──── Editor (setzen/entfernen/ersetzen, Undo/Redo) ───┐
-   ├─► 3D-Vorschau (buildVoxelMesh → VoxelScene)                               │
+   ├─► 3D-Vorschau (buildTexturedMesh bzw. buildVoxelMesh → VoxelScene)        │
    ├─► Materialliste (countMaterials)                                         │
    ├─► Projekte (IndexedDB, VoxelTransport)                                   │
    └─► .schem-Export (writeSpongeV3 → validateSchematic) ──────────────────────┘
@@ -148,6 +148,33 @@ Zufall gibt es nur über `createSeededRandom(spec.seed)` (mulberry32).
 - Schienen sind flache Platten mit 1/16 Blockhöhe und verdecken keine Nachbarflächen.
 - `maxY` schaltet den Ebenenschnitt.
 
+### Echte Texturen (`src/core/textures/`, `src/lib/textures/`, `src/components/preview/textures/`)
+
+Details für Nutzer: `docs/TEXTURES.md`.
+
+- **Server:**
+  - `minecraftJar.ts` liest die Client-Datei des Nutzers mit dem eigenen ZIP-Leser `zipReader.ts` (Größe und CRC-32 je Eintrag geprüft).
+  - Herausgezogen werden alle `blockstates`, `models/block` und `textures/block`, als JSON-Cache in `.minecraft-assets/` (änderbar mit `MCB_ASSET_CACHE_DIR`).
+  - Die Launcher-Suche ist begrenzt (Tiefe 7, höchstens 4000 Ordner, bekannte große Ordner übersprungen).
+  - `mojangDownload.ts` lädt nur nach EULA-Bestätigung, nur von Mojang-Hosts und mit SHA-1-Prüfung.
+- **`core/textures/blockModel.ts`** (rein, getestet) bildet das Modell-Backen des Spiels nach:
+  - Variante bzw. Multipart, Elternkette und `#`-Verweise;
+  - Standard-UVs, Flächendrehung, Elementdrehung mit `rescale`;
+  - Varianten-x/y (erst x, dann y, im Uhrzeigersinn) und `uvlock` (weltfeste Projektion).
+  - Ergebnis sind Quads in Blockeinheiten mit Cullface, Richtung, Tint-Index und Shade-Flag.
+- **`core/textures/closure.ts`** liefert nur die für die Registry-Blöcke nötigen Modelle und Texturen aus (etwa 95 KB für 1.21.11).
+- **Browser:**
+  - `textureAtlas.ts` packt die Texturen in einen Atlas: 16-px-Kacheln in 32-px-Zellen mit wiederholtem Rand, damit Mipmaps nicht überlaufen.
+  - Jede Textur wird als `opaque`, `cutout` oder `translucent` eingestuft.
+  - Die Datei backt Blockzustände bei Bedarf und erzeugt Symbole für Materialliste und Block-Auswahl.
+- **`core/textures/texturedMesh.ts`** (rein, getestet):
+  - Nachbar-Ausblendung wie im Spiel: Volle Blöcke mit deckenden Texturen verdecken; Glas verdeckt gleiches Glas; Laub nicht.
+  - Seitenhelligkeit 1/0,8/0,6/0,5 und Laubfärbung, als lineare Vertexfarben.
+- **`VoxelScene`:**
+  - Zeichnet drei Meshes mit `MeshBasicMaterial` und Atlas (deckend, Cutout mit `alphaTest`, transparent), mit `NearestFilter` und Mipmaps.
+  - Ohne Texturen nutzt sie den alten Farb-Mesh.
+  - `data-render-mode` an der Szene zeigt `textures` oder `colors`.
+
 ## Projekte (`src/lib/persistence/projects.ts`)
 
 - Speicher ist IndexedDB über Dexie, Datenbankschema Version 1.
@@ -162,6 +189,10 @@ Zufall gibt es nur über `createSeededRandom(spec.seed)` (mulberry32).
 | `POST /api/export` | `VoxelTransport` (max. 512 KB) | `.schem` mit `Content-Disposition: attachment` und `X-MCB-Voxel-Hash`. Fehler: 400 (Modell abgelehnt, inkl. Hash/Registry), 413, 422 (Selbstprüfung) |
 | `GET /api/ai/status` | – | `{ enabled, provider, model, reachable, modelInstalled, installedModels, message }` |
 | `POST /api/ai/plan` | `{ description }` | `{ source: 'ollama', model, durationMs, attempts, plan, patch }`. Fehler: 503 (aus/nicht erreichbar), 504 (Zeit), 502 (ungültig/HTTP) |
+| `GET /api/textures` | – | `{ available, version?, source?, importedAt?, candidates, message }`. Beim ersten Aufruf wird eine gefundene Client-Datei automatisch ausgelesen |
+| `GET /api/textures/resources` | – | `{ version, blockstates, models, textures }` für alle Registry-Blöcke; 404 ohne Texturen |
+| `POST /api/textures/import` | Rohdaten der `.jar` (max. 200 MB), Header `X-File-Name` | Status wie oben. Fehler: 400 (leer), 413, 422 (keine Minecraft-Client-Datei) |
+| `POST /api/textures/download` | `{ version, acceptEula: true }` | Status wie oben. Fehler: 400 (ohne Zustimmung/Version), 502 (Mojang nicht erreichbar, Prüfsumme falsch) |
 
 ### Transportformat `VoxelTransport`
 

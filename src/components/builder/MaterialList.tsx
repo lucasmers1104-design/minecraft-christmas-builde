@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { countMaterials, formatStacks } from '@/core/analysis/materialCounts';
-import { renderInfoFor } from '@/core/blocks/registry';
+import { BlockSwatch } from '@/components/preview/textures/BlockSwatch';
 import type { VoxelModel } from '@/core/schema/voxelModel';
 import { Panel } from '@/components/ui/Panel';
 
@@ -71,11 +71,7 @@ export function MaterialList({ model }: { model: VoxelModel | null }) {
                   <tr key={row.key} className="border-t border-white/5" data-testid="material-row" data-count={row.count}>
                     <td className="px-3 py-1.5">
                       <div className="flex items-center gap-2">
-                        <span
-                          aria-hidden="true"
-                          className="size-3 shrink-0 rounded-sm border border-white/20"
-                          style={{ background: swatchColor(row.swatch) }}
-                        />
+                        <BlockSwatch block={row.swatch} className="size-4" />
                         <div className="min-w-0">
                           <div className="text-snow-50">{row.label}</div>
                           <div className="truncate font-mono text-[10px] text-mist-400" title={row.detail}>
@@ -95,12 +91,4 @@ export function MaterialList({ model }: { model: VoxelModel | null }) {
       )}
     </Panel>
   );
-}
-
-function swatchColor(stateOrId: string): string {
-  try {
-    return renderInfoFor(stateOrId).color;
-  } catch {
-    return 'transparent';
-  }
 }

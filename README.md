@@ -21,6 +21,11 @@ Zielversion ist **Minecraft Java 1.21.11** (DataVersion 4671); 1.21.1 ist als zw
   - Manuelle Einstellungen haben Vorrang vor dem Text; Konflikte werden angezeigt.
 - **Drei echte Varianten** pro Generierung, bei gleicher Eingabe bitgenau reproduzierbar.
 - **3D-Vorschau** mit Drehen, Zoomen und Verschieben, Kamerabuttons und Ebenenschnitt. Verdeckte Flächen werden ausgeblendet, Glas ist transparent, Schienen sind flach.
+- **Echte Minecraft-Texturen** in Vorschau, Materialliste und Block-Auswahl:
+  - Die Texturen kommen aus **deiner eigenen Minecraft-Installation**. Die App findet sie im offiziellen Launcher, bei CurseForge, Modrinth und Prism.
+  - Alternativ wählst du die Datei aus oder lädst sie nach Bestätigung der Minecraft-EULA direkt von Mojang.
+  - Die App liest die Original-Blockmodelle, deshalb stimmen Ausrichtung, Laubfärbung und Glas wie im Spiel.
+  - Ohne Texturen zeigt sie einfarbige Blöcke. Details: [`docs/TEXTURES.md`](docs/TEXTURES.md).
 - **Editor:**
   - Blöcke in 3D anklicken: setzen, entfernen, ersetzen oder per Pipette aufnehmen.
   - Block-Auswahl mit Suche und Blockzuständen (z. B. Ausrichtung).
@@ -107,7 +112,7 @@ docs/                    Architektur, Kompatibilität, Import, lokale KI, Testbe
 - Nur Minecraft **Java**, Vanilla-Blöcke und volle Würfel. Einzige Ausnahme sind Schienen. Treppen, Stufen, Scheiben, Zäune, Türen und Schneeschichten fehlen bewusst. Der Eingang ist eine offene Öffnung.
 - Maximales Volumen 48 × 32 × 48 Blöcke.
 - Kein echtes Obergeschoss: „zweistöckig“ ergibt höhere Wände mit Hinweis.
-- Die Vorschau ist eine vereinfachte Voxel-Darstellung ohne Original-Texturen.
+- Die Vorschau zeigt Original-Texturen nur, wenn eine Minecraft-Installation gefunden oder ausgewählt wurde. Sonst zeigt sie einfarbige Blöcke. Animationen, Licht und Schatten des Spiels gibt es in der Vorschau nicht.
 - Projekte liegen nur in diesem Browser auf diesem Gerät; es gibt keine Cloud-Synchronisierung.
 - Die lokale KI kann nur kombinieren, was der Generator kennt. Ein echter Lauf mit einem Modell wurde hier nicht getestet (siehe `docs/LOCAL_AI.md`).
 
@@ -117,5 +122,6 @@ docs/                    Architektur, Kompatibilität, Import, lokale KI, Testbe
 - [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md): Versionsprofile, Verifikation, Blockliste
 - [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md): Import in Minecraft
 - [`docs/LOCAL_AI.md`](docs/LOCAL_AI.md): lokale KI mit Ollama einrichten (Windows)
+- [`docs/TEXTURES.md`](docs/TEXTURES.md): echte Minecraft-Texturen in der Vorschau
 - [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md): ausgeführte Prüfungen mit Ergebnissen
 - [`tests/worldedit/README.md`](tests/worldedit/README.md): Aufbau des WorldEdit-Readers

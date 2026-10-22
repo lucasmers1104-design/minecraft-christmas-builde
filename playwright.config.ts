@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.E2E_PORT ?? 3200);
@@ -32,5 +34,7 @@ export default defineConfig({
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
+    // Imported test textures go to a throw-away folder, not the project's .minecraft-assets.
+    env: { ...(process.env as Record<string, string>), MCB_ASSET_CACHE_DIR: join(tmpdir(), `mcb-e2e-assets-${process.pid}`) },
   },
 });

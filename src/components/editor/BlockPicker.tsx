@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { blockIdOf, blockState, getBlockDefinition, listBlockDefinitions, parseBlockState } from '@/core/blocks/registry';
+import { BlockSwatch } from '@/components/preview/textures/BlockSwatch';
 
 /** Searchable list of all registry blocks plus selectors for block-state properties. */
 export function BlockPicker({ value, onChange }: { value: string; onChange: (state: string) => void }) {
@@ -41,11 +42,7 @@ export function BlockPicker({ value, onChange }: { value: string; onChange: (sta
                 data-testid={`block-option-${b.id.replace('minecraft:', '')}`}
                 className={`flex w-full items-center gap-2 px-2 py-1 text-left text-xs ${selected ? 'bg-gold-400/12 text-gold-300' : 'text-mist-300 hover:bg-white/5'}`}
               >
-                <span
-                  aria-hidden="true"
-                  className="size-3 shrink-0 rounded-sm border border-white/20"
-                  style={{ background: b.render.color, opacity: b.render.opacity ?? 1 }}
-                />
+                <BlockSwatch block={b.id} className="size-4" />
                 <span className="min-w-0 truncate">{b.label}</span>
                 <span className="ml-auto min-w-0 truncate font-mono text-[10px] text-mist-400">{b.id.replace('minecraft:', '')}</span>
               </button>

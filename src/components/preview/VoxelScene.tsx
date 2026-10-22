@@ -7,6 +7,8 @@ import * as THREE from 'three';
 import type { Cell } from '@/core/editor/editOperations';
 import type { Dimensions, VoxelModel } from '@/core/schema/voxelModel';
 import { buildVoxelMesh, type MeshBuffers } from '@/components/preview/buildVoxelMesh';
+import { buildTexturedMesh, type TexturedBuffers } from '@/core/textures/texturedMesh';
+import type { ClientTexturePack } from '@/components/preview/textures/textureAtlas';
 import type { EditMode } from '@/components/editor/EditorPanel';
 
 type OrbitControlsImpl = ComponentRef<typeof OrbitControls>;
@@ -23,11 +25,12 @@ export interface CameraAction {
   seq: number;
 }
 
-function useBufferGeometry(buffers: MeshBuffers, colorSize: 3 | 4): THREE.BufferGeometry {
+function useBufferGeometry(buffers: MeshBuffers | TexturedBuffers, colorSize: 3 | 4): THREE.BufferGeometry {
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(buffers.positions, 3));
-    g.setAttribute('normal', new THREE.BufferAttribute(buffers.normals, 3));
+    if ('normals' in buffers) g.setAttribute('normal', new THREE.BufferAttribute(buffers.normals, 3));
+    if ('uvs' in buffers) g.setAttribute('uv', new THREE.BufferAttribute(buffers.uvs, 2));
     g.setAttribute('color', new THREE.BufferAttribute(buffers.colors, colorSize));
     g.setIndex(new THREE.BufferAttribute(buffers.indices, 1));
     g.computeBoundingSphere();
@@ -35,6 +38,42 @@ function useBufferGeometry(buffers: MeshBuffers, colorSize: 3 | 4): THREE.Buffer
   }, [buffers, colorSize]);
   useEffect(() => () => geometry.dispose(), [geometry]);
   return geometry;
+}
+
+const EMPTY_BUFFERS: MeshBuffers = {
+  positions: new Float32Array(),
+  normals: new Float32Array(),
+  colors: new Float32Array(),
+  indices: new Uint32Array(),
+  faceCount: 0,
+  faceCells: new Int32Array(),
+};
+
+const EMPTY_TEXTURED: TexturedBuffers = {
+  positions: new Float32Array(),
+  uvs: new Float32Array(),
+  colors: new Float32Array(),
+  indices: new Uint32Array(),
+  faceCount: 0,
+  faceCells: new Int32Array(),
+};
+
+/** The texture atlas as a crisp, mipmapped three.js texture (pixel art: nearest filtering). */
+function useAtlasTexture(pack: ClientTexturePack | null): THREE.Texture | null {
+  const gl = useThree((state) => state.gl);
+  const texture = useMemo(() => {
+    if (!pack) return null;
+    const t = new THREE.CanvasTexture(pack.canvas);
+    t.flipY = false;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.magFilter = THREE.NearestFilter;
+    t.minFilter = THREE.NearestMipmapLinearFilter;
+    t.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
+    t.needsUpdate = true;
+    return t;
+  }, [pack, gl]);
+  useEffect(() => () => texture?.dispose(), [texture]);
+  return texture;
 }
 
 /**
@@ -61,24 +100,36 @@ function VoxelMeshes({
   model,
   layerY,
   mode,
+  texturePack,
   onRendered,
   onCellAction,
 }: {
   model: VoxelModel;
   layerY: number | null;
   mode: EditMode;
+  texturePack: ClientTexturePack | null;
   onRendered?: (hash: string, faceCount: number) => void;
   onCellAction?: (action: CellAction) => void;
 }) {
-  const mesh = useMemo(() => buildVoxelMesh(model, layerY === null ? {} : { maxY: layerY }), [model, layerY]);
-  const opaque = useBufferGeometry(mesh.opaque, 3);
-  const emissive = useBufferGeometry(mesh.emissive, 3);
-  const translucent = useBufferGeometry(mesh.translucent, 4);
+  const textured = useMemo(
+    () => (texturePack ? buildTexturedMesh(model, texturePack.bake, texturePack.lookup, layerY === null ? {} : { maxY: layerY }) : null),
+    [model, layerY, texturePack],
+  );
+  // Plain colours when real textures are not set up (or switched off).
+  const mesh = useMemo(() => (textured ? null : buildVoxelMesh(model, layerY === null ? {} : { maxY: layerY })), [model, layerY, textured]);
+  const opaque = useBufferGeometry(mesh?.opaque ?? EMPTY_BUFFERS, 3);
+  const emissive = useBufferGeometry(mesh?.emissive ?? EMPTY_BUFFERS, 3);
+  const translucent = useBufferGeometry(mesh?.translucent ?? EMPTY_BUFFERS, 4);
+  const texSolid = useBufferGeometry(textured?.solid ?? EMPTY_TEXTURED, 3);
+  const texCutout = useBufferGeometry(textured?.cutout ?? EMPTY_TEXTURED, 3);
+  const texTranslucent = useBufferGeometry(textured?.translucent ?? EMPTY_TEXTURED, 3);
+  const atlas = useAtlasTexture(texturePack);
   const edges = useMemo(() => new THREE.EdgesGeometry(HIGHLIGHT_BOX), []);
   const [hover, setHover] = useState<Cell | null>(null);
+  const faceCount = textured?.faceCount ?? mesh?.faceCount ?? 0;
   useEffect(() => {
-    onRendered?.(model.hash, mesh.faceCount);
-  }, [model.hash, mesh, onRendered]);
+    onRendered?.(model.hash, faceCount);
+  }, [model.hash, faceCount, textured, mesh, onRendered]);
 
   const { width, length } = model.dimensions;
   const offset = useMemo(() => new THREE.Vector3(-width / 2, 0, -length / 2), [width, length]);
@@ -105,15 +156,31 @@ function VoxelMeshes({
   return (
     // Visual centring only – the stored block coordinates are never shifted.
     <group position={offset.toArray()}>
-      <mesh geometry={opaque} userData={{ faceCells: mesh.opaque.faceCells }} {...handlers}>
-        <meshLambertMaterial vertexColors />
-      </mesh>
-      <mesh geometry={emissive} userData={{ faceCells: mesh.emissive.faceCells }} {...handlers}>
-        <meshBasicMaterial vertexColors toneMapped={false} />
-      </mesh>
-      <mesh geometry={translucent} renderOrder={1} userData={{ faceCells: mesh.translucent.faceCells }} {...handlers}>
-        <meshLambertMaterial vertexColors transparent depthWrite={false} side={THREE.DoubleSide} />
-      </mesh>
+      {textured && atlas ? (
+        <>
+          <mesh geometry={texSolid} userData={{ faceCells: textured.solid.faceCells }} {...handlers}>
+            <meshBasicMaterial map={atlas} vertexColors toneMapped={false} />
+          </mesh>
+          <mesh geometry={texCutout} userData={{ faceCells: textured.cutout.faceCells }} {...handlers}>
+            <meshBasicMaterial map={atlas} vertexColors toneMapped={false} alphaTest={0.5} side={THREE.DoubleSide} />
+          </mesh>
+          <mesh geometry={texTranslucent} renderOrder={1} userData={{ faceCells: textured.translucent.faceCells }} {...handlers}>
+            <meshBasicMaterial map={atlas} vertexColors toneMapped={false} transparent depthWrite={false} />
+          </mesh>
+        </>
+      ) : mesh ? (
+        <>
+          <mesh geometry={opaque} userData={{ faceCells: mesh.opaque.faceCells }} {...handlers}>
+            <meshLambertMaterial vertexColors />
+          </mesh>
+          <mesh geometry={emissive} userData={{ faceCells: mesh.emissive.faceCells }} {...handlers}>
+            <meshBasicMaterial vertexColors toneMapped={false} />
+          </mesh>
+          <mesh geometry={translucent} renderOrder={1} userData={{ faceCells: mesh.translucent.faceCells }} {...handlers}>
+            <meshLambertMaterial vertexColors transparent depthWrite={false} side={THREE.DoubleSide} />
+          </mesh>
+        </>
+      ) : null}
       {mode === 'place' ? (
         // Invisible ground plane so blocks can also be placed on empty ground cells (y = 0).
         <mesh
@@ -202,6 +269,7 @@ export interface VoxelSceneProps {
   mode: EditMode;
   layerY: number | null;
   cameraAction: CameraAction | null;
+  texturePack: ClientTexturePack | null;
   onRendered?: (hash: string, faceCount: number) => void;
   onCellAction?: (action: CellAction) => void;
 }
@@ -214,6 +282,7 @@ export function VoxelScene({
   mode,
   layerY,
   cameraAction,
+  texturePack,
   onRendered,
   onCellAction,
 }: VoxelSceneProps) {
@@ -233,7 +302,14 @@ export function VoxelScene({
       <ambientLight intensity={0.35} />
       <directionalLight position={[d, d * 1.6, -d * 0.6]} intensity={1.6} />
       <directionalLight position={[-d, d * 0.8, d]} intensity={0.45} color="#a9d8f2" />
-      <VoxelMeshes model={model} layerY={layerY} mode={mode} onRendered={onRendered} onCellAction={onCellAction} />
+      <VoxelMeshes
+        model={model}
+        layerY={layerY}
+        mode={mode}
+        texturePack={texturePack}
+        onRendered={onRendered}
+        onCellAction={onCellAction}
+      />
       {showGrid ? (
         <Grid
           position={[0, -0.001, 0]}
