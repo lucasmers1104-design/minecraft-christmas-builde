@@ -1,0 +1,7 @@
+# Windows batch files need CRLF line endings
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.schem binary
+# Shell scripts and files they source must keep LF, also on Windows checkouts (Git Bash)
+*.sh text eol=lf
+tests/worldedit/upstream.lock text eol=lf

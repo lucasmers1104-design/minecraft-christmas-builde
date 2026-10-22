@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  STUB for com.sk89q:jchronic:0.2.4a (EngineHub's fork of jchronic, package com.sk89q.jchronic).
+  That fork is only published on maven.enginehub.org (blocked in the sandbox) and its source is
+  not public on GitHub (EngineHub/jchronic and sk89q/jchronic do not exist); upstream
+  samtingleff/jchronic lacks the Options#setNow / Time#setTimeZone API WorldEdit calls.
+
+  WorldEdit uses it in exactly one place: LocalSession#detectDate (natural-language dates for
+  the snapshot-restore commands). It is NOT reachable from schematic reading, so a stub that
+  throws UnsupportedOperationException is used to satisfy the compiler. The schematic reader
+  path is unaffected.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>local.worldedit-build</groupId>
+    <artifactId>upstream-parent</artifactId>
+    <version>1</version>
+  </parent>
+  <artifactId>jchronic-stub</artifactId>
+  <version>0.2.4a-stub</version>
+</project>

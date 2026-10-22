@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>local.worldedit-build</groupId>
+    <artifactId>upstream-parent</artifactId>
+    <version>1</version>
+  </parent>
+  <groupId>org.enginehub.piston</groupId>
+  <artifactId>default-impl</artifactId>
+  <version>0.5.11</version>
+  <properties><maven.compiler.release>17</maven.compiler.release></properties>
+  <dependencies>
+    <dependency><groupId>org.enginehub.piston</groupId><artifactId>core</artifactId><version>${piston.version}</version></dependency>
+    <dependency><groupId>org.apache.logging.log4j</groupId><artifactId>log4j-api</artifactId><version>${piston.log4j.version}</version></dependency>
+    <dependency><groupId>com.google.auto.value</groupId><artifactId>auto-value-annotations</artifactId><version>${piston.autoValue.version}</version><scope>provided</scope></dependency>
+    <dependency><groupId>com.google.auto.service</groupId><artifactId>auto-service-annotations</artifactId><scope>provided</scope></dependency>
+  </dependencies>
+  <build>
+    <sourceDirectory>${src.root}/Piston/default-impl/src/main/java</sourceDirectory>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <annotationProcessorPaths>
+            <path><groupId>com.google.auto.value</groupId><artifactId>auto-value</artifactId><version>${piston.autoValue.version}</version></path>
+            <path><groupId>com.google.auto.service</groupId><artifactId>auto-service</artifactId><version>${autoService.version}</version></path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

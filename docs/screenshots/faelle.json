@@ -1,0 +1,376 @@
+[
+ {
+  "name": "haus-mittelalter-weihnachten",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Mittelalter",
+  "theme": "Weihnachten",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-fantasy-weihnachten",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Fantasy / Märchen",
+  "theme": "Weihnachten",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-rustikal-weihnachten",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Rustikal",
+  "theme": "Weihnachten",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-nordisch-weihnachten",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Nordisch",
+  "theme": "Weihnachten",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-japanisch-weihnachten",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Japanisch",
+  "theme": "Weihnachten",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-kirschbluete-weihnachten",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Kirschblüte",
+  "theme": "Weihnachten",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-modern-weihnachten",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Modern",
+  "theme": "Weihnachten",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-mediterran-weihnachten",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Mediterran",
+  "theme": "Weihnachten",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-mittelalter-gross-ohne-thema",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Mittelalter",
+  "theme": "Kein Thema",
+  "size": "Groß",
+  "views": [
+   [
+    215,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-fantasy-gross-ohne-thema",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Fantasy / Märchen",
+  "theme": "Kein Thema",
+  "size": "Groß",
+  "views": [
+   [
+    215,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-rustikal-gross-ohne-thema",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Rustikal",
+  "theme": "Kein Thema",
+  "size": "Groß",
+  "views": [
+   [
+    215,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-nordisch-gross-ohne-thema",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Nordisch",
+  "theme": "Kein Thema",
+  "size": "Groß",
+  "views": [
+   [
+    215,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-japanisch-gross-ohne-thema",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Japanisch",
+  "theme": "Kein Thema",
+  "size": "Groß",
+  "views": [
+   [
+    215,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-kirschbluete-gross-ohne-thema",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Kirschblüte",
+  "theme": "Kein Thema",
+  "size": "Groß",
+  "views": [
+   [
+    215,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-modern-gross-ohne-thema",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Modern",
+  "theme": "Kein Thema",
+  "size": "Groß",
+  "views": [
+   [
+    215,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-mediterran-gross-ohne-thema",
+  "prompt": "Ein Haus",
+  "kind": "Haus",
+  "style": "Mediterran",
+  "theme": "Kein Thema",
+  "size": "Groß",
+  "views": [
+   [
+    215,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-nordisch-winter-schnee",
+  "prompt": "Nordisches Langhaus mit Schnee auf dem Dach",
+  "kind": "Haus",
+  "style": "Nordisch",
+  "theme": "Winter",
+  "size": "Groß",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "haus-mittelalter-rundturm-erker-balkon",
+  "prompt": "Fachwerkhaus mit rundem Turm hinten rechts, Erker und Balkon, zwei Geschosse",
+  "kind": "Haus",
+  "style": "Mittelalter",
+  "theme": "Weihnachten",
+  "size": "Groß",
+  "views": [
+   [
+    35,
+    22,
+    0.9,
+    0.45
+   ],
+   [
+    215,
+    22,
+    0.9,
+    0.45
+   ]
+  ]
+ },
+ {
+  "name": "turm-mittelalter-zinnen",
+  "prompt": "Ein Turm",
+  "kind": "Turm",
+  "style": "Mittelalter",
+  "theme": "Kein Thema",
+  "size": "Mittel",
+  "views": [
+   [
+    35,
+    16,
+    0.9,
+    0.5
+   ]
+  ]
+ },
+ {
+  "name": "turm-fantasy-weihnachten",
+  "prompt": "Ein Turm",
+  "kind": "Turm",
+  "style": "Fantasy / Märchen",
+  "theme": "Weihnachten",
+  "size": "Groß",
+  "views": [
+   [
+    35,
+    16,
+    0.9,
+    0.5
+   ]
+  ]
+ },
+ {
+  "name": "weihnachtsbaum",
+  "prompt": "",
+  "kind": "Weihnachtsbaum",
+  "style": "Rustikal",
+  "theme": "Weihnachten",
+  "size": "Groß",
+  "views": [
+   [
+    35,
+    14,
+    0.9,
+    0.5
+   ]
+  ]
+ },
+ {
+  "name": "marktstand",
+  "prompt": "",
+  "kind": "Marktstand",
+  "style": "Rustikal",
+  "theme": "Weihnachten",
+  "size": "Groß",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ },
+ {
+  "name": "bahnhof-mittelalter",
+  "prompt": "",
+  "kind": "Bahnhof",
+  "style": "Mittelalter",
+  "theme": "Weihnachten",
+  "size": "Groß",
+  "views": [
+   [
+    35,
+    24,
+    0.85,
+    0.4
+   ]
+  ]
+ }
+]

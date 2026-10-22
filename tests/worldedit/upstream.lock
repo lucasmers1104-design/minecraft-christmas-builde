@@ -1,0 +1,56 @@
+# Pinned upstream sources (sourced by build.sh). Every checkout is verified to be at exactly
+# this commit with a clean work tree, and tags are checked with `git ls-remote`.
+
+# EngineHub WorldEdit 7.4.2: the newest release in which EVERY platform targets Minecraft 1.21.11
+# (Bukkit adapter-1.21.11; Fabric, NeoForge and Sponge built against 1.21.11) and which is built
+# for Java 21. 1.21.11 support arrived in 7.3.18 (CHANGELOG "Added support for 1.21.11") and is
+# kept by 7.3.19 and 7.4.0-7.4.2. 7.4.3 ("Updated to 26.1(.1/.2) and Java 25") moved Fabric,
+# NeoForge and Sponge to 26.x and compiles worldedit-core with --release 25 (its sources use Java
+# 22+ syntax), so 7.4.3-7.4.6 only cover 1.21.11 through the Bukkit adapter on a Java 25 runtime.
+WE_URL=https://github.com/EngineHub/WorldEdit
+WE_TAG=7.4.2
+WE_VERSION=7.4.2
+WE_COMMIT=eb8e82c3d8843bed3f71e82ea974122415645178
+
+# EngineHub-only dependencies of WorldEdit 7.4.2 (gradle/libs.versions.toml there).
+PISTON_URL=https://github.com/EngineHub/Piston
+PISTON_TAG=v0.5.11
+PISTON_COMMIT=2b9ba122053583649c9b82018b1b0884548ef158
+
+LINBUS_URL=https://github.com/EngineHub/lin-bus
+LINBUS_TAG=v0.2.0
+LINBUS_COMMIT=6a1e200f20b8dabb2efb48c834be6e2c7446c5cf
+
+# com.sk89q.lib:jlibnoise:1.0.0 (no tags in the repo; master).
+JLIBNOISE_URL=https://github.com/EngineHub/jlibnoise
+JLIBNOISE_TAG=
+JLIBNOISE_COMMIT=1cb2810666aa29dda22ae8711861fca363d08afa
+
+# WorldEdit 7.4 no longer bundles CLI registry data: FileRegistries downloads
+# https://services.enginehub.org/cassette-deck/we-cli-data/<DataVersion>/<CLI_DATA_VERSION>
+# into <working dir>/cli-data/<DataVersion>_<CLI_DATA_VERSION>.json and reuses that file when it
+# exists. The harness pre-seeds that cache with files generated from Mojang's data generator
+# output (misode/mcmeta <version>-summary) and never downloads. WE_CLI_DATA_FORMAT is the
+# CLI_DATA_VERSION the generator implements; build.sh checks it against FileRegistries.java.
+WE_CLI_DATA_FORMAT=1
+
+# Minecraft data-generator output mirrored by misode/mcmeta, one entry per registry profile:
+# "<mcmeta tag> <commit> <DataVersion>". The first entry is the default profile.
+MCMETA_URL=https://github.com/misode/mcmeta
+MCMETA_TARGETS=(
+  "1.21.11-summary c976eb3b2cfcb9f205171527dec46b266afa3ac9 4671"
+  "1.21.1-summary 7cffbcdad5fa36f22acef6bd4b869ecad4ca3fd9 3955"
+)
+
+# Converter validation: regenerate the 1.19 (DataVersion 3105) file from the 1.19 summary and
+# require it to equal, as JSON, the 3105.json that EngineHub shipped inside worldedit-cli. 7.4.0
+# removed the bundled files (commit b37f00a4, "Cleanup WorldEdit-CLI data version systems"), so the
+# reference comes from 7.3.19, the last release that shipped them and an ancestor of 7.4.2. The
+# file is the same git blob in every release from 7.3.8 to 7.3.19.
+MCMETA_VALIDATE_TAG=1.19-summary
+MCMETA_VALIDATE_COMMIT=ddd2e2d0559871eef6b734fcc6ae1d63582e7bbf
+MCMETA_VALIDATE_DATA_VERSION=3105
+WE_VALIDATE_TAG=7.3.19
+WE_VALIDATE_COMMIT=cb4171a9100b0c0e8d8a954cb61c56f796f06d87
+WE_VALIDATE_PATH=worldedit-cli/src/main/resources/com/sk89q/worldedit/cli/data/3105.json
+WE_VALIDATE_BLOB=4d1436e84a8b1c0bcacfa685f475b971271ab900

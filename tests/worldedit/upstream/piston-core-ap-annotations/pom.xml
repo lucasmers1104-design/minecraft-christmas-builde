@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>local.worldedit-build</groupId>
+    <artifactId>upstream-parent</artifactId>
+    <version>1</version>
+  </parent>
+  <groupId>org.enginehub.piston.core-ap</groupId>
+  <artifactId>annotations</artifactId>
+  <version>0.5.11</version>
+  <properties><maven.compiler.release>17</maven.compiler.release></properties>
+  <dependencies>
+    <dependency><groupId>org.enginehub.piston</groupId><artifactId>core</artifactId><version>${piston.version}</version></dependency>
+    <dependency><groupId>org.enginehub.piston.core-ap</groupId><artifactId>runtime</artifactId><version>${piston.version}</version></dependency>
+  </dependencies>
+  <build>
+    <sourceDirectory>${src.root}/Piston/core-ap/annotations/src/main/java</sourceDirectory>
+  </build>
+</project>

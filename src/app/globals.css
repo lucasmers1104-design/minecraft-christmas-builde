@@ -1,0 +1,57 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-night-950: #070e1a;
+  --color-night-900: #0b1526;
+  --color-night-850: #0f1c31;
+  --color-night-800: #13233c;
+  --color-night-700: #1b2f4e;
+  --color-night-600: #284268;
+  --color-fir-700: #1f4d3a;
+  --color-fir-600: #2a6a4f;
+  --color-fir-500: #348a64;
+  --color-fir-300: #7cc7a1;
+  --color-ice-300: #a9d8f2;
+  --color-ice-200: #cfe9f8;
+  --color-holly-600: #a8322d;
+  --color-holly-500: #c8443d;
+  --color-holly-300: #f09a92;
+  --color-gold-400: #e8b65a;
+  --color-gold-300: #f2cf86;
+  --color-snow-50: #f4f8fc;
+  --color-mist-300: #b7c6d9;
+  --color-mist-400: #8ea2bb;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background: var(--color-night-950);
+  color: var(--color-snow-50);
+}
+
+body {
+  background-image:
+    radial-gradient(1200px 600px at 15% -10%, rgb(42 106 79 / 0.18), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgb(169 216 242 / 0.1), transparent 55%);
+  background-attachment: fixed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-gold-300);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
