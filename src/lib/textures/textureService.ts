@@ -36,14 +36,15 @@ function readyMessage(entry: CachedAssets): string {
  */
 export async function getTextureStatus(env: Record<string, string | undefined> = process.env): Promise<TextureStatus> {
   const dir = assetCacheDir(env);
-  const explicit = env.MINECRAFT_JAR?.trim();
+  const envName = env.MINECRAFT_JAR?.trim() ? 'MINECRAFT_JAR' : 'MCB_MINECRAFT_JAR';
+  const explicit = env.MINECRAFT_JAR?.trim() || env.MCB_MINECRAFT_JAR?.trim();
   let cached = await loadCachedAssets(dir);
   if (explicit && cached?.source.path !== explicit) {
     try {
-      cached = await importJarFile(explicit, { kind: 'env', label: 'MINECRAFT_JAR', path: explicit }, dir);
+      cached = await importJarFile(explicit, { kind: 'env', label: envName, path: explicit }, dir);
     } catch (error) {
       if (!(error instanceof MinecraftJarError)) throw error;
-      return { available: false, candidates: [], message: `MINECRAFT_JAR: ${error.message}` };
+      return { available: false, candidates: [], message: `${envName}: ${error.message}` };
     }
   }
   if (cached) {
@@ -63,8 +64,11 @@ export async function getTextureStatus(env: Record<string, string | undefined> =
   } catch {
     candidates = [];
   }
-  const pick = pickCandidate(candidates, SUPPORTED_MINECRAFT_VERSIONS);
-  if (pick) {
+  // Try candidates in preference order; a damaged or modded jar must not block the next one.
+  const failures: string[] = [];
+  const remaining = [...candidates];
+  for (let pick = pickCandidate(remaining, SUPPORTED_MINECRAFT_VERSIONS); pick; pick = pickCandidate(remaining, SUPPORTED_MINECRAFT_VERSIONS)) {
+    remaining.splice(remaining.indexOf(pick), 1);
     try {
       const entry = await importJarFile(pick.path, { kind: 'launcher', label: `${pick.launcher}, ${pick.version}`, path: pick.path }, dir);
       return {
@@ -77,9 +81,10 @@ export async function getTextureStatus(env: Record<string, string | undefined> =
       };
     } catch (error) {
       if (!(error instanceof MinecraftJarError)) throw error;
-      return { available: false, candidates, message: `${pick.path}: ${error.message}` };
+      failures.push(`${pick.path}: ${error.message}`);
     }
   }
+  if (failures.length > 0) return { available: false, candidates, message: failures.join(' · ') };
   return {
     available: false,
     candidates,

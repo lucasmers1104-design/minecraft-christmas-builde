@@ -43,9 +43,10 @@ const compound = (value: Record<string, Tag>): Tag => ({ type: 'compound', value
 
 /** Builds the NBT tree exactly as laid out by the Sponge Schematic v3 specification. */
 export function buildSpongeV3Nbt(model: VoxelModel, requestedProfile?: CompatibilityProfile): nbt.NBT {
-  const issues = collectVoxelIssues(model);
   const profile = requestedProfile ?? getProfileForVersion(model.spec.targetMinecraftVersion);
   if (!profile) throw new SchematicExportError([`Kein Exportprofil für Minecraft ${model.spec.targetMinecraftVersion}`]);
+  // Every palette block must exist in the version the file is written for.
+  const issues = collectVoxelIssues(model, { minecraftVersion: profile.minecraftVersion });
   if (model.spec.targetMinecraftVersion !== profile.minecraftVersion) {
     issues.push(
       `Modell zielt auf Minecraft ${model.spec.targetMinecraftVersion}, Exportprofil ist ${profile.minecraftVersion}`,
@@ -59,8 +60,10 @@ export function buildSpongeV3Nbt(model: VoxelModel, requestedProfile?: Compatibi
   });
 
   const varints = encodeVarIntArray(model.indices);
-  // TAG_Byte_Array holds signed Java bytes.
-  const data = Array.from(varints, (b) => (b > 127 ? b - 256 : b));
+  // TAG_Byte_Array holds signed Java bytes. An Int8Array view reinterprets the same memory
+  // without a copy; prismarine-nbt's compiled writer only reads `.length` and `[i]` of a
+  // byteArray value (protodef `array` of `i8`), so a typed array writes identical bytes.
+  const data = new Int8Array(varints.buffer, varints.byteOffset, varints.byteLength);
 
   const { width, height, length } = model.dimensions;
   const schematic = compound({
@@ -79,7 +82,8 @@ export function buildSpongeV3Nbt(model: VoxelModel, requestedProfile?: Compatibi
     Offset: { type: 'intArray', value: [0, 0, 0] } as Tag,
     Blocks: compound({
       Palette: compound(palette),
-      Data: { type: 'byteArray', value: data } as Tag,
+      // Typed as number[] by prismarine-nbt; at runtime an Int8Array (see above).
+      Data: { type: 'byteArray', value: data } as unknown as Tag,
       BlockEntities: { type: 'list', value: { type: 'compound', value: [] } } as Tag,
     }),
   });

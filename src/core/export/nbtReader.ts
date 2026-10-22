@@ -61,7 +61,8 @@ class Cursor {
   get remaining(): number {
     return this.bytes.length - this.pos;
   }
-  private need(n: number): void {
+  /** Throws unless `n` more bytes are available (call before allocating for a declared length). */
+  need(n: number): void {
     if (n < 0 || this.pos + n > this.bytes.length) {
       throw new NbtReadError(`Unerwartetes Dateiende bei Byte ${this.pos} (benötigt ${n})`);
     }
@@ -155,6 +156,7 @@ function readPayload(c: Cursor, type: number, depth: number): NbtTag {
       const length = c.arrayLength();
       if (elementType > TAG.LongArray) throw new NbtReadError(`Unbekannter Listen-Elementtyp ${elementType}`);
       if (elementType === TAG.End && length > 0) throw new NbtReadError('Liste vom Typ TAG_End mit Elementen');
+      c.need(length); // every element takes at least one byte
       const items: NbtTag[] = [];
       for (let i = 0; i < length; i++) items.push(readPayload(c, elementType, depth + 1));
       return { type: TAG.List, elementType: elementType as TagId, value: items };
@@ -173,12 +175,14 @@ function readPayload(c: Cursor, type: number, depth: number): NbtTag {
     }
     case TAG.IntArray: {
       const length = c.arrayLength();
+      c.need(length * 4); // a forged length must not allocate gigabytes
       const out = new Int32Array(length);
       for (let i = 0; i < length; i++) out[i] = c.i32();
       return { type: TAG.IntArray, value: out };
     }
     case TAG.LongArray: {
       const length = c.arrayLength();
+      c.need(length * 8);
       const out = new BigInt64Array(length);
       for (let i = 0; i < length; i++) out[i] = c.i64();
       return { type: TAG.LongArray, value: out };

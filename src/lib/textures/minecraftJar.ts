@@ -101,7 +101,8 @@ export async function loadCachedAssets(dir = assetCacheDir()): Promise<CachedAss
 export async function saveCachedAssets(entry: CachedAssets, dir = assetCacheDir()): Promise<void> {
   await mkdir(dir, { recursive: true });
   const file = join(dir, CACHE_FILE);
-  const tmp = `${file}.${process.pid}.tmp`;
+  // Unique per call: two first requests at the same time (React strict mode) must not share a temp file.
+  const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
   await writeFile(tmp, JSON.stringify(entry));
   await rename(tmp, file);
 }
@@ -160,7 +161,11 @@ const SKIP_DIRS = new Set([
 
 const VERSION_PATTERN = /^\d+\.\d+(?:\.\d+)?$/;
 
-/** Recognises client jar file names: "<v>/<v>.jar" (vanilla layout) or "minecraft-<v>-client.jar" (Prism/MultiMC). */
+/**
+ * Recognises client jar file names: "<v>/<v>.jar" (vanilla layout), "minecraft-<v>-client.jar"
+ * (Prism/MultiMC) and the Modrinth App layout "meta/versions/<v>-<app>/<v>-<app>.jar"
+ * (e.g. 1.21.11-0.19.3/1.21.11-0.19.3.jar, a vanilla client).
+ */
 export function jarVersionFromPath(path: string): string | null {
   const parts = path.split(/[\\/]/);
   const file = parts.at(-1) ?? '';
@@ -169,6 +174,8 @@ export function jarVersionFromPath(path: string): string | null {
   if (prism) return prism[1]!;
   const plain = /^(\d+\.\d+(?:\.\d+)?)\.jar$/.exec(file);
   if (plain && parent === plain[1]) return plain[1]!;
+  const suffixed = /^(\d+\.\d+(?:\.\d+)?)-[\w.+-]+\.jar$/.exec(file);
+  if (suffixed && `${parent}.jar` === file) return suffixed[1]!;
   if (file === 'client.jar' && VERSION_PATTERN.test(parent)) return parent;
   return null;
 }

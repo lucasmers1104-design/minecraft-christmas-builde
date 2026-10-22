@@ -12,7 +12,7 @@ export type EditMode = 'view' | 'place' | 'remove' | 'paint' | 'pick';
 
 export const EDIT_MODES: { id: EditMode; label: string; hint: string }[] = [
   { id: 'view', label: 'Ansehen', hint: 'Nur drehen und zoomen' },
-  { id: 'place', label: 'Setzen', hint: 'Klick auf eine Blockfläche setzt den gewählten Block daneben' },
+  { id: 'place', label: 'Setzen', hint: 'Klick auf eine Blockfläche setzt den gewählten Block daneben, ausgerichtet wie im Spiel' },
   { id: 'remove', label: 'Entfernen', hint: 'Klick entfernt den Block' },
   { id: 'paint', label: 'Ersetzen', hint: 'Klick ersetzt den Block durch den gewählten' },
   { id: 'pick', label: 'Pipette', hint: 'Klick übernimmt den Block als Auswahl' },

@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { useCallback, useState, useSyncExternalStore } from 'react';
 import type { VoxelModel } from '@/core/schema/voxelModel';
 import { EditToolbar, PreviewToolbar } from '@/components/preview/PreviewToolbar';
-import type { CameraAction, CellAction } from '@/components/preview/VoxelScene';
+import type { CameraAction, CellAction, RenderMode } from '@/components/preview/VoxelScene';
 import type { EditMode } from '@/components/editor/EditorPanel';
 import { SceneErrorBoundary } from '@/components/preview/SceneErrorBoundary';
 import { TextureSetup } from '@/components/preview/textures/TextureSetup';
@@ -63,10 +63,13 @@ export function PreviewPanel({
   const maxLayer = model ? model.dimensions.height - 1 : 0;
   const effectiveLayer = layerY === null ? null : Math.min(layerY, maxLayer);
   const [showGrid, setShowGrid] = useState(true);
-  const [rendered, setRendered] = useState<{ hash: string; faces: number } | null>(null);
+  const [rendered, setRendered] = useState<{ hash: string; faces: number; mode: RenderMode } | null>(null);
   const reducedMotion = useReducedMotion();
   const texturePack = useActiveTexturePack();
-  const onRendered = useCallback((hash: string, faces: number) => setRendered({ hash, faces }), []);
+  const renderMode: RenderMode = texturePack ? 'textures' : 'colors';
+  const onRendered = useCallback((hash: string, faces: number, mode: RenderMode) => setRendered({ hash, faces, mode }), []);
+  // Only a mesh of exactly this model in the current render mode counts as rendered.
+  const renderedNow = rendered && model && rendered.hash === model.hash && rendered.mode === renderMode ? rendered : null;
 
   return (
     <section
@@ -114,9 +117,9 @@ export function PreviewPanel({
         className="relative min-h-[55dvh] flex-1 lg:min-h-0"
         data-testid="scene"
         data-model-hash={model?.hash ?? ''}
-        data-rendered-hash={rendered && model && rendered.hash === model.hash ? rendered.hash : ''}
-        data-face-count={rendered && model && rendered.hash === model.hash ? rendered.faces : 0}
-        data-render-mode={texturePack ? 'textures' : 'colors'}
+        data-rendered-hash={renderedNow?.hash ?? ''}
+        data-face-count={renderedNow?.faces ?? 0}
+        data-render-mode={renderMode}
       >
         {model ? (
           <SceneErrorBoundary>

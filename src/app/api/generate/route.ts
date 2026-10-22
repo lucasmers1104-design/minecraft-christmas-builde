@@ -11,6 +11,11 @@ import { encodeVoxelTransport, type VoxelTransport } from '@/lib/serialization/v
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+/**
+ * The request only carries a BuildSpec (no voxel data), so its limit stays small regardless
+ * of the block limits. The response carries every variant as an RLE transport (typically
+ * well below 1 MiB per variant, ~2.7 MiB for a realistic 192 x 384 x 192 building).
+ */
 const MAX_GENERATE_REQUEST_BYTES = 16 * 1024;
 
 const generateRequestSchema = z

@@ -10,7 +10,9 @@ export const dynamic = 'force-dynamic';
 /**
  * Exports exactly the posted canonical voxel model (never re-generates from a prompt).
  * The model is validated (limits, registry, hash), written as Sponge v3, re-read through
- * the independent validator and only then returned as a download.
+ * the independent validator and only then returned as a download. The body limit
+ * (MAX_TRANSPORT_REQUEST_BYTES, ~37 MiB) covers the largest possible model in either index
+ * encoding; it is enforced on the streamed bytes, not only on Content-Length.
  */
 export async function POST(request: Request): Promise<Response> {
   let body: unknown;

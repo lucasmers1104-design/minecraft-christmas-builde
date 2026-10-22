@@ -6,7 +6,8 @@ import { NbtReadError, readNbt, TAG, type NbtTag } from '@/core/export/nbtReader
 import {
   checkDimensions,
   computeVoxelHash,
-  linearIndex,
+  MAX_PALETTE_SIZE,
+  MAX_VOLUME,
   type Dimensions,
   type VoxelModel,
 } from '@/core/schema/voxelModel';
@@ -33,8 +34,18 @@ export interface SchematicValidationReport {
   decoded?: DecodedSchematic;
 }
 
-/** Upper bound for the decompressed NBT (zip-bomb guard); MVP files are ~100 KB. */
-const MAX_UNCOMPRESSED_BYTES = 8 * 1024 * 1024;
+/** Longest palette key we budget for (real block states are well below 200 characters). */
+const MAX_PALETTE_KEY_BYTES = 256;
+/** Bytes of the VarInt for the largest palette id (2 for MAX_PALETTE_SIZE = 4096 < 2^14). */
+const MAX_INDEX_VARINT_BYTES = Math.max(1, Math.ceil(Math.log2(MAX_PALETTE_SIZE) / 7));
+/**
+ * Upper bound for the decompressed NBT (zip-bomb guard): the largest legal file, i.e.
+ * MAX_VOLUME VarInts of MAX_INDEX_VARINT_BYTES each, a full palette (tag type, name length,
+ * name, int per entry) and 64 KiB for the remaining structure. About 28 MiB for
+ * 192 x 384 x 192 blocks; gunzip stops with an error as soon as the output gets larger.
+ */
+export const MAX_UNCOMPRESSED_BYTES =
+  MAX_VOLUME * MAX_INDEX_VARINT_BYTES + MAX_PALETTE_SIZE * (1 + 2 + MAX_PALETTE_KEY_BYTES + 4) + 64 * 1024;
 
 function child(compound: NbtTag | undefined, name: string): NbtTag | undefined {
   return compound?.type === TAG.Compound ? compound.value.get(name) : undefined;
@@ -148,6 +159,10 @@ export function validateSchematic(
 
   // Palette: ids must be exactly 0..n-1, every key a valid registry block state.
   const paletteSize = paletteTag.value.size;
+  if (paletteSize > MAX_PALETTE_SIZE) {
+    issues.push(`Palette zu groß (${paletteSize} > ${MAX_PALETTE_SIZE})`);
+    return report;
+  }
   const palette = new Array<string | undefined>(paletteSize).fill(undefined);
   paletteTag.value.forEach((tag, state) => {
     if (tag.type !== TAG.Int) {
@@ -163,7 +178,7 @@ export function validateSchematic(
       return;
     }
     palette[tag.value] = state;
-    const check = checkBlockState(state);
+    const check = checkBlockState(state, profile.minecraftVersion);
     if (!check.ok) issues.push(`Palette: ${check.reason}`);
   });
   if (issues.length > 0) return report;
@@ -218,19 +233,33 @@ function compareWithModel(decoded: DecodedSchematic, expected: VoxelModel, issue
     );
     return;
   }
+  // Map decoded palette ids to expected ids once and compare integers per block; whenever
+  // the ids differ, fall back to comparing the block-state strings (the actual criterion).
+  const expectedIds = new Map<string, number>();
+  expected.palette.forEach((state, id) => {
+    if (!expectedIds.has(state)) expectedIds.set(state, id);
+  });
+  const remap = Int32Array.from(decoded.palette, (state) => expectedIds.get(state) ?? -1);
+  const volume = d.width * d.height * d.length;
   let mismatches = 0;
   let first = '';
-  for (let y = 0; y < d.height; y++)
-    for (let z = 0; z < d.length; z++)
-      for (let x = 0; x < d.width; x++) {
-        const i = linearIndex(d, x, y, z);
-        const want = expected.palette[expected.indices[i]!];
-        const got = decoded.palette[decoded.indices[i]!];
-        if (want !== got) {
-          if (mismatches === 0) first = `(${x}, ${y}, ${z}): erwartet ${want}, gelesen ${got}`;
-          mismatches++;
-        }
+  // Linear order x + width * (z + length * y) = y-, z-, x-loops, so "first" is unchanged.
+  for (let i = 0; i < volume; i++) {
+    const wantId = expected.indices[i];
+    const gotId = decoded.indices[i]!;
+    if (remap[gotId] === wantId) continue;
+    const want = wantId === undefined ? undefined : expected.palette[wantId];
+    const got = decoded.palette[gotId];
+    if (want !== got) {
+      if (mismatches === 0) {
+        const x = i % d.width;
+        const z = Math.floor(i / d.width) % d.length;
+        const y = Math.floor(i / (d.width * d.length));
+        first = `(${x}, ${y}, ${z}): erwartet ${want}, gelesen ${got}`;
       }
+      mismatches++;
+    }
+  }
   if (mismatches > 0) issues.push(`${mismatches} Blöcke weichen ab, erster bei ${first}`);
   if (decoded.hash !== expected.hash) issues.push(`Hash ${decoded.hash} ≠ Modell-Hash ${expected.hash}`);
 }

@@ -254,6 +254,123 @@ describe('Texturiertes Mesh', () => {
   });
 });
 
+describe('Texturiertes Mesh: Verdeckung wie im Spiel', () => {
+  // Small vanilla-shaped models (written for this test): slabs, a trapdoor with holes, panes.
+  const edgeFaces = (tex: string, faces: readonly (typeof FACES)[number][]) =>
+    Object.fromEntries(faces.map((f) => [f, { texture: tex, cullface: f }]));
+  const models: Record<string, ModelJson> = {
+    ...MODELS,
+    'block/planks': cube({ down: 'block/planks', up: 'block/planks', north: 'block/planks', south: 'block/planks', west: 'block/planks', east: 'block/planks' }),
+    'block/slab': {
+      elements: [
+        {
+          from: [0, 0, 0],
+          to: [16, 8, 16],
+          faces: { ...edgeFaces('block/planks', ['down', 'north', 'south', 'west', 'east']), up: { texture: 'block/planks' } },
+        },
+      ],
+    },
+    'block/slab_top': {
+      elements: [
+        {
+          from: [0, 8, 0],
+          to: [16, 16, 16],
+          faces: { ...edgeFaces('block/planks', ['up', 'north', 'south', 'west', 'east']), down: { texture: 'block/planks' } },
+        },
+      ],
+    },
+    'block/trapdoor': {
+      elements: [
+        { from: [0, 0, 0], to: [16, 3, 16], faces: { ...edgeFaces('block/trapdoor', ['down', 'north', 'south', 'west', 'east']), up: { texture: 'block/trapdoor' } } },
+      ],
+    },
+    'block/glass': cube({ down: 'block/glass', up: 'block/glass', north: 'block/glass', south: 'block/glass', west: 'block/glass', east: 'block/glass' }),
+    'block/leaves': cube({ down: 'block/leaves', up: 'block/leaves', north: 'block/leaves', south: 'block/leaves', west: 'block/leaves', east: 'block/leaves' }),
+    'block/pane_post': {
+      elements: [{ from: [7, 0, 7], to: [9, 16, 9], faces: edgeFaces('block/pane_top', ['down', 'up']) }],
+    },
+    'block/pane_side': {
+      elements: [
+        {
+          from: [7, 0, 0],
+          to: [9, 16, 7],
+          faces: { ...edgeFaces('block/pane_top', ['down', 'up', 'north']), west: { texture: 'block/glass' }, east: { texture: 'block/glass' } },
+        },
+      ],
+    },
+  };
+  const pane: BlockstateJson = {
+    multipart: [
+      { apply: { model: 'block/pane_post' } },
+      { when: { north: 'true' }, apply: { model: 'block/pane_side' } },
+      { when: { east: 'true' }, apply: { model: 'block/pane_side', y: 90 } },
+      { when: { south: 'true' }, apply: { model: 'block/pane_side', y: 180 } },
+      { when: { west: 'true' }, apply: { model: 'block/pane_side', y: 270 } },
+    ],
+  };
+  const pack: Pick<AssetPack, 'blockstates' | 'models'> = {
+    models,
+    blockstates: {
+      spruce_planks: { variants: { '': { model: 'block/planks' } } },
+      spruce_slab: { variants: { 'type=bottom': { model: 'block/slab' }, 'type=top': { model: 'block/slab_top' }, 'type=double': { model: 'block/planks' } } },
+      spruce_trapdoor: { variants: { '': { model: 'block/trapdoor' } } },
+      glass: { variants: { '': { model: 'block/glass' } } },
+      spruce_leaves: { variants: { '': { model: 'block/leaves' } } },
+      glass_pane: pane,
+      white_stained_glass_pane: pane,
+    },
+  };
+  const ALPHA: Record<string, AlphaClass> = { 'block/trapdoor': 'cutout', 'block/glass': 'translucent', 'block/pane_top': 'translucent', 'block/leaves': 'cutout' };
+  const atlas: AtlasLookup = { rect: () => [0, 0, 1, 1], alpha: (name) => ALPHA[name] ?? 'opaque' };
+  const bake = (state: string) => {
+    const [id, rest] = state.split('[');
+    const props = Object.fromEntries((rest ? rest.slice(0, -1).split(',') : []).map((p) => p.split('=') as [string, string]));
+    return bakeBlockState(id!, props, pack);
+  };
+  const grid = (dims: { width: number; height: number; length: number }, cells: string[]) => {
+    const palette = [...new Set(['minecraft:air', ...cells])];
+    return createVoxelModel(DEFAULT_HOUSE_SPEC, dims, palette, Uint16Array.from(cells.map((s) => palette.indexOf(s))));
+  };
+  const planks = blockState('spruce_planks');
+  /** Faces of the planks block under `top` (planks at y=0, `top` at y=1). */
+  const planksFacesUnder = (top: string) => {
+    const mesh = buildTexturedMesh(grid({ width: 1, height: 2, length: 1 }, [planks, top]), bake, atlas, { maxY: 0 });
+    const all = buildTexturedMesh(grid({ width: 1, height: 2, length: 1 }, [planks, top]), bake, atlas);
+    return { cut: mesh.faceCount, solidBelow: all.solid.faceCells.filter((c) => c === 0).length };
+  };
+
+  it('volle, deckende Seiten verdecken: untere Stufe ja, obere Stufe, Falltür mit Löchern, Glas und Laub nicht', () => {
+    // Bottom slab on planks: its full bottom face hides the planks' top face.
+    expect(planksFacesUnder(blockState('spruce_slab', { type: 'bottom' })).solidBelow).toBe(5);
+    expect(planksFacesUnder(blockState('spruce_slab', { type: 'double' })).solidBelow).toBe(5);
+    // A top slab does not touch the planks; a trapdoor's texture has holes; glass and leaves are see-through.
+    expect(planksFacesUnder(blockState('spruce_slab', { type: 'top' })).solidBelow).toBe(6);
+    expect(planksFacesUnder(blockState('spruce_trapdoor')).solidBelow).toBe(6);
+    expect(planksFacesUnder(blockState('glass')).solidBelow).toBe(6);
+    expect(planksFacesUnder(blockState('spruce_leaves')).solidBelow).toBe(6);
+    // The layer cut never hides faces of the visible layer.
+    expect(planksFacesUnder(blockState('spruce_slab', { type: 'bottom' })).cut).toBe(6);
+    // The slab's own side faces are hidden by planks next to it.
+    const side = buildTexturedMesh(grid({ width: 2, height: 1, length: 1 }, [blockState('spruce_slab', { type: 'bottom' }), planks]), bake, atlas);
+    expect(side.solid.faceCells.filter((c) => c === 0).length).toBe(5);
+  });
+
+  it('Glasscheiben ohne Kantenstreifen an Verbindungen und zwischen übereinander stehenden Scheiben', () => {
+    const east = blockState('glass_pane', { east: 'true' });
+    const west = blockState('glass_pane', { west: 'true' });
+    // Post (down, up) + east arm (down, up, edge, two pane faces) = 7 quads each; the two touching edge strips are skipped.
+    expect(buildTexturedMesh(grid({ width: 2, height: 1, length: 1 }, [east, west]), bake, atlas).faceCount).toBe(12);
+    // Different pane blocks keep their edges (vanilla compares the block).
+    const stained = blockState('white_stained_glass_pane', { west: 'true' });
+    expect(buildTexturedMesh(grid({ width: 2, height: 1, length: 1 }, [east, stained]), bake, atlas).faceCount).toBe(14);
+    // Unconnected neighbours: edges stay (the east arm points at a pane that does not connect back).
+    const lone = blockState('glass_pane');
+    expect(buildTexturedMesh(grid({ width: 2, height: 1, length: 1 }, [east, lone]), bake, atlas).faceCount).toBe(9);
+    // Stacked panes: the touching top/bottom faces disappear.
+    expect(buildTexturedMesh(grid({ width: 1, height: 2, length: 1 }, [lone, lone]), bake, atlas).faceCount).toBe(2);
+  });
+});
+
 describe('Minecraft-Datei finden', () => {
   it('erkennt Client-Dateien der Launcher am Pfad', () => {
     expect(jarVersionFromPath('C:\\Users\\L\\curseforge\\minecraft\\Install\\versions\\1.21.11\\1.21.11.jar')).toBe('1.21.11');

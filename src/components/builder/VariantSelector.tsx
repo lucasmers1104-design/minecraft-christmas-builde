@@ -1,8 +1,23 @@
 'use client';
 
+import { useMemo } from 'react';
+import { AIR } from '@/core/blocks/registry';
 import type { VoxelModel } from '@/core/schema/voxelModel';
-import { countMaterials } from '@/core/analysis/materialCounts';
 import { Panel } from '@/components/ui/Panel';
+
+const TOTALS = new WeakMap<VoxelModel, number>();
+
+/** Non-air blocks of a model (cached per model; large models have millions of cells). */
+function nonAirBlocks(model: VoxelModel): number {
+  let total = TOTALS.get(model);
+  if (total === undefined) {
+    const air = model.palette.indexOf(AIR);
+    total = 0;
+    for (const index of model.indices) if (index !== air) total++;
+    TOTALS.set(model, total);
+  }
+  return total;
+}
 
 export function VariantSelector({
   variants,
@@ -15,6 +30,7 @@ export function VariantSelector({
   onSelect: (index: number) => void;
   edits?: number[];
 }) {
+  const totals = useMemo(() => variants.map(nonAirBlocks), [variants]);
   return (
     <Panel title="Varianten" headingId="variants-heading" description="Jede Variante ist ein eigenes, echtes Blockvolumen.">
       {variants.length === 0 ? (
@@ -23,7 +39,7 @@ export function VariantSelector({
         <div role="radiogroup" aria-labelledby="variants-heading" className="grid grid-cols-3 gap-2">
           {variants.map((model, index) => {
             const active = index === selected;
-            const total = countMaterials(model).totalBlocks;
+            const total = totals[index] ?? 0;
             return (
               <button
                 key={model.hash}

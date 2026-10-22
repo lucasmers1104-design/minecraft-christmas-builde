@@ -14,7 +14,8 @@ import { requireProfile } from '@/core/compat/profile';
 import { buildSpongeV3Nbt, writeSpongeV3 } from '@/core/export/writeSpongeV3';
 import { generateBuilding, generateVariants } from '@/core/generator/generateBuilding';
 import { DEFAULT_HOUSE_SPEC, type BuildSpec } from '@/core/schema/buildSpec';
-import type { VoxelModel } from '@/core/schema/voxelModel';
+import { MAX_DIMENSIONS, type VoxelModel } from '@/core/schema/voxelModel';
+import { largeBuildingModel } from '../helpers/largeModels';
 import { largePaletteModel } from '../helpers/syntheticModels';
 
 /**
@@ -46,11 +47,21 @@ interface ReaderOutput {
 const run = promisify(execFile);
 let dir = '';
 
+/**
+ * The reader prints one palette index per block as JSON: ~32 MiB for 192 x 384 x 192.
+ * Generous buffer and per-process timeout so the largest models can be read.
+ */
+const READER_MAX_BUFFER = 512 * 1024 * 1024;
+const READER_TIMEOUT_MS = 5 * 60_000;
+
 async function readWithWorldEdit(fileName: string, bytes: Uint8Array): Promise<{ code: number; out: ReaderOutput }> {
   const path = join(dir, fileName);
   await writeFile(path, bytes);
   try {
-    const { stdout } = await run('java', ['-jar', JAR, '--require-canonical', path], { maxBuffer: 16 * 1024 * 1024 });
+    const { stdout } = await run('java', ['-jar', JAR, '--require-canonical', path], {
+      maxBuffer: READER_MAX_BUFFER,
+      timeout: READER_TIMEOUT_MS,
+    });
     return { code: 0, out: JSON.parse(stdout) as ReaderOutput };
   } catch (error) {
     const e = error as { code?: number; stdout?: string };
@@ -143,6 +154,21 @@ describe.skipIf(!jarAvailable && !required)('Echter WorldEdit-Reader (EngineHub 
     expect(code).toBe(0);
     expectIdenticalToModel(out, model);
   });
+
+  it.each([
+    ['96×200×96', { width: 96, height: 200, length: 96 }],
+    ['192×384×192 (Maximum)', MAX_DIMENSIONS],
+  ])(
+    'liest große synthetische Bauwerke (%s, Palette 150, Mehrbyte-VarInts) identisch',
+    { timeout: READER_TIMEOUT_MS + 60_000 },
+    async (_name, dimensions) => {
+      const model = largeBuildingModel({ ...dimensions });
+      expect(model.palette.length).toBeGreaterThan(127);
+      const { code, out } = await readWithWorldEdit('large.schem', writeSpongeV3(model));
+      expect(code).toBe(0);
+      expectIdenticalToModel(out, model);
+    },
+  );
 
   it('Gegenprobe: WorldEdit-Harness weist einen ungültigen Blockstate zurück', async () => {
     const root = buildSpongeV3Nbt(generateBuilding(DEFAULT_HOUSE_SPEC));

@@ -8,10 +8,10 @@ import { GET as statusRoute } from '@/app/api/textures/route';
 import { GET as resourcesRoute } from '@/app/api/textures/resources/route';
 import { POST as importRoute } from '@/app/api/textures/import/route';
 import { POST as downloadRoute } from '@/app/api/textures/download/route';
-import { listBlockDefinitions } from '@/core/blocks/registry';
+import { isAvailableIn, listBlockDefinitions } from '@/core/blocks/registry';
 import type { AssetPack } from '@/core/textures/assetTypes';
 import { bakeBlockState } from '@/core/textures/blockModel';
-import { readClientJar } from '@/lib/textures/minecraftJar';
+import { jarVersionFromPath, readClientJar } from '@/lib/textures/minecraftJar';
 import type { TextureStatus } from '@/lib/textures/textureService';
 import { fakeClientJar } from '../helpers/fakeMinecraftJar';
 
@@ -25,6 +25,7 @@ beforeEach(async () => {
   vi.stubEnv('APPDATA', join(home, 'AppData', 'Roaming'));
   vi.stubEnv('MCB_ASSET_CACHE_DIR', join(home, 'cache'));
   vi.stubEnv('MINECRAFT_JAR', '');
+  vi.stubEnv('MCB_MINECRAFT_JAR', '');
 });
 
 afterEach(async () => {
@@ -42,6 +43,15 @@ function upload(data: Buffer, name = '1.21.11.jar'): Request {
     body: new Uint8Array(data),
   });
 }
+
+describe('Launcher-Dateinamen', () => {
+  it('erkennt die Modrinth-App (Ordner = Dateiname mit App-Suffix), aber keine Loader-Jars', () => {
+    expect(jarVersionFromPath('C:/Users/x/AppData/Roaming/ModrinthApp/meta/versions/1.21.11-0.19.3/1.21.11-0.19.3.jar')).toBe('1.21.11');
+    expect(jarVersionFromPath('C:/m/versions/fabric-loader-0.16.9-1.21.11/fabric-loader-0.16.9-1.21.11.jar')).toBeNull();
+    expect(jarVersionFromPath('C:/m/versions/1.21.11-0.19.3/other.jar')).toBeNull();
+    expect(jarVersionFromPath('C:/curseforge/minecraft/Install/versions/1.21.11/1.21.11.jar')).toBe('1.21.11');
+  });
+});
 
 describe('Textur-API', () => {
   it('ohne Minecraft-Installation: nicht verfügbar, Ressourcen 404', async () => {
@@ -124,7 +134,7 @@ describe.skipIf(!realJar || !existsSync(realJar))('Echte Minecraft-Client-Datei'
   it('jeder Registry-Blockzustand wird vollständig aus den Original-Modellen gebacken', () => {
     const pack = readClientJar(readFileSync(realJar!));
     let states = 0;
-    for (const def of listBlockDefinitions()) {
+    for (const def of listBlockDefinitions().filter((d) => isAvailableIn(d.id, '1.21.11'))) {
       const combos = Object.entries(def.properties).reduce<Record<string, string>[]>(
         (acc, [k, values]) => acc.flatMap((c) => values.map((v) => ({ ...c, [k]: v }))),
         [{}],
@@ -133,7 +143,9 @@ describe.skipIf(!realJar || !existsSync(realJar))('Echte Minecraft-Client-Datei'
         states++;
         const baked = bakeBlockState(def.id, props, pack);
         expect(baked.missing, `${def.id} ${JSON.stringify(props)}`).toEqual([]);
-        if (def.id !== 'minecraft:air') expect(baked.quads.length, def.id).toBeGreaterThan(0);
+        // A wall without post and sides is invisible in vanilla, too (the resolver never makes it).
+        const invisibleWall = def.shape === 'wall' && props.up === 'false' && ['north', 'east', 'south', 'west'].every((d) => props[d] === 'none');
+        if (def.id !== 'minecraft:air' && !invisibleWall) expect(baked.quads.length, def.id).toBeGreaterThan(0);
         for (const q of baked.quads) expect(pack.textures[q.texture], q.texture).toBeDefined();
       }
     }

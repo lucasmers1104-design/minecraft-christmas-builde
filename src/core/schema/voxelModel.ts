@@ -1,6 +1,6 @@
 import { AIR, checkBlockState } from '@/core/blocks/registry';
 import type { BuildSpec } from '@/core/schema/buildSpec';
-import { sha256Hex, utf8 } from '@/lib/utils/hash';
+import { Sha256, toHex, utf8 } from '@/lib/utils/hash';
 
 /**
  * Canonical voxel model. Renderer, material list, persistence and the .schem encoder all
@@ -27,10 +27,24 @@ export interface VoxelModel {
   hash: string;
 }
 
-export const MAX_DIMENSIONS: Readonly<Dimensions> = { width: 48, height: 32, length: 48 };
+/**
+ * Size limits of one model (checked in the generator, transport, persistence, export and
+ * validator through `checkDimensions`). Height 384 = the full build height of a Java world
+ * (-64..319); Sponge v3 stores Width/Height/Length as (unsigned) shorts, so this is far
+ * inside the format.
+ */
+export const MAX_DIMENSIONS: Readonly<Dimensions> = { width: 192, height: 384, length: 192 };
+/**
+ * Upper bound for width * height * length. Chosen after measuring the whole data path
+ * (model creation, hash, transport, export, validation, real WorldEdit reader) with
+ * tests/integration/largeModels.test.ts: even the full 192 x 384 x 192 box (14,155,776
+ * blocks, 27 MiB of u16 indices) stays around 1.5 s for export + self-check and 3 s in
+ * WorldEdit, so the volume is not limited beyond the axes. Kept as a separate constant
+ * (and checked in `checkDimensions`) so it can be lowered without touching the axes.
+ */
 export const MAX_VOLUME = MAX_DIMENSIONS.width * MAX_DIMENSIONS.height * MAX_DIMENSIONS.length;
-/** Uint16 indices; the MVP registry is far below this anyway. */
-export const MAX_PALETTE_SIZE = 1024;
+/** Palette entries per model. Indices stay Uint16 (and 2-byte VarInts in the .schem). */
+export const MAX_PALETTE_SIZE = 4096;
 
 export class VoxelModelError extends Error {
   readonly issues: string[];
@@ -60,33 +74,48 @@ export function checkDimensions(d: Dimensions): string[] {
     if (!Number.isInteger(value) || value < 1) issues.push(`${axis} muss eine positive Ganzzahl sein (ist ${value})`);
     else if (value > MAX_DIMENSIONS[axis]) issues.push(`${axis}=${value} überschreitet das Limit ${MAX_DIMENSIONS[axis]}`);
   }
+  if (issues.length === 0 && volumeOf(d) > MAX_VOLUME) {
+    issues.push(`Volumen ${d.width}×${d.height}×${d.length} = ${volumeOf(d)} Blöcke überschreitet das Limit ${MAX_VOLUME}`);
+  }
   return issues;
 }
 
+const LITTLE_ENDIAN_PLATFORM = new Uint8Array(Uint16Array.of(1).buffer)[0] === 1;
+/** Chunk size (in indices) for the byte-swapping fallback on big-endian platforms. */
+const HASH_CHUNK = 32 * 1024;
+
 /**
  * Stable identity hash over dimensions, palette and raw index data. Indices are hashed as
- * little-endian uint16 so the value is platform independent.
+ * little-endian uint16 so the value is platform independent. The hash is streamed: on
+ * little-endian platforms (every browser/Node target in practice) the index buffer is fed
+ * to SHA-256 as-is, without copying; big-endian platforms swap bytes in small chunks.
  */
 export function computeVoxelHash(dimensions: Dimensions, palette: readonly string[], indices: Uint16Array): string {
-  const header = utf8(
-    `mcb-voxel-v1\n${dimensions.width}x${dimensions.height}x${dimensions.length}\n${palette.join('\n')}\n`,
+  const hash = new Sha256().update(
+    utf8(`mcb-voxel-v1\n${dimensions.width}x${dimensions.height}x${dimensions.length}\n${palette.join('\n')}\n`),
   );
-  const body = new Uint8Array(indices.length * 2);
-  const view = new DataView(body.buffer);
-  for (let i = 0; i < indices.length; i++) view.setUint16(i * 2, indices[i]!, true);
-  const all = new Uint8Array(header.length + body.length);
-  all.set(header, 0);
-  all.set(body, header.length);
-  return sha256Hex(all);
+  if (LITTLE_ENDIAN_PLATFORM) {
+    hash.update(new Uint8Array(indices.buffer, indices.byteOffset, indices.byteLength));
+  } else {
+    const chunk = new Uint8Array(HASH_CHUNK * 2);
+    const view = new DataView(chunk.buffer);
+    for (let start = 0; start < indices.length; start += HASH_CHUNK) {
+      const end = Math.min(start + HASH_CHUNK, indices.length);
+      for (let i = start; i < end; i++) view.setUint16((i - start) * 2, indices[i]!, true);
+      hash.update(chunk.subarray(0, (end - start) * 2));
+    }
+  }
+  return toHex(hash.digest());
 }
 
 /**
- * Validates everything except the spec: dimensions and limits, palette syntax/registry,
- * uniqueness, index count and bounds, and (optionally) the hash.
+ * Validates everything except the spec: dimensions and limits, palette syntax/registry (with
+ * `minecraftVersion`: the block must exist in that version), uniqueness, index count and
+ * bounds, and (optionally) the hash.
  */
 export function collectVoxelIssues(
   model: Pick<VoxelModel, 'dimensions' | 'palette' | 'indices' | 'hash'>,
-  options: { verifyHash?: boolean } = {},
+  options: { verifyHash?: boolean; minecraftVersion?: string } = {},
 ): string[] {
   const issues = checkDimensions(model.dimensions);
   if (issues.length > 0) return issues;
@@ -97,7 +126,7 @@ export function collectVoxelIssues(
   for (const entry of model.palette) {
     if (seen.has(entry)) issues.push(`Doppelter Paletteneintrag: ${entry}`);
     seen.add(entry);
-    const check = checkBlockState(entry);
+    const check = checkBlockState(entry, options.minecraftVersion);
     if (!check.ok) issues.push(check.reason);
   }
 
@@ -121,7 +150,7 @@ export function collectVoxelIssues(
 }
 
 export function assertValidVoxelModel(model: VoxelModel): void {
-  const issues = collectVoxelIssues(model);
+  const issues = collectVoxelIssues(model, { minecraftVersion: model.spec.targetMinecraftVersion });
   if (issues.length > 0) throw new VoxelModelError(issues);
 }
 
@@ -167,7 +196,10 @@ export function createVoxelModel(
     spec,
     hash: computeVoxelHash(dimensions, canonical.palette, canonical.indices),
   };
-  assertValidVoxelModel(model);
+  // The hash was computed just above from the same data; verifying it again would only double
+  // the cost for large models.
+  const issues = collectVoxelIssues(model, { verifyHash: false, minecraftVersion: spec.targetMinecraftVersion });
+  if (issues.length > 0) throw new VoxelModelError(issues);
   return model;
 }
 

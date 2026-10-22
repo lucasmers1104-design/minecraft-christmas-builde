@@ -2,7 +2,7 @@ import type { GenerateResponse } from '@/app/api/generate/route';
 import type { ApiErrorBody } from '@/lib/http/apiResponses';
 import type { BuildSpec } from '@/core/schema/buildSpec';
 import type { VoxelModel } from '@/core/schema/voxelModel';
-import { decodeVoxelTransport, encodeVoxelTransport } from '@/lib/serialization/voxelTransport';
+import { decodeVoxelTransport, encodeVoxelTransport, MAX_TRANSPORT_REQUEST_BYTES } from '@/lib/serialization/voxelTransport';
 
 export class ApiRequestError extends Error {
   constructor(
@@ -52,10 +52,19 @@ export interface ExportedFile {
 }
 
 export async function requestSchematic(model: VoxelModel): Promise<ExportedFile> {
+  // RLE transport (see voxelTransport): ~1–3 MiB even for the largest realistic buildings.
+  // Checked here as well, so an oversized model gets a clear message instead of a bare 413.
+  const body = new TextEncoder().encode(JSON.stringify(encodeVoxelTransport(model)));
+  if (body.byteLength > MAX_TRANSPORT_REQUEST_BYTES) {
+    throw new ApiRequestError(
+      413,
+      `Das Bauwerk ist für den Export zu groß (${(body.byteLength / 1024 / 1024).toFixed(1)} MiB, erlaubt ${(MAX_TRANSPORT_REQUEST_BYTES / 1024 / 1024).toFixed(1)} MiB)`,
+    );
+  }
   const response = await fetch('/api/export', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(encodeVoxelTransport(model)),
+    body,
   });
   if (!response.ok) throw await errorFrom(response);
   const disposition = response.headers.get('Content-Disposition') ?? '';

@@ -94,3 +94,40 @@ describe('Ebenenansicht', () => {
     for (let i = 1; i < cut.opaque.positions.length; i += 3) expect(cut.opaque.positions[i]).toBeLessThanOrEqual(3);
   });
 });
+
+describe('Editor mit Zustandsauflöser', () => {
+  const empty = () =>
+    applyCommand(
+      generateBuilding(DEFAULT_HOUSE_SPEC),
+      fillBoxCommand(generateBuilding(DEFAULT_HOUSE_SPEC), { x: 0, y: 0, z: 0 }, { x: 4, y: 3, z: 4 }, 'minecraft:air')!,
+    );
+
+  it('eine neue Treppe macht aus der Nachbartreppe eine Ecke; Rückgängig stellt alles exakt wieder her', () => {
+    const base = empty();
+    const history = new EditHistory();
+    const a = history.execute(base, setBlockCommand(base, { x: 1, y: 1, z: 1 }, blockState('oak_stairs', { facing: 'south' }))!);
+    const cmd = setBlockCommand(a, { x: 1, y: 1, z: 2 }, blockState('oak_stairs', { facing: 'east' }))!;
+    expect(cmd.changes.length).toBe(2);
+    const b = history.execute(a, cmd);
+    expect(blockAtCell(b, { x: 1, y: 1, z: 1 })).toContain('shape=outer_left');
+    expect(history.undo(b).hash).toBe(a.hash);
+  });
+
+  it('Tür: die obere Hälfte entsteht automatisch und verschwindet mit der unteren', () => {
+    const base = empty();
+    const floor = applyCommand(base, setBlockCommand(base, { x: 2, y: 0, z: 2 }, blockState('stone'))!);
+    const withDoor = applyCommand(floor, setBlockCommand(floor, { x: 2, y: 1, z: 2 }, blockState('spruce_door', { facing: 'south' }))!);
+    expect(blockAtCell(withDoor, { x: 2, y: 2, z: 2 })).toContain('half=upper');
+    const removed = applyCommand(withDoor, removeBlockCommand(withDoor, { x: 2, y: 2, z: 2 })!);
+    expect(blockAtCell(removed, { x: 2, y: 1, z: 2 })).toBe('minecraft:air');
+  });
+
+  it('Zäune verbinden sich beim Setzen, eine schwebende Laterne wird gemeldet', () => {
+    const base = empty();
+    const one = applyCommand(base, setBlockCommand(base, { x: 1, y: 1, z: 1 }, blockState('oak_fence'))!);
+    const two = applyCommand(one, setBlockCommand(one, { x: 2, y: 1, z: 1 }, blockState('oak_fence'))!);
+    expect(blockAtCell(two, { x: 1, y: 1, z: 1 })).toContain('east=true');
+    const lantern = setBlockCommand(two, { x: 3, y: 3, z: 3 }, blockState('lantern'))!;
+    expect(lantern.notes?.[0]).toMatch(/ohne Halt/);
+  });
+});

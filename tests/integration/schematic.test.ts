@@ -7,7 +7,7 @@ import { validateSchematic } from '@/core/export/validateSchematic';
 import { buildSpongeV3Nbt, nbtString, SchematicExportError, writeSpongeV3 } from '@/core/export/writeSpongeV3';
 import { generateBuilding, generateVariants } from '@/core/generator/generateBuilding';
 import { DEFAULT_HOUSE_SPEC } from '@/core/schema/buildSpec';
-import { computeVoxelHash, linearIndex, type VoxelModel } from '@/core/schema/voxelModel';
+import { computeVoxelHash, linearIndex, MAX_PALETTE_SIZE, type VoxelModel } from '@/core/schema/voxelModel';
 import { largePaletteModel } from '../helpers/syntheticModels';
 
 const house = generateBuilding(DEFAULT_HOUSE_SPEC);
@@ -105,6 +105,20 @@ describe('Sponge-v3-Export des Weihnachtshauses', () => {
   it('ist deterministisch (gleiches Modell => identische Datei)', () => {
     expect(writeSpongeV3(house).equals(writeSpongeV3(house))).toBe(true);
   });
+
+  it('Blockdaten als Int8Array ergeben byte-identisch dieselbe Datei wie das frühere number[]', () => {
+    for (const model of [house, largePaletteModel()]) {
+      const root = buildSpongeV3Nbt(model);
+      const data = ((root.value.Schematic as nbt.Compound).value.Blocks as nbt.Compound).value.Data as nbt.ByteArray;
+      expect(data.value).toBeInstanceOf(Int8Array);
+      const typed = nbt.writeUncompressed(root, 'big');
+      // The previous writer passed a plain array of signed bytes.
+      data.value = Array.from(data.value as unknown as Int8Array);
+      const plain = nbt.writeUncompressed(root, 'big');
+      expect(typed.equals(plain)).toBe(true);
+      expect(gzipSync(plain, { level: 9 }).equals(writeSpongeV3(model))).toBe(true);
+    }
+  });
 });
 
 describe('Paletten mit mehr als 127 Einträgen (Mehrbyte-VarInts)', () => {
@@ -136,7 +150,7 @@ describe('Negative Fälle', () => {
       ['kaputter Hash', { ...house, hash: 'f'.repeat(64) }, /Hash/],
       ['unbekannter Block', { ...house, palette: house.palette.map((p, i) => (i === 1 ? 'minecraft:bedrock' : p)) }, /nicht freigegeben/],
       ['ungültige Eigenschaft', { ...house, palette: house.palette.map((p) => p.replace('axis=y', 'axis=up')) }, /Ungültiger Wert/],
-      ['zu groß', { ...house, dimensions: { width: 64, height: 14, length: 13 } }, /Limit/],
+      ['zu groß', { ...house, dimensions: { width: 193, height: 14, length: 13 } }, /Limit/],
       ['inkonsistente Palette', { ...house, palette: house.palette.slice(0, 3) }, /außerhalb der Palette/],
       ['unbekannte Zielversion', { ...house, spec: { ...house.spec, targetMinecraftVersion: '1.20.4' } }, /Exportprofil/],
     ];
@@ -190,6 +204,17 @@ describe('Negative Fälle', () => {
 
     expect(validateSchematic(Buffer.from('not gzip')).issues.join()).toMatch(/GZip/);
     expect(validateSchematic(gzipSync(Buffer.from([10, 0, 0]))).issues.join()).toMatch(/Dateiende/);
+    // Forged array lengths must not allocate gigabytes: int array / list "with 2^31-1 entries".
+    const forgedIntArray = Buffer.from([10, 0, 0, 11, 0, 1, 0x4f, 0x7f, 0xff, 0xff, 0xff]);
+    expect(validateSchematic(gzipSync(forgedIntArray)).issues.join()).toMatch(/Dateiende/);
+    const forgedList = Buffer.from([10, 0, 0, 9, 0, 1, 0x4c, 1, 0x7f, 0xff, 0xff, 0xff]);
+    expect(validateSchematic(gzipSync(forgedList)).issues.join()).toMatch(/Dateiende/);
+
+    const hugePalette = tamper((r) => {
+      const palette = (blocks(r).Palette as nbt.Compound).value;
+      for (let i = Object.keys(palette).length; i <= MAX_PALETTE_SIZE; i++) palette[`minecraft:dummy_${i}`] = { type: 'int', value: i } as nbt.Int;
+    });
+    expect(validateSchematic(hugePalette).issues.join()).toMatch(/Palette zu groß/);
   });
 
   it('Validator erkennt Abweichungen gegenüber dem erwarteten Modell', () => {

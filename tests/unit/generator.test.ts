@@ -226,9 +226,9 @@ describe('Feinparameter (options)', () => {
     expect(m.palette).not.toContain('minecraft:snow_block');
   });
 
-  it('zu große Kombinationen werden verständlich abgelehnt', () => {
-    expect(() => generateBuilding(withOptions({ depth: 25, wallHeight: 8, roofShape: 'steep' }))).toThrow(BuildLimitError);
-    expect(() => generateBuilding(withOptions({ depth: 25, wallHeight: 8, roofShape: 'steep' }))).toThrow(/passt nicht/);
+  it('die größte Kombination passt seit den neuen Grenzen (Höhe 384) ins Volumen', () => {
+    expect(() => generateBuilding(withOptions({ depth: 25, wallHeight: 8, roofShape: 'steep' }))).not.toThrow();
+    expect(new BuildLimitError('x').name).toBe('BuildLimitError');
   });
 
   it('alle Maß-Extreme innerhalb der Grenzen sind gültig (Satteldach)', () => {

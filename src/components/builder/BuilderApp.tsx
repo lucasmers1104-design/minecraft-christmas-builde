@@ -12,6 +12,7 @@ import {
   type Cell,
   type EditCommand,
 } from '@/core/editor/editOperations';
+import { planPlacement } from '@/core/editor/placement';
 import { parseDescription, type ParsedDescription, type SpecPatch } from '@/core/generator/parseDescription';
 import { DEFAULT_HOUSE_SPEC, type BuildSpec } from '@/core/schema/buildSpec';
 import { flattenPatch, resolveSpec, withManual, withoutManual, type SettingPath } from '@/core/schema/resolveSpec';
@@ -240,7 +241,12 @@ export function BuilderApp() {
           setEditorMessage('Keine Änderung nötig.');
           return;
         }
-        replaceSelected(historyFor(selected).execute(current, command), 1, command.label);
+        const notes = command.notes?.length ? ` Hinweis: ${command.notes.join('; ')}.` : '';
+        if (command.changes.length === 0) {
+          setEditorMessage(`Nicht gesetzt.${notes}`);
+          return;
+        }
+        replaceSelected(historyFor(selected).execute(current, command), 1, `${command.label}.${notes}`);
       } catch (e) {
         setEditorMessage(describeError(e));
       }
@@ -279,20 +285,23 @@ export function BuilderApp() {
         }
         return;
       }
-      const cell: Cell | null = mode === 'place' ? action.place : action.hit;
-      if (!cell) return;
       if (mode === 'place') {
-        const d = current.dimensions;
-        if (cell.x < 0 || cell.y < 0 || cell.z < 0 || cell.x >= d.width || cell.y >= d.height || cell.z >= d.length) {
-          setEditorMessage('Dort ist kein Platz mehr im Volumen (Grenze des Bauwerks erreicht).');
+        if (!action.place) return;
+        // Orientation like in the game: view direction, clicked face and click height.
+        const placement = planPlacement(
+          { dimensions: current.dimensions, stateAt: (c) => blockAtCell(current, c) },
+          { brush, hit: action.hit, place: action.place, face: action.face, point: action.point, look: action.look },
+        );
+        if (!placement.ok) {
+          setEditorMessage(placement.reason);
           return;
         }
-        if (current.palette[current.indices[cell.x + d.width * (cell.z + d.length * cell.y)]!] !== AIR) {
-          setEditorMessage('Diese Zelle ist bereits belegt.');
-          return;
-        }
-        runEdit((m) => setBlockCommand(m, cell, brush));
-      } else if (mode === 'remove') runEdit((m) => removeBlockCommand(m, cell));
+        runEdit((m) => setBlockCommand(m, placement.cell, placement.state));
+        return;
+      }
+      const cell: Cell | null = action.hit;
+      if (!cell) return;
+      if (mode === 'remove') runEdit((m) => removeBlockCommand(m, cell));
       else if (mode === 'paint') runEdit((m) => setBlockCommand(m, cell, brush));
     },
     [variants, selected, mode, brush, runEdit],

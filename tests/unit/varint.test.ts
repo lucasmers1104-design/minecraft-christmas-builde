@@ -32,6 +32,24 @@ describe('VarInt', () => {
     expect(Array.from(decodeVarIntArray(bytes, values.length))).toEqual(values);
   });
 
+  it('kodiert Millionen Werte in einen typisierten Puffer (wächst bei Mehrbyte-VarInts)', () => {
+    const values = new Uint16Array(2_000_000);
+    for (let i = 0; i < values.length; i++) values[i] = i % 3 === 0 ? 4095 : i % 5 === 0 ? 200 : i % 127;
+    const bytes = encodeVarIntArray(values);
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    let expectedLength = 0;
+    for (const v of values) expectedLength += v < 128 ? 1 : 2;
+    expect(bytes.length).toBe(expectedLength);
+    // Byte-identical to encoding value by value.
+    const reference: number[] = [];
+    for (let i = 0; i < 1000; i++) encodeVarInt(values[i]!, reference);
+    expect(Array.from(bytes.subarray(0, reference.length))).toEqual(reference);
+    const decoded = Uint16Array.from(decodeVarIntArray(bytes, values.length));
+    expect(Buffer.from(decoded.buffer).equals(Buffer.from(values.buffer))).toBe(true);
+    expect(encodeVarIntArray([]).length).toBe(0);
+    expect(() => encodeVarIntArray([1, -1])).toThrow(RangeError);
+  });
+
   it('lehnt ungültige Werte und Datenströme ab', () => {
     expect(() => enc(-1)).toThrow(RangeError);
     expect(() => enc(1.5)).toThrow(RangeError);

@@ -16,10 +16,11 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
     await expect(page.getByTestId('model-hash')).toHaveText(hash);
     await expect(page.getByTestId('preview-dimensions')).toContainText('15 × 14 × 13');
 
-    // Material list is consistent: the rows add up to the displayed total.
+    // Material list is consistent: the item rows add up to the displayed item total.
     const total = Number((await page.getByTestId('material-total').innerText()).replace(/\D/g, ''));
+    const items = Number((await page.getByTestId('material-items-total').innerText()).replace(/\D/g, ''));
     expect(total).toBeGreaterThan(500);
-    expect(await materialRowSum(page)).toBe(total);
+    expect(await materialRowSum(page)).toBe(items);
 
     // Download really contains the selected volume.
     const { fileName, bytes, report } = await downloadSchematic(page);

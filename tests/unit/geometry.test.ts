@@ -9,8 +9,9 @@ const wool = blockState('red_wool');
 
 describe('VoxelBuilder', () => {
   it('prüft Grenzen und Maximalgrößen', () => {
-    expect(() => new VoxelBuilder({ width: 49, height: 10, length: 10 })).toThrow(GeometryError);
-    expect(() => new VoxelBuilder({ width: 10, height: 33, length: 10 })).toThrow(GeometryError);
+    expect(() => new VoxelBuilder({ width: 193, height: 10, length: 10 })).toThrow(GeometryError);
+    expect(() => new VoxelBuilder({ width: 10, height: 385, length: 10 })).toThrow(GeometryError);
+    expect(() => new VoxelBuilder({ width: 10, height: 10, length: 193 })).toThrow(GeometryError);
     expect(() => new VoxelBuilder({ width: 0, height: 1, length: 1 })).toThrow(GeometryError);
     const b = new VoxelBuilder({ width: 4, height: 4, length: 4 });
     expect(() => b.setBlock(4, 0, 0, stone, Priority.STRUCTURE)).toThrow(GeometryError);

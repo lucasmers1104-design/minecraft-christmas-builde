@@ -4,8 +4,16 @@ import { SUPPORTED_MINECRAFT_VERSIONS } from '@/core/compat/profile';
 import type { SpecPatch } from '@/core/generator/parseDescription';
 import { MAX_DESCRIPTION_LENGTH, MAX_SEED } from '@/core/schema/buildSpec';
 import { specPatchSchema } from '@/core/schema/resolveSpec';
-import type { VoxelModel } from '@/core/schema/voxelModel';
-import { decodeVoxelTransport, encodeVoxelTransport, TransportError, voxelTransportSchema } from '@/lib/serialization/voxelTransport';
+import { MAX_VOLUME, type VoxelModel } from '@/core/schema/voxelModel';
+import {
+  decodeIndicesU16le,
+  decodeVoxelTransport,
+  encodeIndexPayload,
+  encodeVoxelTransport,
+  LEGACY_INDEX_ENCODING,
+  TransportError,
+  voxelTransportSchema,
+} from '@/lib/serialization/voxelTransport';
 
 /**
  * Browser-local project storage (IndexedDB via Dexie). Projects contain everything needed
@@ -14,9 +22,31 @@ import { decodeVoxelTransport, encodeVoxelTransport, TransportError, voxelTransp
  * hash) on every load. Nothing leaves the device; there is no cloud sync.
  */
 
-export const PROJECT_SCHEMA_VERSION = 1;
+/**
+ * Version of the project record. Written: always the current one. Read: 1 and 2.
+ * - 1: written before large models; variant indices usually `u16le-base64`.
+ * - 2: variant indices `rle-varint-base64` (or u16le for noise-like data, see voxelTransport).
+ * The record layout is otherwise identical. Spec changes are handled by migrateStoredSpec.
+ */
+export const PROJECT_SCHEMA_VERSION = 2;
+export const READABLE_PROJECT_SCHEMA_VERSIONS = [1, 2] as const;
 export const MAX_PROJECT_NAME_LENGTH = 80;
 const DB_NAME = 'minecraft-christmas-builder';
+/** Dexie schema version (IndexedDB stores it as 10x this number). */
+export const PROJECT_DB_VERSION = 2;
+const PROJECT_INDEXES = 'id, updatedAt, name';
+
+// ===================================================================================
+// MIGRATION HOOK – migrateStoredSpec
+// Applied to every stored BuildSpec (variants[].spec) and every stored spec patch
+// (manual, aiPlan.patch) of a project record BEFORE zod parsing, on every load.
+// Identity for now. When BuildSpec gets schemaVersion 2, convert older shapes here
+// (input: whatever was stored, possibly outdated or corrupt; output: the current shape,
+// or the input unchanged so that zod reports it). Must be pure and must not throw.
+// ===================================================================================
+export function migrateStoredSpec(raw: unknown): unknown {
+  return raw;
+}
 
 /** A local-AI plan the project was generated from (kept so reopening restores the same settings). */
 const storedAiPlanSchema = z
@@ -33,7 +63,7 @@ const storedAiPlanSchema = z
 export const storedProjectSchema = z
   .object({
     id: z.string().min(1).max(64),
-    schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
+    schemaVersion: z.literal(READABLE_PROJECT_SCHEMA_VERSIONS),
     name: z.string().trim().min(1).max(MAX_PROJECT_NAME_LENGTH),
     createdAt: z.number().int().nonnegative(),
     updatedAt: z.number().int().nonnegative(),
@@ -45,7 +75,7 @@ export const storedProjectSchema = z
     /** Number of manual block edits per variant (0 = as generated). */
     edits: z.array(z.number().int().nonnegative()),
     selected: z.number().int().nonnegative(),
-    /** Optional (added before the first release, still schema version 1). */
+    /** Optional (added before the first release, in schema version 1 and later). */
     aiPlan: storedAiPlanSchema.nullable().optional(),
   })
   .strict()
@@ -96,12 +126,58 @@ export class PersistenceError extends Error {
   }
 }
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/**
+ * Re-encodes legacy `u16le-base64` variant indices of a stored record as RLE, in place
+ * (used by the Dexie version-2 upgrade). Only the encoding changes: the decoded indices,
+ * palette, hash, spec and the record's schemaVersion stay exactly as stored. Variants that
+ * cannot be decoded are left untouched, so a single damaged record never blocks opening
+ * the database; it is reported as damaged when it is loaded. Returns the number of
+ * re-encoded variants.
+ */
+export function upgradeStoredVariantEncoding(record: unknown): number {
+  if (!isObject(record) || !Array.isArray(record.variants)) return 0;
+  let changed = 0;
+  const variants = record.variants.map((variant: unknown) => {
+    if (!isObject(variant) || variant.indexEncoding !== LEGACY_INDEX_ENCODING || typeof variant.indices !== 'string') return variant;
+    const d = variant.dimensions;
+    if (!isObject(d)) return variant;
+    const { width, height, length } = d;
+    if (![width, height, length].every((n) => typeof n === 'number' && Number.isInteger(n) && n > 0)) return variant;
+    const count = (width as number) * (height as number) * (length as number);
+    if (count > MAX_VOLUME) return variant;
+    try {
+      const payload = encodeIndexPayload(decodeIndicesU16le(variant.indices, count));
+      if (payload.indexEncoding === LEGACY_INDEX_ENCODING) return variant; // RLE would be larger
+      changed++;
+      return { ...variant, ...payload };
+    } catch {
+      return variant;
+    }
+  });
+  if (changed > 0) record.variants = variants;
+  return changed;
+}
+
 class ProjectDatabase extends Dexie {
   projects!: Table<StoredProject, string>;
   constructor() {
     super(DB_NAME);
-    // Version 1 of the IndexedDB schema; bump with an upgrade() step when the shape changes.
-    this.version(1).stores({ projects: 'id, updatedAt, name' });
+    // v1: initial schema. v2: same indexes, variant voxel data re-encoded as RLE.
+    // Bump with another upgrade() step when the stored shape changes again.
+    this.version(1).stores({ projects: PROJECT_INDEXES });
+    this.version(PROJECT_DB_VERSION)
+      .stores({ projects: PROJECT_INDEXES })
+      .upgrade((tx) =>
+        tx
+          .table('projects')
+          .toCollection()
+          .modify((record: unknown) => {
+            upgradeStoredVariantEncoding(record);
+          }),
+      );
   }
 }
 
@@ -147,7 +223,7 @@ function toStored(id: string, name: string, createdAt: number, content: ProjectC
     manual: content.manual,
     seed: content.seed,
     targetMinecraftVersion: content.targetMinecraftVersion,
-    variants: content.variants.map(encodeVoxelTransport),
+    variants: content.variants.map((variant) => encodeVoxelTransport(variant)),
     edits: content.edits,
     selected: content.selected,
     aiPlan: content.aiPlan ?? null,
@@ -159,8 +235,22 @@ function toStored(id: string, name: string, createdAt: number, content: ProjectC
   return parsed.data;
 }
 
+/** Runs migrateStoredSpec on every stored spec and patch of a raw record (no mutation). */
+function migrateStoredRecord(raw: unknown): unknown {
+  if (!isObject(raw)) return raw;
+  const out: Record<string, unknown> = { ...raw };
+  if ('manual' in out) out.manual = migrateStoredSpec(out.manual);
+  if (Array.isArray(out.variants)) {
+    out.variants = out.variants.map((variant: unknown) =>
+      isObject(variant) && 'spec' in variant ? { ...variant, spec: migrateStoredSpec(variant.spec) } : variant,
+    );
+  }
+  if (isObject(out.aiPlan) && 'patch' in out.aiPlan) out.aiPlan = { ...out.aiPlan, patch: migrateStoredSpec(out.aiPlan.patch) };
+  return out;
+}
+
 function fromStored(raw: unknown): LoadedProject {
-  const parsed = storedProjectSchema.safeParse(raw);
+  const parsed = storedProjectSchema.safeParse(migrateStoredRecord(raw));
   if (!parsed.success) {
     throw new PersistenceError('Gespeichertes Projekt ist ungültig oder beschädigt', parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`));
   }

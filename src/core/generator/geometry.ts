@@ -1,4 +1,6 @@
 import { AIR } from '@/core/blocks/registry';
+import { PaletteGrid, resolveStates } from '@/core/blocks/stateResolver';
+import { validateAndRepair, type Repair } from '@/core/blocks/validator';
 import type { BuildSpec } from '@/core/schema/buildSpec';
 import {
   createVoxelModel,
@@ -157,8 +159,22 @@ export class VoxelBuilder {
     return n;
   }
 
+  /**
+   * Freezes the grid into a canonical VoxelModel: the state resolver computes every
+   * neighbour-dependent property (stairs corners, connections, door halves, leaves), the
+   * validator repairs anything the game would break (and logs it), then the resolver runs once
+   * more so repaired neighbours are consistent. The builder itself stays unchanged.
+   */
+  finalize(spec: BuildSpec): { model: VoxelModel; repairs: Repair[] } {
+    const grid = new PaletteGrid(this.dimensions, this.palette, this.cells.slice());
+    resolveStates(grid);
+    const repairs = validateAndRepair(grid, spec.targetMinecraftVersion);
+    if (repairs.length > 0) resolveStates(grid);
+    return { model: createVoxelModel(spec, this.dimensions, grid.palette, grid.indices), repairs };
+  }
+
   toModel(spec: BuildSpec): VoxelModel {
-    return createVoxelModel(spec, this.dimensions, this.palette, this.cells);
+    return this.finalize(spec).model;
   }
 }
 

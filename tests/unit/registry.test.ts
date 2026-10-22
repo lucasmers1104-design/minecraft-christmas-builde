@@ -1,14 +1,26 @@
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import { blockState, checkBlockState, formatBlockState, listBlockDefinitions, parseBlockState } from '@/core/blocks/registry';
+import { itemsForState, stackSizeOf } from '@/core/analysis/materialCounts';
+import { DYE_COLORS } from '@/core/blocks/families';
+import {
+  blockState,
+  checkBlockState,
+  formatBlockState,
+  isAvailableIn,
+  listBlockDefinitions,
+  parseBlockState,
+  profileBlockId,
+} from '@/core/blocks/registry';
 import { colorPalette, materialPalette } from '@/core/blocks/palettes';
 import { DEFAULT_PROFILE, PROFILES } from '@/core/compat/profile';
 import { COLOR_THEMES, MATERIAL_THEMES } from '@/core/schema/buildSpec';
 
 const require = createRequire(import.meta.url);
+type McBlock = { states: { name: string; type: string; values?: string[] }[]; defaultState: number; minStateId: number };
 type McData = {
   version: { minecraftVersion: string; dataVersion: number };
-  blocksByName: Record<string, { states: { name: string; type: string; values?: string[] }[] } | undefined>;
+  blocksByName: Record<string, McBlock | undefined>;
+  itemsByName: Record<string, { stackSize: number } | undefined>;
 };
 // minecraft-data (PrismarineJS) is the independent reference for Java block states per version.
 const mcData = (version: string) => require('minecraft-data')(version) as McData;
@@ -33,10 +45,28 @@ describe('Kompatibilitätsprofile', () => {
   );
 });
 
+/** Vanilla default state of a block, decoded from minecraft-data's state id layout. */
+function vanillaDefaults(ref: McBlock): Record<string, string> {
+  const states = ref.states.map((s) => ({ name: s.name, values: s.type === 'bool' ? ['true', 'false'] : (s.values ?? []) }));
+  let index = ref.defaultState - ref.minStateId;
+  const out: Record<string, string> = {};
+  for (let i = states.length - 1; i >= 0; i--) {
+    const s = states[i]!;
+    out[s.name] = s.values[index % s.values.length]!;
+    index = Math.floor(index / s.values.length);
+  }
+  return out;
+}
+
+/** Defaults that deliberately differ from vanilla (documented in shapes.ts). */
+const DEFAULT_OVERRIDES: Record<string, string> = { persistent: 'true' };
+
 describe.each(PROFILES.map((p) => p.minecraftVersion))('Blockstate-Registry gegen minecraft-data %s', (version) => {
-  it('jeder Registry-Block existiert mit exakt denselben Eigenschaften und Werten', () => {
-    const data = mcData(version);
-    for (const def of listBlockDefinitions()) {
+  const data = mcData(version);
+  const available = listBlockDefinitions().filter((d) => isAvailableIn(d.id, version));
+
+  it('jeder verfügbare Registry-Block existiert mit exakt denselben Eigenschaften und Werten', () => {
+    for (const def of available) {
       const name = def.id.replace(/^minecraft:/, '');
       const ref = data.blocksByName[name];
       expect(ref, `${def.id} fehlt in minecraft-data ${version}`).toBeDefined();
@@ -48,6 +78,58 @@ describe.each(PROFILES.map((p) => p.minecraftVersion))('Blockstate-Registry gege
         expect([...values].sort(), `${def.id}.${prop}`).toEqual([...refProps[prop]!].sort());
       }
     }
+  });
+
+  it('Standardzustände entsprechen Vanilla (außer dokumentierten Ausnahmen)', () => {
+    for (const def of available) {
+      const ref = data.blocksByName[def.id.replace(/^minecraft:/, '')]!;
+      const expected = vanillaDefaults(ref);
+      for (const [prop, value] of Object.entries(def.defaults)) {
+        const want = DEFAULT_OVERRIDES[prop] ?? expected[prop];
+        expect(value, `${def.id}.${prop}`).toBe(want);
+      }
+    }
+  });
+
+  it('Blöcke mit Versionsangabe fehlen in den anderen Versionen wirklich', () => {
+    for (const def of listBlockDefinitions().filter((d) => !isAvailableIn(d.id, version))) {
+      expect(data.blocksByName[def.id.replace(/^minecraft:/, '')], `${def.id} in ${version}`).toBeUndefined();
+    }
+  });
+
+  it('Item-Stapelgrößen stimmen (Materialliste)', () => {
+    for (const def of available) {
+      for (const item of itemsForState(blockState(def.id))) {
+        const ref = data.itemsByName[item.item.replace(/^minecraft:/, '')];
+        expect(ref, `Item ${item.item} (aus ${def.id}) fehlt in ${version}`).toBeDefined();
+        expect(stackSizeOf(item.item), item.item).toBe(ref!.stackSize);
+      }
+    }
+  });
+});
+
+describe('Versionen', () => {
+  it('iron_chain gibt es nur in 1.21.11, chain nur in 1.21.1; profileBlockId übersetzt', () => {
+    expect(checkBlockState('minecraft:iron_chain[axis=y,waterlogged=false]', '1.21.11').ok).toBe(true);
+    expect(checkBlockState('minecraft:iron_chain[axis=y,waterlogged=false]', '1.21.1').ok).toBe(false);
+    expect(checkBlockState('minecraft:chain[axis=y,waterlogged=false]', '1.21.11').ok).toBe(false);
+    expect(profileBlockId('iron_chain', '1.21.1')).toBe('minecraft:chain');
+    expect(profileBlockId('iron_chain', '1.21.11')).toBe('minecraft:iron_chain');
+  });
+
+  it('enthält die geforderten Familien vollständig', () => {
+    const ids = new Set(listBlockDefinitions().map((d) => d.id.replace('minecraft:', '')));
+    for (const wood of ['oak', 'spruce', 'birch', 'jungle', 'acacia', 'dark_oak', 'mangrove', 'cherry', 'pale_oak', 'bamboo', 'crimson', 'warped']) {
+      for (const form of ['stairs', 'slab', 'fence', 'fence_gate', 'trapdoor', 'door']) expect(ids, `${wood}_${form}`).toContain(`${wood}_${form}`);
+    }
+    for (const stone of ['stone_brick', 'cobblestone', 'mossy_cobblestone', 'mossy_stone_brick', 'deepslate_tile', 'deepslate_brick', 'brick', 'mud_brick', 'tuff_brick', 'sandstone', 'polished_blackstone', 'andesite', 'granite', 'red_sandstone', 'prismarine', 'diorite']) {
+      expect(ids, `${stone}_stairs`).toContain(`${stone}_stairs`);
+      expect(ids, `${stone}_slab`).toContain(`${stone}_slab`);
+    }
+    for (const id of ['smooth_quartz_stairs', 'glass_pane', 'iron_bars', 'lantern', 'soul_lantern', 'iron_chain', 'candle', 'red_candle', 'campfire', 'cherry_leaves', 'pink_petals', 'bamboo_block', 'waxed_cut_copper_stairs', 'potted_spruce_sapling', 'potted_oak_sapling', 'potted_azalea_bush', 'white_carpet', 'snow', 'end_rod', 'lightning_rod']) {
+      expect(ids, id).toContain(id);
+    }
+    expect(DYE_COLORS.every((c) => ids.has(`${c.id}_stained_glass_pane`) && ids.has(`${c.id}_candle`))).toBe(true);
   });
 });
 
