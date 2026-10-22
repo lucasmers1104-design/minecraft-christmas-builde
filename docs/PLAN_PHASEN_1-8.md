@@ -241,12 +241,12 @@ Nach jeder Phase: `npm run typecheck`, `npm run lint`, `npm test` (mit `MCB_MINE
 
 - [x] Analyse mit 6 Agents, Plan
 - [x] Werkzeuge: Maven, Python, WorldEdit-Reader unter Windows gebaut und geprüft
-- [ ] Phase 1
-- [ ] Querschnitt A
-- [ ] Phase 2
-- [ ] Phase 3
-- [ ] Phase 4
-- [ ] Phase 5
-- [ ] Phase 6
-- [ ] Phase 7
-- [ ] Phase 8 und Abschlussbericht
+- [x] Phase 1 – Formblöcke, Auflöser, Validator, Vorschau, Picker (Commit 9af27ba)
+- [x] Querschnitt A – 192 × 384 × 192, RLE-Transport, IndexedDB v2, Chunks im Worker (mit Phase 1)
+- [x] Phase 2 – Materialien, 18 Paletten, 8 Stile, Thema, Lints, Verwitterung, Seeds
+- [x] Phase 3 – Dach-Engine (Höhenfeld, Δ-Profile, alle Formen, Untersicht, First, Gauben, Kamin, Kehlen)
+- [x] Phase 4 – Fassaden, Ständerraster, Tiefe, Jetty, echte Geschosse, Vorlagen W01–W18/T01–T10, Erker, Balkon
+- [x] Phase 5 – Festschicht, Schnee nur auf Wunsch, Baum, Markt, Bahnhof, Landschaft
+- [x] Phase 6 – Parser v2, Planformat, Prompt mit Few-Shots, Ollama-Planer, Testset (77 Wünsche); echte Messung offen (Ollama nicht installiert)
+- [x] Phase 7 – Rundturm (Haus und Bauwerkstyp Turm), Bögen aus der Bibliothek
+- [x] Phase 8 – Lints, Doku, Screenshots, Abschlussbericht

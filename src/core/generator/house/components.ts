@@ -127,6 +127,25 @@ export function buildPorch(ctx: Ctx, section: RoofSectionSpec): void {
 }
 
 /** Chimney: exterior flue on a gable wall (or through the roof), lit campfire on top. */
+/**
+ * Chimney through the roof slope, for roofs without a gable on that side (hip, pyramid,
+ * mansard): a flue inside the house near the side wall, two blocks above the highest roof
+ * surface around it, campfire on top. Returns its column.
+ */
+export function buildRoofChimney(ctx: Ctx, mass: Mass, surface: ReadonlyMap<string, number>, side: HorizontalDirection): { x: number; z: number } {
+  const { builder, blocks } = ctx;
+  const r = mass.rect;
+  const x = side === 'east' ? r.x1 - 2 : r.x0 + 2;
+  const z = Math.min(r.z1 - 2, Math.round((r.z0 + r.z1) / 2) + 1);
+  let roofTop = 0;
+  for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) roofTop = Math.max(roofTop, surface.get(`${x + dx},${z + dz}`) ?? 0);
+  const yTop = Math.min(builder.dimensions.height - 4, roofTop + 2);
+  for (let y = 1; y < yTop; y++) builder.setBlock(x, y, z, blocks.weathered('chimney', x, y, z, { height: y - 1 }), Priority.CHIMNEY);
+  builder.setBlock(x, yTop, z, blockState('campfire', { facing: 'north', lit: 'true' }), Priority.CHIMNEY);
+  for (let y = yTop + 1; y < Math.min(builder.dimensions.height, yTop + 4); y++) builder.clear(x, y, z, Priority.CHIMNEY);
+  return { x, z };
+}
+
 export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: HorizontalDirection): void {
   const { builder, blocks, plan } = ctx;
   const top = storeyRect(mass, mass.floors - 1);

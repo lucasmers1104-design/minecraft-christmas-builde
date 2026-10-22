@@ -41,9 +41,11 @@ function stationPlan(input: HouseInput): HousePlan {
     jetty: {},
     joins: {},
     ridgeAxis,
-    roofType: input.roofType === 'flat' ? 'flat' : id === 'main' ? 'gable' : 'hip',
-    profile: input.roofProfile,
-    overhang: input.overhang,
+    // Wings: gable ends facing outwards (a hip on the near-square wing reads as a stepped pyramid).
+    roofType: input.roofType === 'flat' ? 'flat' : 'gable',
+    // The hall carries the style's profile; the short wings stay calm (straight, small overhang).
+    profile: id === 'main' ? input.roofProfile : 'standard',
+    overhang: id === 'main' ? input.overhang : Math.min(input.overhang, 1),
     ridgeStyle: 'block_slab',
     frames: input.styleId !== 'modern' && input.styleId !== 'mediterranean',
     timber: input.timber === 'all',
@@ -141,15 +143,19 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
     builder.setBlock(x - 1, 2, z, blocks.trapdoor('shutter', 'west', 'bottom', true), Priority.DECOR);
     builder.setBlock(x + 2, 2, z, blocks.trapdoor('shutter', 'east', 'bottom', true), Priority.DECOR);
   }
-  // Clock face on the hall front (above the entrance): white dial, dark centre and hands.
+  // Clock on the hall front (above the entrance): white dial with dark centre and two hands
+  // (twelve and three o'clock) inside a round frame of log ends.
   const top = main.floors > 1 ? main.floors - 1 : 0;
   const cy = plan.plinth + top * plan.floorHeight + Math.floor(plan.floorHeight / 2) + 1;
   const cx = Math.round((main.rect.x0 + main.rect.x1) / 2);
   const cz = main.rect.z0 - (main.frames ? 2 : 1);
-  for (let dx = -1; dx <= 1; dx++)
-    for (let dy = -1; dy <= 1; dy++) {
-      const hand = (dx === 0 && dy === 1) || (dx === 1 && dy === 0);
-      const state = dx === 0 && dy === 0 ? blockState('black_concrete') : hand ? blockState('black_concrete') : blockState('white_concrete');
+  for (let dx = -2; dx <= 2; dx++)
+    for (let dy = -2; dy <= 2; dy++) {
+      if (Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
+      if (!builder.inside(cx + dx, cy + dy, cz)) continue;
+      const ring = Math.abs(dx) === 2 || Math.abs(dy) === 2;
+      const hand = (dx === 0 && dy >= 0) || (dy === 0 && dx === 1);
+      const state = ring ? blocks.log('frame', 'z') : hand ? blockState('black_concrete') : blockState('white_concrete');
       builder.setBlock(cx + dx, cy + dy, cz, state, Priority.OPENING);
     }
 

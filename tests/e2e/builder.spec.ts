@@ -65,7 +65,7 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
     await expect(page.getByTestId('stale-hint')).toHaveCount(0);
     const small = await waitForRenderedModel(page);
     expect(small).not.toBe(medium);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 16 × 24');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 15 × 24');
   });
 
   test('alle Bauwerkstypen sind wählbar; Speichern erst nach dem Generieren', async ({ page }) => {
@@ -115,7 +115,7 @@ test.describe('Phase 2: Freitext und Feinparameter', () => {
 
     await page.getByTestId('generate-button').click();
     await waitForRenderedModel(page);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 16 × 24');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 15 × 24');
     const table = page.getByTestId('material-table');
     await expect(table).toContainText('minecraft:oak_planks');
     await expect(table).not.toContainText('minecraft:snow_block');

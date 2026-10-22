@@ -9,12 +9,14 @@
  * cases.json: [{ "name": "medieval-medium", "prompt": "…", "kind": "Haus", "style": "Mittelalter",
  *   "theme": "Weihnachten", "size": "Mittel", "views": [[35, 28, 1], [215, 28, 1], [20, 12, 0.55, 0.3]] }]
  * Labels are the German UI labels. View = [azimuth°, elevation°, zoom, target height factor].
+ * MCB_SHOT_FORMAT=jpeg writes JPEG (quality 88) instead of PNG – smaller files for the docs.
  */
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { chromium } from '@playwright/test';
 
 const BASE = process.env.MCB_SHOT_URL ?? 'http://localhost:3000';
+const FORMAT = process.env.MCB_SHOT_FORMAT === 'jpeg' ? 'jpeg' : 'png';
 const [casesFile, outDir = 'docs/screenshots'] = process.argv.slice(2);
 if (!casesFile) {
   console.error('Aufruf: node scripts/screenshots.mjs cases.json [Zielordner]');
@@ -58,7 +60,8 @@ for (const c of cases) {
   for (const [i, view] of views.entries()) {
     await page.evaluate((v) => window.__mcbSetView?.(...v), view);
     await page.waitForTimeout(600);
-    await scene.locator('canvas').screenshot({ path: join(outDir, `${c.name}-${i + 1}.png`) });
+    const file = join(outDir, `${c.name}${views.length > 1 ? `-${i + 1}` : ''}.${FORMAT === 'jpeg' ? 'jpg' : 'png'}`);
+    await scene.locator('canvas').screenshot({ path: file, type: FORMAT, ...(FORMAT === 'jpeg' ? { quality: 88 } : {}) });
   }
   console.log(`${c.name}: ${views.length} Bilder (${((Date.now() - started) / 1000).toFixed(1)} s)`);
 }

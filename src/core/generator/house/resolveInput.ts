@@ -92,7 +92,8 @@ export function resolveHouseInput(
     plinth: r.fork('plinth').int(pMin, pMax),
     roofType,
     roofProfile,
-    overhang: wishes.overhang ?? r.fork('overhang').int(ohMin, ohMax),
+    // Pitched roofs always overhang (modern flat roofs may sit flush with the parapet).
+    overhang: wishes.overhang ?? Math.max(roofType === 'flat' ? 0 : 1, r.fork('overhang').int(ohMin, ohMax)),
     wings,
     annex: wishes.annex ?? (asym && feature('annex', 'annex') ? (r.fork('annexSide').chance(0.5) ? 'left' : 'right') : 'none'),
     tower: wishes.tower ?? 'none',

@@ -42,33 +42,44 @@
 
 ## Maße der Standard-Bauwerke
 
-Mit den Standardeinstellungen und Seed 1 (Breite X × Höhe Y × Tiefe Z, einschließlich Dachüberstand):
+Stil „Rustikal“, Thema „Weihnachten“, Seed 1, keine Feinparameter (Breite X × Höhe Y × Tiefe Z, einschließlich Garten, Weg und Dachüberstand):
 
-| Bauwerk | Klein | Mittel | Groß |
-|---|---|---|---|
-| Haus | 11 × 11 × 9 | 15 × 14 × 13 | 19 × 16 × 15 |
-| Weihnachtsbaum | 13 × 14 × 13 | 17 × 22 × 17 | 21 × 30 × 21 |
-| Marktstand | 9 × 11 × 9 | 15 × 11 × 9 | 21 × 11 × 9 |
-| Bahnhof | 25 × 13 × 16 | 33 × 15 × 18 | 41 × 16 × 23 |
+| Bauwerk | Klein | Mittel | Groß | Riesig |
+|---|---|---|---|---|
+| Haus | 25 × 15 × 24 | 27 × 16 × 26 | 29 × 20 × 26 | 33 × 21 × 35 |
+| Weihnachtsbaum | 17 × 15 × 17 | 23 × 21 × 23 | 29 × 29 × 29 | 39 × 43 × 39 |
+| Marktstand | 13 × 14 × 14 | 13 × 14 × 21 | 21 × 20 × 30 | 29 × 20 × 30 |
+| Bahnhof | 33 × 22 × 28 | 35 × 23 × 30 | 39 × 23 × 32 | 43 × 23 × 34 |
+| Turm | 17 × 27 × 20 | 19 × 33 × 22 | 21 × 43 × 24 | 25 × 64 × 28 |
 
-Turm, Anbau, Vordach, Hecke und eigene Maße vergrößern das Volumen. Die genauen Maße zeigt die App unter „Export & Technik“.
+Andere Stile, Flügel, Türme, Anbauten und eigene Maße ändern das Volumen. Die genauen Maße zeigt die App über der Vorschau und unter „Export & Technik“. Die größte erlaubte Box ist 192 × 384 × 192.
 
-## Was du nach dem Einfügen prüfen solltest
+## In-Game-Checkliste nach dem Einfügen
 
-Am Beispiel Haus „Mittel“ (Volumen 15 × 14 × 13, Grundfläche 13 × 11):
+Am Beispiel Haus „Mittel“ mit den Standardwerten oben (27 × 16 × 26, Palette „Blockhaus aus Stämmen“, Satteldach mit First entlang X, Eingang auf der Nordseite). Bitte jeden Punkt abhaken:
 
-| Prüfpunkt | Erwartung |
-|---|---|
-| Maße | 15 Blöcke in X, 14 in Y, 13 in Z |
-| Eingang | Nordseite (−Z), mittig (relativ x = 7), 1 Block breit und 2 Blöcke hoch offen, davor ein Wegblock |
-| Fenster | Glasblöcke in allen vier Wänden, dazu Giebelfenster; von innen und außen frei |
-| Dach | symmetrisches, gestuftes Satteldach mit Schnee, First entlang X, ohne Lücken |
-| Schornstein | Ziegel auf der Südseite des Dachs, neben dem First, über den First hinausragend |
-| Innenraum | begehbar; Weihnachtsbaum an der Rückwand, Licht unter dem First |
-| Ebenen | keine verschobenen Ebenen, keine schwebenden Teile |
-| Blockarten | stimmen mit der Materialliste der App überein |
+| | Prüfpunkt | Erwartung |
+|---|---|---|
+| ☐ | Maße | 27 Blöcke in X, 16 in Y, 26 in Z; nichts fehlt am Rand |
+| ☐ | Eingang | Nordseite (−Z); untere und obere Türhälfte vorhanden, Tür lässt sich öffnen; davor Stufe und Weg, Laternen neben der Tür |
+| ☐ | Treppen | Dachtreppen bilden an Ecken und Kehlen saubere Innen- und Außenecken (keine „falsch gedrehten“ Stufen); Konsolen und Simse sind Kopfüber-Treppen |
+| ☐ | Zäune, Mauern, Scheiben, Gitter | verbinden sich wie in der Vorschau, keine einzelnen Pfosten, wo eine Verbindung zu sehen war |
+| ☐ | Laternen und Ketten | hängende Laternen hängen an Ketten oder unter Blöcken, stehende stehen auf Pfosten; keine fällt beim nächsten Blockupdate ab |
+| ☐ | Laub (Girlanden, Bäume) | verwelkt nach einigen Minuten nicht (persistentes Laub) |
+| ☐ | Leitern | hängen an einer Wand, nicht vor einem Fenster |
+| ☐ | Fenster | Scheiben sitzen in der Wandebene, Rahmen, Simse und Läden stehen davor; von innen frei |
+| ☐ | Kamin (falls vorhanden) | Lagerfeuer oben raucht, der Rauch steigt frei auf |
+| ☐ | Geschosse | jedes Geschoss hat einen Boden; Treppe oder Leiter führt nach oben |
+| ☐ | Schnee | nur wenn „Schnee“ gewünscht war: Schneeschichten bleiben liegen und schmelzen nicht neben Laternen |
+| ☐ | Ebenen | keine verschobenen Ebenen, nichts schwebt |
+| ☐ | Blockarten | stimmen mit der Materialliste der App überein (Items: Türen zählen einmal, doppelte Stufen zweimal) |
+| ☐ | 1.21.1 | mit Zielversion 1.21.1 exportiert: Ketten heißen `chain`, alle Blöcke werden ohne Fehlermeldung eingefügt |
 
-Zusätzlich beim Bahnhof: Die Schienen liegen auf dem Gleisbett und verbinden sich zu einer geraden Ost-West-Strecke.
+Zusätzlich:
+
+- **Bahnhof:** Die Schienen liegen auf festem Grund und bilden eine gerade Ost-West-Strecke; die Bahnsteigkante ist gelb.
+- **Turm:** Die Leiter führt bis unter das Dach (bei Zinnen auf den Wehrgang); der Kegel oder die Kuppel ist geschlossen.
+- **Marktstand:** Die Markise ist rot-weiß gestreift, die Laternen hängen über der Theke.
 
 Bitte das Ergebnis mit getesteter Minecraft- und WorldEdit-Version, Screenshots und etwaigen Meldungen in `docs/TEST_REPORT.md` unter „In-Game-Abnahme“ eintragen. Erst danach darf der Export als „In Minecraft mit WorldEdit getestet“ gelten.
 

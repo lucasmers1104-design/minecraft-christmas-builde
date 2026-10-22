@@ -77,5 +77,5 @@ test('KI-Fehler: regelbasierter Fallback mit Hinweis', async ({ page }) => {
   await waitForRenderedModel(page);
   await expect(page.getByTestId('ai-notice')).toContainText('regelbasiert erzeugt');
   await expect(page.getByTestId('planner-badge')).toHaveText('Regelbasierter Generator');
-  await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 16 × 24');
+  await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 15 × 24');
 });

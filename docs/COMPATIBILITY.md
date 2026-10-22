@@ -26,91 +26,44 @@ Die Profile stehen in `src/core/compat/profile.ts`.
 
 ## Blockstate-Registry
 
-`src/core/blocks/registry.ts` enthält **128 Blöcke mit zusammen 248 vollständigen Blockstates**.
+`src/core/blocks/registry.ts` (Daten in `families.ts`) enthält **539 Blöcke**. Zusammen sind das **18 128 vollständige Blockzustände in 1.21.11** und **17 350 in 1.21.1**.
 
-- Bis auf Schienen sind nur Blöcke mit vollem Würfel erlaubt. Treppen, Stufen, Scheiben, Zäune, Türen und Schneeschichten fehlen bewusst, bis Vorschau und Export ihre Form und Ausrichtung übereinstimmend unterstützen.
-- **Schienen** (`minecraft:rail`) zeigt die Vorschau als flache Platte. In der Welt brauchen sie einen festen Block darunter; der Bahnhofsgenerator legt sie immer auf ein Gleisbett aus Bruchstein und Holzschwellen.
-- Laub wird immer mit `persistent=true` platziert, damit es in der Welt nicht zerfällt.
+- **Formklassen:** volle Würfel (158), Säulen/Stämme (53), Treppen (54), Stufen (57), Mauern (26), Zäune (12), Zauntore (12), Scheiben und Gitter (18), Türen (17), Falltüren (17), Teppiche (17), Kerzen (17), Knöpfe (13), Blumentöpfe (14), Pflanzen (13), Setzlinge (3), Laub (11), Laternen (2), Ketten (2), Blitzableiter (2), Lagerfeuer (2), Kupfergitter und -lampen (je 4), Endstab, Fass, Leiter, Ranken, Blütenteppich, Schneeschicht, Gras, Trampelpfad, Schiene. Jede Formklasse hat die Vanilla-Boxen in 1/16 (`shapes.ts`); ein Test vergleicht sie mit den Modellen der echten Client-Datei.
+- **Zustände wie im Spiel:** Treppenformen, Verbindungen von Zäunen, Scheiben, Gittern und Mauern, obere Türhälften, Zauntore in Mauern, `snowy` bei Gras und Laubdistanzen berechnet der Zustandsauflöser so, wie Minecraft sie beim Setzen berechnet. WorldEdit fügt mit `//paste` ohne Nachbar-Updates ein; deshalb stehen die fertigen Zustände in der Datei.
+- **Halt:** Der Validator verhindert Blöcke, die im Spiel abfallen oder schmelzen würden (Laternen, Kerzen, Türen, Teppiche, Pflanzen, Schienen, Knöpfe, Leitern, Schnee); erzeugte Bauwerke brauchen keine einzige Reparatur.
+- Laub wird immer mit `persistent=true` gesetzt, `waterlogged` ist immer `false`.
 
-Drei unabhängige Prüfungen:
+### Unterschiede zwischen den Profilen
 
-1. **Unit-Test gegen `minecraft-data`:** Jeder Registry-Block muss in 1.21.11 **und** in 1.21.1 existieren, mit exakt denselben Eigenschaftsnamen und Werten (`tests/unit/registry.test.ts`).
-2. **WorldEdit-Lesetest:** Ein synthetisches Modell enthält alle 248 Zustände. Der WorldEdit-Reader liest es mit der 1.21.11-Registry und `--require-canonical` Block für Block identisch. Die Schreibweise muss also genau WorldEdits `getAsString()` entsprechen.
-3. **Einmaliger Abgleich per Skript** (nicht Teil der Testsuite, ausgeführt am 2026-10-21) gegen die beiden erzeugten WorldEdit-Registries `4671_1.json` und `3955_1.json` aus dem Reader-Jar: Für alle 128 Blöcke sind Eigenschaften, Werte und Standardzustand in beiden Versionen identisch.
+| Block | 1.21.11 | 1.21.1 |
+|---|---|---|
+| Kette | `minecraft:iron_chain` | `minecraft:chain` (wird beim Export für 1.21.1 umbenannt) |
+| Blitzableiter (gewachst) | `minecraft:waxed_lightning_rod` | `minecraft:lightning_rod` |
+| Blassen-Eichenholz (Bretter, Stämme, Treppen, Stufen, Zäune, Tore, Türen, Falltüren, Knöpfe, Laub) | vorhanden | fehlt – wird für 1.21.1 nicht verwendet |
+| Harzziegel (Block, Treppe, Stufe, Mauer) | vorhanden | fehlt – wird für 1.21.1 nicht verwendet |
 
-| Block-ID | Anzeige | Eigenschaften | Vorschau |
-|---|---|---|---|
-| `minecraft:air` | Luft | – | none |
-| `minecraft:spruce_planks` | Fichtenholzbretter | – | opaque |
-| `minecraft:spruce_log` | Fichtenstamm | axis: x, y, z | opaque |
-| `minecraft:stripped_spruce_log` | Entrindeter Fichtenstamm | axis: x, y, z | opaque |
-| `minecraft:oak_planks` | Eichenholzbretter | – | opaque |
-| `minecraft:oak_log` | Eichenstamm | axis: x, y, z | opaque |
-| `minecraft:stripped_oak_log` | Entrindeter Eichenstamm | axis: x, y, z | opaque |
-| `minecraft:dark_oak_planks` | Schwarzeichenholzbretter | – | opaque |
-| `minecraft:dark_oak_log` | Schwarzeichenstamm | axis: x, y, z | opaque |
-| `minecraft:stripped_dark_oak_log` | Entrindeter Schwarzeichenstamm | axis: x, y, z | opaque |
-| `minecraft:birch_planks` | Birkenholzbretter | – | opaque |
-| `minecraft:birch_log` | Birkenstamm | axis: x, y, z | opaque |
-| `minecraft:stripped_birch_log` | Entrindeter Birkenstamm | axis: x, y, z | opaque |
-| `minecraft:spruce_wood` | Fichtenholz | axis: x, y, z | opaque |
-| `minecraft:oak_wood` | Eichenholz | axis: x, y, z | opaque |
-| `minecraft:dark_oak_wood` | Schwarzeichenholz | axis: x, y, z | opaque |
-| `minecraft:cobblestone` | Bruchstein | – | opaque |
-| `minecraft:stone_bricks` | Steinziegel | – | opaque |
-| `minecraft:smooth_stone` | Glatter Stein | – | opaque |
-| `minecraft:polished_andesite` | Polierter Andesit | – | opaque |
-| `minecraft:deepslate_tiles` | Tiefenschieferfliesen | – | opaque |
-| `minecraft:bricks` | Ziegelsteine | – | opaque |
-| `minecraft:stone` | Stein | – | opaque |
-| `minecraft:mossy_cobblestone` | Bemooster Bruchstein | – | opaque |
-| `minecraft:chiseled_stone_bricks` | Gemeißelte Steinziegel | – | opaque |
-| `minecraft:cracked_stone_bricks` | Rissige Steinziegel | – | opaque |
-| `minecraft:polished_deepslate` | Polierter Tiefenschiefer | – | opaque |
-| `minecraft:tuff_bricks` | Tuffziegel | – | opaque |
-| `minecraft:mud_bricks` | Lehmziegel | – | opaque |
-| `minecraft:quartz_block` | Quarzblock | – | opaque |
-| `minecraft:smooth_quartz` | Glatter Quarz | – | opaque |
-| `minecraft:calcite` | Calcit | – | opaque |
-| `minecraft:sandstone` | Sandstein | – | opaque |
-| `minecraft:smooth_sandstone` | Glatter Sandstein | – | opaque |
-| `minecraft:red_sandstone` | Roter Sandstein | – | opaque |
-| `minecraft:iron_block` | Eisenblock | – | opaque |
-| `minecraft:waxed_copper_block` | Gewachster Kupferblock | – | opaque |
-| `minecraft:dirt` | Erde | – | opaque |
-| `minecraft:coarse_dirt` | Grobe Erde | – | opaque |
-| `minecraft:moss_block` | Moosblock | – | opaque |
-| `minecraft:terracotta` | Keramik | – | opaque |
-| `minecraft:glass` | Glas | – | translucent |
-| `minecraft:snow_block` | Schneeblock | – | opaque |
-| `minecraft:packed_ice` | Packeis | – | opaque |
-| `minecraft:blue_ice` | Blaueis | – | opaque |
-| `minecraft:ice` | Eis | – | translucent |
-| `minecraft:spruce_leaves` | Fichtenlaub | distance: 1/2/3/4/5/6/7; persistent: true/false; waterlogged: true/false | opaque |
-| `minecraft:oak_leaves` | Eichenlaub | distance: 1/2/3/4/5/6/7; persistent: true/false; waterlogged: true/false | opaque |
-| `minecraft:glowstone` | Leuchtstein | – | emissive |
-| `minecraft:sea_lantern` | Seelaterne | – | emissive |
-| `minecraft:gold_block` | Goldblock | – | opaque |
-| `minecraft:shroomlight` | Pilzlicht | – | emissive |
-| `minecraft:ochre_froglight` | Ockerfarbenes Froschlicht | axis: x, y, z | emissive |
-| `minecraft:pearlescent_froglight` | Perlmuttfarbenes Froschlicht | axis: x, y, z | emissive |
-| `minecraft:verdant_froglight` | Grünliches Froschlicht | axis: x, y, z | emissive |
-| `minecraft:jack_o_lantern` | Kürbislaterne | facing: north/south/west/east | emissive |
-| `minecraft:bookshelf` | Bücherregal | – | opaque |
-| `minecraft:crafting_table` | Werkbank | – | opaque |
-| `minecraft:hay_block` | Heuballen | axis: x, y, z | opaque |
-| `minecraft:barrel` | Fass | facing: north/east/south/west/up/down; open: true/false | opaque |
-| `minecraft:pumpkin` | Kürbis | – | opaque |
-| `minecraft:carved_pumpkin` | Geschnitzter Kürbis | facing: north/south/west/east | opaque |
-| `minecraft:melon` | Melone | – | opaque |
-| `minecraft:rail` | Schiene | shape: north_south/east_west/ascending_east/ascending_west/ascending_north/ascending_south/south_east/south_west/north_west/north_east; waterlogged: true/false | flach |
+`checkBlockState(state, version)` prüft jeden Zustand gegen die Zielversion; Generator, Transport, Speichern und Export lehnen Zustände ab, die es in der gewählten Version nicht gibt.
 
-Dazu kommen vier Farbfamilien in allen 16 Farben (`white, orange, magenta, light_blue, yellow, lime, pink, gray, light_gray, cyan, purple, blue, brown, green, red, black`), jeweils ohne Eigenschaften. Das sind 64 weitere Blöcke:
+### Prüfungen
 
-- `minecraft:<farbe>_wool` (Wolle)
-- `minecraft:<farbe>_concrete` (Beton)
-- `minecraft:<farbe>_terracotta` (gefärbte Keramik)
-- `minecraft:<farbe>_stained_glass` (Buntglas, transluzent)
+1. **Unit-Test gegen `minecraft-data@3.117.0`:** Jeder Block muss in den Versionen seines Profils mit exakt denselben Eigenschaftsnamen, Werten und Standardwerten existieren (`tests/unit/registry.test.ts`).
+2. **WorldEdit-Lesetest:** Synthetische Modelle enthalten **jeden** Zustand beider Versionen (in Stücken, weil eine Palette höchstens 4096 Einträge hat). Der WorldEdit-7.4.2-Reader liest sie mit der Registry der jeweiligen Version und `--require-canonical` Block für Block identisch; die Schreibweise entspricht also genau WorldEdits `getAsString()`.
+3. **Formen gegen die echte Client-Datei:** `tests/integration/vanillaShapes.test.ts` backt die Original-Blockmodelle aus der Minecraft-Datei des Nutzers und vergleicht die Flächenabdeckung mit `shapes.ts` (läuft nur, wenn die Datei vorhanden ist).
+
+### Blockliste nach Kategorie
+
+| Kategorie | Anzahl | Blöcke (ohne `minecraft:`) |
+|---|---|---|
+| Technik | 2 | air, rail |
+| Glas | 35 | glass, tinted_glass, glass_pane, white_stained_glass, white_stained_glass_pane, orange_stained_glass, orange_stained_glass_pane, magenta_stained_glass, magenta_stained_glass_pane, light_blue_stained_glass, light_blue_stained_glass_pane, yellow_stained_glass, yellow_stained_glass_pane, lime_stained_glass, lime_stained_glass_pane, pink_stained_glass, pink_stained_glass_pane, gray_stained_glass, gray_stained_glass_pane, light_gray_stained_glass, light_gray_stained_glass_pane, cyan_stained_glass, cyan_stained_glass_pane, purple_stained_glass, purple_stained_glass_pane, blue_stained_glass, blue_stained_glass_pane, brown_stained_glass, brown_stained_glass_pane, green_stained_glass, green_stained_glass_pane, red_stained_glass, red_stained_glass_pane, black_stained_glass, black_stained_glass_pane |
+| Metall | 37 | iron_bars, iron_block, gold_block, iron_door, iron_trapdoor, iron_chain, chain, lightning_rod, waxed_lightning_rod, waxed_copper_block, waxed_cut_copper, waxed_cut_copper_stairs, waxed_cut_copper_slab, waxed_copper_door, waxed_copper_trapdoor, waxed_copper_grate, waxed_exposed_copper, waxed_exposed_cut_copper, waxed_exposed_cut_copper_stairs, waxed_exposed_cut_copper_slab, waxed_exposed_copper_door, waxed_exposed_copper_trapdoor, waxed_exposed_copper_grate, waxed_weathered_copper, waxed_weathered_cut_copper, waxed_weathered_cut_copper_stairs, waxed_weathered_cut_copper_slab, waxed_weathered_copper_door, waxed_weathered_copper_trapdoor, waxed_weathered_copper_grate, waxed_oxidized_copper, waxed_oxidized_cut_copper, waxed_oxidized_cut_copper_stairs, waxed_oxidized_cut_copper_slab, waxed_oxidized_copper_door, waxed_oxidized_copper_trapdoor, waxed_oxidized_copper_grate |
+| Licht | 33 | lantern, soul_lantern, glowstone, sea_lantern, shroomlight, ochre_froglight, pearlescent_froglight, verdant_froglight, jack_o_lantern, candle, campfire, soul_campfire, end_rod, waxed_copper_bulb, waxed_exposed_copper_bulb, waxed_weathered_copper_bulb, waxed_oxidized_copper_bulb, white_candle, orange_candle, magenta_candle, light_blue_candle, yellow_candle, lime_candle, pink_candle, gray_candle, light_gray_candle, cyan_candle, purple_candle, blue_candle, brown_candle, green_candle, red_candle, black_candle |
+| Deko | 51 | bookshelf, crafting_table, hay_block, barrel, pumpkin, carved_pumpkin, melon, flower_pot, stone_button, ladder, potted_spruce_sapling, potted_oak_sapling, potted_cherry_sapling, potted_azalea_bush, potted_flowering_azalea_bush, potted_fern, potted_poppy, potted_red_tulip, potted_white_tulip, potted_dandelion, potted_cornflower, potted_lily_of_the_valley, potted_bamboo, oak_button, spruce_button, birch_button, jungle_button, acacia_button, dark_oak_button, mangrove_button, cherry_button, pale_oak_button, bamboo_button, crimson_button, warped_button, white_carpet, orange_carpet, magenta_carpet, light_blue_carpet, yellow_carpet, lime_carpet, pink_carpet, gray_carpet, light_gray_carpet, cyan_carpet, purple_carpet, blue_carpet, brown_carpet, green_carpet, red_carpet, black_carpet |
+| Natur | 36 | grass_block, dirt, coarse_dirt, rooted_dirt, dirt_path, moss_block, moss_carpet, azalea_leaves, flowering_azalea_leaves, pink_petals, vine, short_grass, fern, azalea, flowering_azalea, poppy, dandelion, cornflower, lily_of_the_valley, allium, oxeye_daisy, red_tulip, white_tulip, pink_tulip, oak_sapling, spruce_sapling, cherry_sapling, oak_leaves, spruce_leaves, birch_leaves, jungle_leaves, acacia_leaves, dark_oak_leaves, mangrove_leaves, cherry_leaves, pale_oak_leaves |
+| Winter | 5 | snow_block, snow, packed_ice, blue_ice, ice |
+| Holz | 133 | oak_planks, oak_log, stripped_oak_log, oak_wood, stripped_oak_wood, oak_stairs, oak_slab, oak_fence, oak_fence_gate, oak_door, oak_trapdoor, spruce_planks, spruce_log, stripped_spruce_log, spruce_wood, stripped_spruce_wood, spruce_stairs, spruce_slab, spruce_fence, spruce_fence_gate, spruce_door, spruce_trapdoor, birch_planks, birch_log, stripped_birch_log, birch_wood, stripped_birch_wood, birch_stairs, birch_slab, birch_fence, birch_fence_gate, birch_door, birch_trapdoor, jungle_planks, jungle_log, stripped_jungle_log, jungle_wood, stripped_jungle_wood, jungle_stairs, jungle_slab, jungle_fence, jungle_fence_gate, jungle_door, jungle_trapdoor, acacia_planks, acacia_log, stripped_acacia_log, acacia_wood, stripped_acacia_wood, acacia_stairs, acacia_slab, acacia_fence, acacia_fence_gate, acacia_door, acacia_trapdoor, dark_oak_planks, dark_oak_log, stripped_dark_oak_log, dark_oak_wood, stripped_dark_oak_wood, dark_oak_stairs, dark_oak_slab, dark_oak_fence, dark_oak_fence_gate, dark_oak_door, dark_oak_trapdoor, mangrove_planks, mangrove_log, stripped_mangrove_log, mangrove_wood, stripped_mangrove_wood, mangrove_stairs, mangrove_slab, mangrove_fence, mangrove_fence_gate, mangrove_door, mangrove_trapdoor, cherry_planks, cherry_log, stripped_cherry_log, cherry_wood, stripped_cherry_wood, cherry_stairs, cherry_slab, cherry_fence, cherry_fence_gate, cherry_door, cherry_trapdoor, pale_oak_planks, pale_oak_log, stripped_pale_oak_log, pale_oak_wood, stripped_pale_oak_wood, pale_oak_stairs, pale_oak_slab, pale_oak_fence, pale_oak_fence_gate, pale_oak_door, pale_oak_trapdoor, bamboo_planks, bamboo_block, stripped_bamboo_block, bamboo_mosaic, bamboo_mosaic_stairs, bamboo_mosaic_slab, bamboo_stairs, bamboo_slab, bamboo_fence, bamboo_fence_gate, bamboo_door, bamboo_trapdoor, crimson_planks, crimson_stem, stripped_crimson_stem, crimson_hyphae, stripped_crimson_hyphae, crimson_stairs, crimson_slab, crimson_fence, crimson_fence_gate, crimson_door, crimson_trapdoor, warped_planks, warped_stem, stripped_warped_stem, warped_hyphae, stripped_warped_hyphae, warped_stairs, warped_slab, warped_fence, warped_fence_gate, warped_door, warped_trapdoor |
+| Stein | 158 | stone, stone_stairs, stone_slab, cobblestone, cobblestone_stairs, cobblestone_slab, cobblestone_wall, mossy_cobblestone, mossy_cobblestone_stairs, mossy_cobblestone_slab, mossy_cobblestone_wall, stone_bricks, stone_brick_stairs, stone_brick_slab, stone_brick_wall, mossy_stone_bricks, mossy_stone_brick_stairs, mossy_stone_brick_slab, mossy_stone_brick_wall, cracked_stone_bricks, chiseled_stone_bricks, smooth_stone, smooth_stone_slab, granite, granite_stairs, granite_slab, granite_wall, polished_granite, polished_granite_stairs, polished_granite_slab, diorite, diorite_stairs, diorite_slab, diorite_wall, polished_diorite, polished_diorite_stairs, polished_diorite_slab, andesite, andesite_stairs, andesite_slab, andesite_wall, polished_andesite, polished_andesite_stairs, polished_andesite_slab, deepslate, cobbled_deepslate, cobbled_deepslate_stairs, cobbled_deepslate_slab, cobbled_deepslate_wall, polished_deepslate, polished_deepslate_stairs, polished_deepslate_slab, polished_deepslate_wall, deepslate_bricks, deepslate_brick_stairs, deepslate_brick_slab, deepslate_brick_wall, cracked_deepslate_bricks, deepslate_tiles, deepslate_tile_stairs, deepslate_tile_slab, deepslate_tile_wall, cracked_deepslate_tiles, chiseled_deepslate, bricks, brick_stairs, brick_slab, brick_wall, mud_bricks, mud_brick_stairs, mud_brick_slab, mud_brick_wall, packed_mud, tuff, tuff_stairs, tuff_slab, tuff_wall, polished_tuff, polished_tuff_stairs, polished_tuff_slab, polished_tuff_wall, tuff_bricks, tuff_brick_stairs, tuff_brick_slab, tuff_brick_wall, chiseled_tuff_bricks, sandstone, sandstone_stairs, sandstone_slab, sandstone_wall, smooth_sandstone, smooth_sandstone_stairs, smooth_sandstone_slab, cut_sandstone, cut_sandstone_slab, chiseled_sandstone, red_sandstone, red_sandstone_stairs, red_sandstone_slab, red_sandstone_wall, smooth_red_sandstone, smooth_red_sandstone_stairs, smooth_red_sandstone_slab, cut_red_sandstone, cut_red_sandstone_slab, quartz_block, quartz_stairs, quartz_slab, smooth_quartz, smooth_quartz_stairs, smooth_quartz_slab, quartz_bricks, quartz_pillar, chiseled_quartz_block, calcite, prismarine, prismarine_stairs, prismarine_slab, prismarine_wall, prismarine_bricks, prismarine_brick_stairs, prismarine_brick_slab, dark_prismarine, dark_prismarine_stairs, dark_prismarine_slab, blackstone, blackstone_stairs, blackstone_slab, blackstone_wall, polished_blackstone, polished_blackstone_stairs, polished_blackstone_slab, polished_blackstone_wall, polished_blackstone_bricks, polished_blackstone_brick_stairs, polished_blackstone_brick_slab, polished_blackstone_brick_wall, chiseled_polished_blackstone, end_stone_bricks, end_stone_brick_stairs, end_stone_brick_slab, end_stone_brick_wall, purpur_block, purpur_stairs, purpur_slab, purpur_pillar, nether_bricks, nether_brick_stairs, nether_brick_slab, nether_brick_wall, red_nether_bricks, red_nether_brick_stairs, red_nether_brick_slab, red_nether_brick_wall, resin_bricks, resin_brick_stairs, resin_brick_slab, resin_brick_wall |
+| Farbe | 49 | terracotta, white_wool, white_concrete, white_terracotta, orange_wool, orange_concrete, orange_terracotta, magenta_wool, magenta_concrete, magenta_terracotta, light_blue_wool, light_blue_concrete, light_blue_terracotta, yellow_wool, yellow_concrete, yellow_terracotta, lime_wool, lime_concrete, lime_terracotta, pink_wool, pink_concrete, pink_terracotta, gray_wool, gray_concrete, gray_terracotta, light_gray_wool, light_gray_concrete, light_gray_terracotta, cyan_wool, cyan_concrete, cyan_terracotta, purple_wool, purple_concrete, purple_terracotta, blue_wool, blue_concrete, blue_terracotta, brown_wool, brown_concrete, brown_terracotta, green_wool, green_concrete, green_terracotta, red_wool, red_concrete, red_terracotta, black_wool, black_concrete, black_terracotta |
 
 ## WorldEdit-Lesetest: so wurde er aufgebaut
 
@@ -129,7 +82,7 @@ Details stehen in `tests/worldedit/README.md`; alle Pins in `tests/worldedit/ups
   - Der Konverter ist dadurch abgesichert, dass er aus den 1.19-Daten **exakt** EngineHubs eigene `3105.json` reproduziert (Referenz aus WorldEdit 7.3.19, Blob `4d1436e8`).
   - **Nicht geprüft:** ob die Dateien für 4671 und 3955 identisch mit EngineHubs eigenen Downloads sind. Der Vergleichsbefehl steht in `tests/worldedit/README.md`.
 - Auf einem normalen Rechner kann `WE_MODE=enginehub tests/worldedit/build.sh` die WorldEdit-Binärdateien direkt von EngineHub holen. Dieser Modus wurde hier nicht getestet, weil die Hosts gesperrt waren.
-- Unter Windows läuft `build.sh` in Git Bash oder WSL2. Das ist **nicht auf Windows getestet**; der Linux-Build ist verifiziert. Für die App selbst wird der Reader nicht gebraucht.
+- Unter Windows läuft `build.sh` in Git Bash (JDK 21, Maven; hinter Avast mit `MAVEN_OPTS=-Djavax.net.ssl.trustStoreType=Windows-ROOT`). So wurde der Reader am 22.10.2026 auf diesem PC gebaut und für alle Tests benutzt. Für die App selbst wird der Reader nicht gebraucht.
 
 ## Bekannte Eigenheiten von WorldEdit
 

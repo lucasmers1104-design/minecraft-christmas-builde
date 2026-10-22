@@ -5,7 +5,7 @@ import { Blocks } from '@/core/generator/house/materials';
 import { nearRoundTower, planHouse, roofSection, storeyRect, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { buildRoundTower, roundTowerTop } from '@/core/generator/house/roundTower';
 import { buildPassages, buildPlinth, buildStairs, buildStorey, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
-import { buildChimney, buildDormer, buildPorch, planDormers, porchSection } from '@/core/generator/house/components';
+import { buildChimney, buildDormer, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
 import { buildOpenings, type OpeningsResult } from '@/core/generator/house/openings';
 import { MAX_DIMENSIONS } from '@/core/schema/voxelModel';
 import type { HorizontalDirection } from '@/core/blocks/directions';
@@ -121,15 +121,19 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
   for (const d of dormers) buildDormer(ctx, d);
   const roof = buildRoofs(builder, sections);
   if (porch) buildPorch(ctx, porch);
+  let chimney: { x: number; z: number } | null = null;
   if (input.chimney && main.roofType !== 'flat') {
     const tower = plan.masses.find((m) => m.round);
     const towerSide = tower ? (tower.rect.x0 + tower.rect.x1 > main.rect.x0 + main.rect.x1 ? 'east' : 'west') : null;
     const free = (['east', 'west'] as const).filter((s) => s !== towerSide);
     const side = main.ridgeAxis === 'x' ? (free.length === 1 ? free[0]! : rng.fork('chimney').chance(0.5) ? 'east' : 'west') : 'south';
-    buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side);
+    // Without a gable on that side an outside stack would stand free beside the hip: through the roof instead.
+    if (['hip', 'pyramid', 'mansard', 'half_hip'].includes(main.roofType)) chimney = buildRoofChimney(ctx, main, roof.surface, side === 'south' ? 'east' : side);
+    else buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side);
   }
   const openings = buildOpenings(ctx, panels);
-  buildStairs(ctx, main, (x, z) => nearRoundTower(plan, x, z, 1) || [...openings.reserved].some((k) => k.startsWith(`${x},`) && k.endsWith(`,${z}`)));
+  const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;
+  buildStairs(ctx, main, (x, z) => nearChimney(x, z) || nearRoundTower(plan, x, z, 1) || [...openings.reserved].some((k) => k.startsWith(`${x},`) && k.endsWith(`,${z}`)));
   // Round towers last: they replace whatever the house put into their cylinder.
   const inHouse = insideHouse(plan);
   for (const tower of plan.masses.filter((m) => m.round)) {

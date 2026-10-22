@@ -1,239 +1,159 @@
 # Testbericht
 
-**Stand:** 2026-10-22, alle Phasen (0–5) plus Editor, Windows-Start und echte Minecraft-Texturen. Alle Ergebnisse unten stammen aus tatsächlich ausgeführten Befehlen in der Entwicklungsumgebung (Linux-Container, kein Windows, keine Grafikkarte).
+**Stand:** 2026-10-22, Ausbaustufe Phasen 1–8. Alle Ergebnisse unten stammen aus tatsächlich ausgeführten Befehlen **auf dem Windows-PC des Nutzers** (keine Simulation). Frühere Stände (Linux-Container) sind in der Git-Historie dieses Dokuments nachlesbar.
 
 ## Umgebung
 
 | Komponente | Version |
 |---|---|
-| Node.js / npm | 22.22.0 / 10.9.4 |
+| Rechner | Windows 11 Pro 10.0.26200, AMD Ryzen 5 5600X, 16 GB RAM, AMD Radeon RX 6600 |
+| Node.js / npm | 24.20.0 / 11.19.0 |
 | Next.js / React | 16.4.2 / 19.3.1 |
 | TypeScript | 6.0.2 (`strict: true`, `noUncheckedIndexedAccess`) |
 | ESLint | 9.39.5 mit `eslint-config-next` 16.4.2 |
 | Vitest | 5.0.5 (IndexedDB-Tests mit `fake-indexeddb` 6.2.6) |
-| Playwright / Chromium | 1.56.1 / Build 1194 (headless, SwiftShader-WebGL) |
+| Playwright / Chromium | 1.56.1 (headless, SwiftShader-WebGL) |
 | three / @react-three/fiber / drei | 0.186.1 / 9.8.2 / 10.7.9 |
 | prismarine-nbt / zod / dexie / minecraft-data | 2.8.0 / 4.6.7 / 4.4.6 / 3.117.0 |
-| Java / Maven / Python (WorldEdit-Reader) | OpenJDK 21.0.12.1 / 3.9.11 / 3.13.16 |
-| WorldEdit (Reader) | EngineHub **7.4.2** @ `eb8e82c3d8843bed3f71e82ea974122415645178`, aus Quellcode gebaut |
+| Java / Maven / Python (WorldEdit-Reader, Werkzeuge) | OpenJDK 21.0.12.1 / 3.9.11 / 3.12.10 |
+| WorldEdit (Reader) | EngineHub **7.4.2** @ `eb8e82c3d8843bed3f71e82ea974122415645178`, aus Quellcode gebaut (Git Bash, Maven) |
+| Minecraft-Client-Datei | 1.21.11 aus der Modrinth-App (`1.21.11-0.19.3.jar`), nur zur Laufzeit gelesen, nicht im Repo |
+| Ollama | **nicht installiert** |
 
 ## Ausgeführte Befehle und Ergebnisse
 
-Abschlusslauf am 2026-10-22, nacheinander auf demselben Stand:
+Abschlusslauf am 2026-10-22 auf diesem PC, nacheinander auf demselben Stand (dem Stand des Phase-8-Commits):
 
 | Befehl | Ergebnis |
 |---|---|
 | `npm run typecheck` | ✅ keine Fehler |
 | `npm run lint` | ✅ 0 Fehler, 0 Warnungen |
-| `MCB_MINECRAFT_JAR=<1.21.11.jar> npx vitest run` (= `npm test` mit echter Client-Datei) | ✅ 17 Dateien, **213/213 Tests bestanden**, inkl. der 13 WorldEdit-Tests und des Tests gegen die echte Minecraft-1.21.11-Client-Datei |
-| `npm run test:worldedit` | ✅ 1 Datei, **13/13 bestanden** (echter WorldEdit-Reader, Pflichtmodus) |
-| `python3 tests/worldedit/fixtures-src/selftest.py` | ✅ **26/26 Fixture-Erwartungen erfüllt**, Reader „EngineHub WorldEdit 7.4.2“ (Lauf vom 2026-10-21, Reader seitdem unverändert) |
-| `npm run build` | ✅ Produktionsbuild erfolgreich (`/` statisch; `/api/generate`, `/api/export`, `/api/ai/*`, `/api/textures*` dynamisch) |
-| `npm run test:e2e` | ✅ **25/25 bestanden** (24 Desktop, 1 Mobil/Pixel 7), Laufzeit 2,4 min |
+| `MCB_MINECRAFT_JAR=<1.21.11-Client-Datei> npx vitest run` (= `npm test` mit echter Client-Datei) | ✅ 30 Dateien, **620 Tests bestanden**, 4 übersprungen (die vier Opt-in-Werkzeuge: echte KI-Messung, Großmessung, Iso-Renderer, Texturstatistik-Erzeugung); Dauer 59 s |
+| `npm run test:worldedit` | ✅ **36/36 bestanden** (echter WorldEdit-7.4.2-Reader, Pflichtmodus); Dauer 54 s |
+| `npx playwright test` (baut die App mit `npm run build` und startet sie) | ✅ **26/26 bestanden** (25 Desktop, 1 Mobil/Pixel 7), Laufzeit 4,7 min |
 | `npm audit --omit=dev` | ✅ 0 Schwachstellen in Laufzeitabhängigkeiten |
 
-`npm audit` über alle Abhängigkeiten meldet 5 „high“-Funde. Sie liegen ausschließlich in der Dev-Toolchain (`eslint-config-next` → `fast-glob` → `micromatch` → `braces`). Der einzige von npm angebotene Fix wäre ein Downgrade auf `eslint-config-next@14`, das nicht zu Next 16 passt.
+`npm audit` über alle Abhängigkeiten meldet weiterhin 5 „high“-Funde, ausschließlich in der Dev-Toolchain (`eslint-config-next` → … → `braces`); der angebotene Fix wäre ein Downgrade, das nicht zu Next 16 passt.
 
-Der WorldEdit-Reader selbst wurde in dieser Sitzung aus dem Quellcode gebaut (`tests/worldedit/build.sh --selftest`, Linux). Kalter Build mit Selbsttest ca. 90 s, erneuter Build mit Cache ca. 35 s.
+Commits nur nach grünem Lauf: Phase 1 (`9af27ba`), Phasen 2–7 (`b494355`, nach typecheck, lint, 620 Vitest-Tests, 36 WorldEdit-Tests und 26 E2E-Tests) und Phase 8 (dieser Lauf).
 
 ## Testinhalte
 
-### Generatoren (Unit)
+### Blöcke: Registry, Formen, Auflöser, Validator
 
-- **Haus, Strukturprüfung an den echten Blockdaten** (`tests/helpers/houseInspection.ts`):
-  - Fundament unter der ganzen Grundfläche, vier lückenlose Wände;
-  - Eingang 2 Blöcke hoch und von außen bis innen frei, mit Boden und Weg;
-  - Fenster aus Glas in allen vier Wänden, von innen und außen frei (außer dort, wo ein Anbau anschließt);
-  - Dach deckt jede Zelle der Grundfläche ab und ist spiegelsymmetrisch (asymmetrische Bauteile ausgenommen);
-  - Schornstein durchgehend und über den First ragend;
-  - mindestens 60 % der begehbaren Innenfläche frei, Innenhöhe ≥ 3;
-  - **keine schwebenden Blöcke**, d. h. alles ist mit dem Boden verbunden;
-  - Durchgänge zu Turm und Anbau sind frei.
-- **Alle 243 Kombinationen** aus Größe × Stil × Material × Farbe × Detailgrad, jeweils mit Seed 1, 2 und 3 (729 Häuser): alle gültig.
-- **Feinparameter:** Jede Option (Maße, Dachform, Fensterdichte, Materialien pro Bauteil, Balkenholz, Schalter) verändert das Modell und bleibt strukturell gültig. Alle 8 Maß-Extreme (7/33 × 5/25 × 3/8) sind gültig. Zu große Kombinationen werden verständlich abgelehnt.
-- **Bauteile:** Turm links/rechts, Anbau links/rechts, Vordach, Hecke, Walmdach und Kombinationen sind in allen Größen gültig. Turmschacht begehbar, Vordach über dem Eingang, Hecke mit Lücke und Weg. Turm und Anbau auf derselben Seite werden aufgelöst und gemeldet.
-- **Weihnachtsbaum, Marktstand, Bahnhof:** jeweils alle 243 Kombinationen gültig, in den Grenzen und ohne schwebende Blöcke. Weitere Prüfpunkte:
-  - deterministisch;
-  - jede Einstellung wirkt;
-  - Baum: Stamm durchgehend, Stufen verjüngen sich, Stern oben;
-  - Marktstand: Budenzahl je Größe, Theke, freier Platz dahinter;
-  - Bahnhof: echte Schienen auf festem Grund, Gebäude mit Tür zum Bahnsteig.
-- **Determinismus und Varianten:** Gleiche Spec und gleicher Seed ergeben bitgleiche Daten. Seeds 1, 2 und 3 ergeben drei unterschiedliche, gültige Varianten.
-- **Gegenprobe:** Die Strukturprüfung erkennt eingebaute Fehler (Loch in der Wand, blockierter Eingang, schwebender Block, verdecktes Fenster).
+- **Registry** (`tests/unit/registry.test.ts`): 539 Blöcke; jeder Block existiert in den Versionen seines Profils mit exakt den Eigenschaften, Werten und Standardwerten aus `minecraft-data` (1.21.11 und 1.21.1); Stackgrößen; Umbenennung `iron_chain` ↔ `chain`; `checkBlockState` lehnt unbekannte Blöcke, Werte, fehlende und überzählige Eigenschaften, falsche Reihenfolge und Blöcke einer anderen Version ab.
+- **Formen gegen die echte Client-Datei** (`tests/integration/vanillaShapes.test.ts`): Die Flächenabdeckung jeder Formklasse (Treppen in allen Formen, Stufen, Zäune, Mauern, Scheiben, Türen, Falltüren, Laternen, Kerzen, Endstab, Blitzableiter …) stimmt mit den gebackenen Original-Modellen überein; Leiter-Ausrichtung geprüft.
+- **Zustandsauflöser** (`tests/unit/stateResolver.test.ts`): Treppenformen (gerade, innen, außen, links/rechts), Zaun-, Scheiben- und Gitterverbindungen inkl. Ausnahmen, Mauerseiten und -pfosten, obere Türhälfte, Zauntor in Mauer, `snowy`, Laubdistanzen; ein zweiter Lauf ändert nichts.
+- **Validator**: Laterne, Kerze, Tür, Teppich, Pflanze, Schiene, Knopf, Leiter ohne Halt; Schnee auf ungeeignetem Grund und neben Licht; Golem-Muster; `dirt_path` unter festen Blöcken – jeweils repariert und protokolliert.
 
-### Freitext-Parser und Einstellungs-Auflösung (Unit)
+### Stile, Paletten, Lints (`tests/unit/styles.test.ts`)
 
-- Erkennt Bauwerkstyp, Stil, Größe, Material, Farben, Maße, Fensterdichte, Dachform, Bauteile mit Seite sowie Verneinungen („ohne Schnee“). Umlaute dürfen auch umschrieben sein („Haeuschen“).
-- **Jede erkannte Einstellung verändert das erzeugte Modell.**
-- Nicht umsetzbare Wünsche (Türen, Treppen, Balkon, Keller, Pool, Garage, Möbel) erscheinen als Warnung. Gerade oder zu große Maße werden angepasst, und die App sagt das.
-- **Keine Fehlalarme durch Wortteile:** „Schornstein“ ist kein Steinhaus, „Schneesturm“ kein Turm, „realistisches“ kein Tisch, „türkis“ keine Tür.
-- `resolveSpec`: Manuelle Einstellungen haben Vorrang vor dem Text und erzeugen einen Konflikthinweis; Zurücksetzen stellt den Textwert wieder her.
+- Jede Palette besteht die Lints (Helligkeitsabstand Wand/Rahmen, Dach ≠ Wand, 3–5 Familien, Dach mit Treppen, verbotene Namensteile je Stil); jede Rolle hat gültige Materialien mit den nötigen Formen.
 
-### Editor (Unit)
+### Dach-Engine (`tests/unit/roofEngine.test.ts`)
 
-- Setzen, Entfernen, „Alle ersetzen“ und „Bereich füllen“ ergeben valide, neu gehashte Modelle. Rückgängig stellt den alten Hash exakt wieder her.
-- Ungültige Blöcke, Positionen außerhalb und veraltete Befehle werden abgelehnt. Der Verlauf ist begrenzt.
-- Bearbeitete Modelle exportieren verlustfrei. Die Ebenenansicht blendet Blöcke oberhalb aus und zeigt Schnittflächen.
+- Profile haben die dokumentierte Form und gerade Treppenoberkanten; Walm- und L-Dächer mit Außen- und Innenecken; Kehlen; Anstieg ≤ 7 Blöcke auch bei breiten Häusern (`planRoofs` kennt die Höhe vorab); das Glockenprofil bleibt geschwungen (unten Stufen, oben Block + Treppe).
 
-### Projekte (Unit, IndexedDB)
+### Fassadenvorlagen (`tests/unit/templates.test.ts`)
 
-- Speichern → Laden ergibt identische Voxeldaten und Hashes, inklusive Bearbeitungen.
-- Liste, Umbenennen, Aktualisieren, Duplizieren und Löschen funktionieren.
-- Ungültige Namen und beschädigte Daten werden mit verständlichem Fehler abgelehnt.
+- Katalog W01–W18, T01–T10 mit Varianten: jede Vorlage im Spiel gültig – alle Paletten × 4 Richtungen × gespiegelt × 1.21.11/1.21.1, ohne Validator-Reparatur; Stilzuordnung passt zu `styles.ts`; Bögen von W07b, W17b und T04 entsprechen der Bogen-Bibliothek.
 
-### Registry und Kompatibilität (Unit)
+### Geometrie (`tests/unit/geometry.test.ts`, `geometryLibrary.test.ts`)
 
-- Standardprofil ist 1.21.11. DataVersion 4671 (1.21.11) und 3955 (1.21.1) stimmen mit `minecraft-data` überein.
-- **Alle 128 Registry-Blöcke** existieren in 1.21.11 und in 1.21.1 mit exakt denselben Eigenschaften und Werten.
-- `checkBlockState` lehnt unbekannte Blöcke, ungültige Werte, fehlende oder unbekannte Eigenschaften, nicht kanonische Reihenfolge und Syntaxfehler ab.
+- Kreis D5 = 12/16/21, D15 = 40/56/177, Kugel D15 hohl = 530, Kegel D15/H15 massiv = 919; Bögen, Zinnen-Symmetrie (D 7, 9, 15, 17, 21, 23), Rotationskörper, Zwiebelprofil.
 
-### VarInt, Hash, Transport, Mesh (Unit)
+### Generatoren (`tests/unit/generator.test.ts`, `buildingTypes.test.ts`, `wishesEndToEnd.test.ts`)
 
-- **VarInt:** Werte < 128 und ≥ 128 bis 2³²−1 mit festen Bytefolgen (z. B. 300 → `AC 02`). Abgeschnittene, überlange und überzählige Datenströme werden abgelehnt.
-- **SHA-256:** stimmt mit Testvektoren und `node:crypto` überein.
-- **Transport:** Byte-Reihenfolge little-endian, Roundtrip verlustfrei, Grenzen dokumentiert. Manipulierte Hashes, Maße, Indizes, Paletten und Specs werden abgelehnt.
-- **Mesh:** Face-Culling; Luft ergibt keine Flächen. Glas und Leuchtblöcke landen in eigenen Puffern.
+- **Häuser:** alle 8 Stile × klein/mittel/groß × ohne Thema/Weihnachten × Seed 1 und 2 (96 Häuser): alle Blockzustände gültig in 1.21.11, **null Validator-Reparaturen**, **kein Befund der Bau-Lints** (nichts schwebt, Auflöser-Fixpunkt, keine flache Wand > 5, Überstand ≥ 1, Anstieg ≤ 7 + First, Dach ohne Lücken, Türen vollständig und frei, Laterne am Eingang). Dazu riesige Häuser und 6 Geschosse.
+- **Feinparameter:** 23 Optionen (Maße, Geschosse, Dachformen, Überstand, Gauben, Flügel, Anbau, eckiger und runder Turm, verwinkelt, Veranda, Kamin, Laternen, Seelenlaternen, Garten, Palette, Material, Fenster- und Türfamilie) verändern das Modell und bleiben lint-sauber; Dachprofile wirken, Dachformen mit festem Querschnitt melden das; Erker und Balkon in allen Stilen; v1-Specs werden in gültige v2-Specs übersetzt.
+- **Echte Geschosse:** jedes Geschoss hat einen Boden (> 60 % der Fläche), Treppe oder Leiter verbindet sie; Jetty im Mittelalter.
+- **Thema:** Weihnachten mit Girlanden aus persistentem Laub, Lichtern, Schleifen und Laternen an Ketten; Winter ohne Schleifen, aber mit Laternen; **kein Schnee und keine Eiszapfen ohne Wunsch**; mit Wunsch Bodenfläche und Schneeschichten in allen Stilen und Typen ohne Reparatur; Profil 1.21.1 nutzt `chain`.
+- **Weitere Typen:** Baum, Marktstand, Bahnhof, Turm in klein/mittel/groß und mit/ohne Thema ohne Reparatur, nichts schwebt, Fixpunkt; Turm in allen Stilen und vier Größen lint-sauber mit Tür und Laterne; Rundturm-Ring = dicker Kreis der Bibliothek, Zinnen nur bei symmetrischem D, Böden und Leiter; Haus mit Rundturm in allen Stilen; belegte Ecke wird mit Hinweis gewechselt.
+- **Determinismus:** gleiche Eingabe → bitgleiche Daten; drei Seeds → drei verschiedene Varianten; jeder Stil hat andere Hauptmaterialien.
+- **Wunsch → Bauwerk:** alle 77 Wünsche des Testsets werden geparst, erzeugt und bestehen Gültigkeit, Reparatur- und Lint-Prüfung; jede erkannte Einstellung ändert das Modell oder liefert einen Hinweis, warum nicht.
+- **Leistung:** ein großes Haus entsteht in < 2 s.
 
-### Export (Integration)
+### Parser, Bauplan, lokale KI
 
-- **v3-Layout,** gelesen mit `prismarine-nbt` als zweitem Leser: Root `""` → `Schematic`, `Version` 3, DataVersion des gewählten Profils (4671 bzw. 3955), Short-Maße, `Blocks` mit Palette, VarInt-Daten und leerer `BlockEntities`-Liste, kein v2-Layout.
-- **Roundtrip:** jeder Block an jeder Koordinate identisch, Hash identisch, auch mit dem eigenen, unabhängigen NBT-Leser.
-- **Paletten mit mehr als 127 Einträgen** (Mehrbyte-VarInts) werden verlustfrei gelesen. Gleiches Modell ergibt eine bytegleiche Datei.
-- **Negativfälle:**
-  - Der Export verweigert Modelle mit falschem Hash, unbekanntem Block, ungültiger Eigenschaft, Übergröße, inkonsistenter Palette oder unbekannter Zielversion.
-  - Der Validator erkennt abgeschnittene VarInts, falsche Tag-Typen, v2-Felder, falsche DataVersion, ungültige Indizes, unbekannte Blockstates, Nicht-GZip, abgeschnittenes NBT und Abweichungen vom erwarteten Modell.
-  - Zeichen, die in Javas „modified UTF-8“ anders kodiert würden, werden abgelehnt.
+- **Parser** (`tests/unit/parseDescription.test.ts`): Typen, Stile, Thema, Dach, Bauteile, Turmposition, Maße, Geschosse, Verneinungen über Aufzählungen, Fehlalarme („Schornstein“, „Schneesturm“, „türkis“, „Haustür“, „Kirschbaum“ …), nicht umsetzbare Wünsche, Erklärung.
+- **Testset** (`tests/unit/planTestset.test.ts`): **77/77 Wünsche** vom Parser vollständig richtig; die 26 Few-Shot-Beispiele stimmen mit dem Parser überein und sind vom Testset getrennt; Parser → Plan → Patch ohne Verlust.
+- **Ollama-Client** (`tests/integration/ai.test.ts`, gegen einen simulierten Ollama-Server): gültiger Plan, Korrekturrunde, Unsinn, Zeitüberschreitung, fehlendes Modell, nicht erreichbar, Modell ohne „think“, Antwort im `thinking`-Feld, beide API-Routen. **Ein echtes Sprachmodell lief nicht** (Ollama nicht installiert); der Messlauf `tests/integration/ollamaTestset.test.ts` lief nur als Trockenlauf.
 
-### API (Integration)
+### Editor, Projekte, Transport, Export, API
 
-- **`/api/generate`:** 200 mit drei verlustfrei dekodierbaren Varianten (auch für den Bahnhof); 400 bei ungültiger Spec, kaputtem JSON oder Zusatzfeldern; 422 bei Maßen, die das Maximalvolumen sprengen; 413 bei zu großer Anfrage.
-- **`/api/export`:** 200 mit korrekten Headern und einer Datei, die der Validator als identisch bestätigt; 400 bei manipuliertem Hash, verbotenem Block oder fehlendem Modell; 413 bei Übergröße.
+- **Editor:** Setzen, Entfernen, Ersetzen, Füllen ergeben valide, neu gehashte Modelle; Rückgängig stellt den Hash exakt her; Nachbartreppe wird zur Ecke, Türhälften, Zaunverbindungen, schwebende Laterne wird gemeldet.
+- **Projekte:** Speichern → Laden identisch inkl. Bearbeitungen; Upgrade der Datenbank v1 → v2 und Migration alter Specs; beschädigte Daten werden verständlich abgelehnt.
+- **Transport:** RLE und u16le verlustfrei, Manipulationen werden abgelehnt.
+- **Export:** Sponge-v3-Layout (zweiter Leser `prismarine-nbt`), Roundtrip jedes Blocks, Mehrbyte-VarInts, Negativfälle (Hash, Block, Eigenschaft, Größe, Version), Abweichungen vom erwarteten Modell (Block und Maße).
+- **API:** `/api/generate` (200, 400, 413, 422), `/api/export` (200, 400, 413).
 
-### Lokale KI (Integration, gegen einen simulierten Ollama-Server)
+### Echter WorldEdit-Reader (`tests/integration/worldedit.test.ts`)
 
-Getestet wird gegen einen HTTP-Server im Test, der Ollamas `/api/tags` und `/api/chat` nachbildet. **Ein echtes Sprachmodell lief hier nicht.**
+Jede `.schem` wird mit `SpongeSchematicV3Reader` von EngineHub WorldEdit 7.4.2 gelesen; erwartet: Format, DataVersion, keine Warnungen (`--require-canonical`), gleiche Maße und **jeder Block identisch**.
 
-- Standardmäßig aus; die Ollama-Einstellungen kommen aus der Umgebung.
-- **Status:** aus, erreichbar, Modell fehlt, nicht erreichbar.
-- **Gültiger Plan:** wird mit Zod geprüft und erzeugt echte Modelle. Eine ungültige erste Antwort wird in einer zweiten Runde korrigiert.
-- Modelle ohne „think“-Unterstützung bekommen automatisch eine Wiederholung ohne das Flag.
-- **Verständliche Fehler** für Unsinn, Zeitüberschreitung, fehlendes Modell, nicht erreichbar und deaktiviert.
-- **API-Routen:** `/api/ai/status` und `/api/ai/plan`; ohne Aktivierung antwortet `/api/ai/plan` mit 503, und die App fällt auf den regelbasierten Generator zurück.
+- Drei Standardvarianten; **alle 8 Stile** weihnachtlich (mittel) und ohne Thema (groß); Profil 1.21.1; verwinkeltes Haus mit Turm, Anbau, Veranda, Gauben, Walmdach; Winter mit Seelenlaternen; großer Baum, großer Marktstand, große und kleine Bahnhöfe (1.21.11/1.21.1); Turm (Fantasy, groß), Turm mit Zinnen; Haus mit Rundturm, Erker, Balkon und Bogenfenstern; Schneeschichten auf Wunsch; Feinparameter mit Ziegel und Kupferdach.
+- Ein im Editor bearbeitetes Modell; Palette > 127 Einträge.
+- **Jeder Blockzustand der Registry**: 18 128 Zustände in 1.21.11 und 17 350 in 1.21.1, in Stücken zu höchstens 4096.
+- Große Modelle (siehe Messung) und eine Gegenprobe mit ungültigem Zustand (exit 2).
 
-### Echte Minecraft-Texturen (Unit, Integration, E2E)
+### Messung großer Bauwerke (Querschnitt A)
 
-Details: `docs/TEXTURES.md`.
+`MCB_MEASURE=1 MCB_MEASURE_SIZES=128x384x128,192x384x192 npx vitest run tests/integration/largeModels.test.ts -t misst` am 22.10.2026 auf diesem PC (Node 24.20.0, win32/x64). Testmodell: 23 % nicht Luft, Palette 150.
 
-- **Unit** (`tests/unit/textures.test.ts`, 19 Tests):
-  - ZIP-Leser inklusive CRC-Prüfung.
-  - Variantenwahl, gewichtete Varianten, Multipart mit `OR`/`AND`/Verneinung.
-  - Modellvererbung und Texturverweise.
-  - Ausrichtung von Stämmen (Achse) und Kürbislaternen (facing).
-  - Standard-UVs und Eckenreihenfolge, gedrehte Kreuz-Elemente, `uvlock`.
-  - Flächen-Ausblendung: fest/fest, Glas/Glas, Laub/Laub, Glas/fest.
-  - Helligkeit je Richtung, Laubfärbung und Ebenenschnitt.
-  - Launcher-Suche (Pfadmuster, Mods-Ordner ausgeschlossen, Versionsvorrang).
-  - Alle Registry-Blöcke mit einer selbst erzeugten Test-Datei im Minecraft-Format.
-- **Integration** (`tests/integration/textures.test.ts`):
-  - Status ohne Installation.
-  - Datei-Übernahme und Ablehnung fremder Dateien.
-  - Automatischer Fund im Launcher-Ordner und Vorrang von `MINECRAFT_JAR`.
-  - Mojang-Download nur mit Zustimmung, nur von Mojang-Hosts, Prüfsumme kontrolliert (simulierter Server).
-- **Echte Client-Datei:** Mit der offiziellen 1.21.11-Client-Datei (SHA-1 `ba2df812…`, von Mojangs Servern in die Testumgebung geladen und nicht ins Projekt übernommen) wurden **alle 248 Blockzustände** der App vollständig aus den Original-Modellen gebacken: keine fehlenden Modelle oder Texturen, Kürbislaterne und Stämme richtig ausgerichtet.
-- **E2E** (`tests/e2e/textures.spec.ts`):
-  - Datei im Browser auswählen, danach ist die Vorschau texturiert.
-  - Symbole in der Materialliste, Umschalten an/aus, nach dem Neuladen sofort aktiv.
-- **Sichtprüfung:** Screenshots von Haus, Weihnachtsbaum, Marktstand und Bahnhof mit Original-Texturen, darunter Fichtenholz, Stämme, Bruchstein, Glas, eingefärbtes Laub und Schienen auf dem Gleisbett.
+| Schritt | 128 × 384 × 128 (6,3 Mio. Blöcke) | 192 × 384 × 192 (14,2 Mio. Blöcke) |
+|---|---|---|
+| Modell erzeugen (kanonisieren, Registry, Hash, Prüfung) | 102 ms | 210 ms |
+| SHA-256 über die Indizes | 63 ms (12 MiB) | 148 ms (27 MiB) |
+| Transport alt (`u16le-base64`) | 16,0 MiB JSON | 36,0 MiB JSON |
+| Transport neu (`rle-varint-base64`) | **1,23 MiB** JSON, dekodieren + prüfen 95 ms | **2,68 MiB** JSON, dekodieren + prüfen 194 ms |
+| Export `.schem` (schreiben + Selbstprüfung) | 667 ms → 139 KiB | 1 550 ms → 303 KiB |
+| Unabhängiger Validator (Block für Block + Hash) | 152 ms | 359 ms |
+| **WorldEdit-7.4.2-Reader** (JVM-Start, Lesen, Ausgabe) | 1,9 s, **Block für Block identisch** | 2,8 s, **Block für Block identisch** |
 
-### Echter WorldEdit-Reader (Integration, `tests/integration/worldedit.test.ts`)
+Nicht gemessen: Meshing und Darstellung so großer Modelle im Browser auf einer echten Grafikkarte (die E2E-Tests laufen mit Software-WebGL und normalen Bauwerken).
 
-Das Java-Harness öffnet jede exportierte `.schem` mit `ClipboardFormats.findByFile` und `SpongeSchematicV3Reader` von EngineHub WorldEdit 7.4.2 auf der `worldedit-cli`-Plattform. Erwartet wird in jedem Fall:
+### Echte Minecraft-Texturen
 
-- Format `SPONGE_V3_SCHEMATIC`;
-- DataVersion der Datei und der geladenen Registry wie im Profil (4671 bzw. 3955);
-- keine Warnungen und Fehler (inkl. `--require-canonical`);
-- gleiche Maße, Mindestpunkt (0,0,0) und gleiche Anzahl Nicht-Luft-Blöcke;
-- **jeder Block** in WorldEdits eigener Darstellung (`getAsString`) identisch zum Modell.
+- Unit- und Integrationstests wie bisher (ZIP-Leser, Modell-Backen, UV, `uvlock`, Ausblendung, Launcher-Suche inkl. Modrinth-Dateinamen, Datei-Übernahme, Mojang-Download nur mit Zustimmung).
+- Mit der echten 1.21.11-Client-Datei dieses PCs wurden alle Registry-Zustände aus den Original-Modellen gebacken (keine fehlenden Modelle oder Texturen) und die Texturstatistik (`textureStats.ts`, abgeleitete Zahlen) erzeugt.
 
-Geprüft wurden 13 Fälle:
+### UI (Playwright, `tests/e2e`, 26 Tests)
 
-- **Häuser:**
-  - die drei Standardvarianten (Seed 1, 2, 3);
-  - klein/realistisch/Eiche/Natur/Detailgrad 1 sowie groß/märchenhaft/Stein/Eisblau/Detailgrad 3;
-  - ein Haus im Profil 1.21.1;
-  - ein großes Haus mit Turm, Anbau, Vordach, Hecke und Walmdach;
-  - Feinparameter mit Birke, Ziegel, rotem Dach und vielen Fenstern.
-- **Andere Bauwerke:**
-  - großer Weihnachtsbaum, großer Marktstand;
-  - großer Bahnhof mit Schienen (1.21.11) und kleiner Bahnhof mit Schienen (1.21.1).
-- **Sonstige Modelle:**
-  - ein im Editor bearbeitetes Modell (Kürbislaterne mit `facing=east`, Heuballen mit `axis=x`);
-  - ein synthetisches Modell mit **allen 248 Registry-Zuständen**.
-- **Gegenprobe:** Eine Datei mit `axis=w` wird mit exit 2 abgelehnt.
+1. Durchlauf Haus: Text → 3D (Szene zeigt nachweislich das gewählte Modell) → Materialliste (Zeilensumme = Item-Summe) → echter `.schem`-Download, vom Validator geprüft.
+2. Varianten, Größe, Tastatur, Serverfehler.
+3. Freitext: erkannte Wünsche, Erklärung, nicht umsetzbare Wünsche, Vorrang manueller Einstellungen, Feinparameter (Breite, Dachmaterial).
+4. Alle fünf Bauwerkstypen generieren, ansehen, exportieren; Bauteile nur beim Haus.
+5. Editor (Klick, Setzen, Pipette, Koordinaten, Material austauschen, Ebenenansicht, Speichern bearbeiteter Modelle).
+6. Projekte (Speichern → Reload → Öffnen, Umbenennen, Duplizieren, Löschen, ungespeicherte Änderungen).
+7. Lokale KI mit simulierten Endpunkten (gekennzeichnet, Plan angewendet, Rückfall).
+8. Echte Texturen (Datei auswählen, texturierte Vorschau, umschaltbar).
+9. Mobil (Pixel 7): Tabs, Szene ≥ 300 × 300, kein Überlauf, Export.
 
-Die 26 Fixtures des Harness zeigen zusätzlich, dass es WorldEdits stille Fehlerfälle erkennt:
+### Sichtprüfung
 
-- unbekannte Eigenschaften, zu wenige Blöcke, unbekannte Blöcke;
-- neue 1.21.11-Blöcke in einer 1.21.1-Datei;
-- das umbenannte `minecraft:chain` in einer 1.21.11-Datei.
+Screenshots mit echten Texturen (`docs/screenshots/`, erzeugt mit `scripts/screenshots.mjs` gegen die laufende App) und isometrische Prüfbilder (`MCB_RENDER=1 npx vitest run tests/integration/renderIso.test.ts`) aller Stile, Größen und Typen; nach jeder Runde nachgebessert (Details im Abschlussbericht).
 
-**Vorbehalt:** WorldEdit-CLI 7.4 lädt seine Blockdaten zur Laufzeit von `services.enginehub.org`, und das war hier gesperrt. Die Registries für 4671 und 3955 wurden aus Mojangs Data-Generator-Ausgabe erzeugt. Der Konverter reproduziert aus den 1.19-Daten exakt EngineHubs eigene `3105.json`. Ob die erzeugten Dateien mit EngineHubs Downloads identisch sind, ist nicht geprüft (Details in `docs/COMPATIBILITY.md`).
+## Während der Entwicklung gefundene und behobene Fehler (Auswahl, Phasen 1–8)
 
-### UI (Playwright, `tests/e2e`)
-
-1. **Durchlauf Haus:**
-   - Text eingeben und generieren. Die 3D-Szene zeigt nachweislich das ausgewählte Modell (`data-rendered-hash`) und ist nicht leer.
-   - Die Materialsumme stimmt.
-   - Echter `.schem`-Download, den der Validator prüft: Hash, DataVersion und Blockzahl passen.
-2. **Varianten und Einstellungen:** Ein Variantenwechsel ändert Daten, 3D-Ansicht und Exportdatei. „Klein“ ergibt andere Maße.
-3. **Freitext und Feinparameter:**
-   - Erkannte Wünsche und Warnungen erscheinen, und das Modell folgt dem Text.
-   - Manuelle Einstellungen haben Vorrang und lassen sich zurücksetzen.
-   - Breite und Dachmaterial wirken.
-4. **Weitere Bauwerke:** Weihnachtsbaum, Marktstand und Bahnhof lassen sich generieren, ansehen und exportieren. Bauteile werden nur beim Haus angeboten.
-5. **Editor:**
-   - Ein Klick ins 3D-Modell entfernt einen Block. Rückgängig/Wiederholen funktionieren, und der Export enthält die Änderung.
-   - Setzen-Werkzeug und Pipette funktionieren, ebenso Koordinaten-Werkzeug, Material austauschen und Ebenenansicht.
-   - Ein bearbeitetes Modell lässt sich speichern, nach einem Reload öffnen, und „Neu generieren“ warnt vorher.
-6. **Projekte:**
-   - Speichern → Reload → Öffnen ergibt denselben Hash und einen korrekten Export.
-   - Umbenennen, Duplizieren und Löschen (mit Bestätigung) funktionieren.
-   - Vor dem Wechsel werden ungespeicherte Änderungen gemeldet.
-7. **Lokale KI** (Endpunkte im Browser simuliert):
-   - Ohne KI ist die App ehrlich als „Regelbasierter Generator“ gekennzeichnet, und der Schalter ist gesperrt.
-   - Mit bereiter KI wird der Plan angezeigt, angewendet und mit „von KI“ markiert.
-   - Bei einem KI-Fehler gibt es den Rückfall auf den regelbasierten Generator, mit Hinweis.
-8. **Fehler und Tastatur:** Serverfehler werden sichtbar gemeldet (Status „fehler“, Download gesperrt). Generieren klappt per Tastatur.
-9. **Mobil (Pixel 7):** Tabs funktionieren, die 3D-Szene ist mindestens 300 × 300 groß, Antippen scrollt die Seite nicht, es gibt keinen horizontalen Überlauf, und der Export funktioniert.
-
-## Während der Entwicklung gefundene und behobene Fehler
-
-- **Mobil:** Lange Blockstate-Namen machten die Seite 628 px breit, und die 3D-Szene war nur 194 px hoch.
-- **Hydration:** Ein Klick auf „Generieren“ vor der Hydration ging verloren; der Button ist jetzt bis dahin gesperrt.
-- **Parser-Fehlalarme:** „Schornstein“ wurde als Stein erkannt, „Haustür“ als Haus, „Schneesturm“ als Turm und „realistisches“ als Tisch. Ursachen waren eine fehlende Klammerung in den Regex-Alternativen und die Regelreihenfolge.
-- **Bauteile:** Ein Turmlicht schwebte, ein Giebelfenster lag unter dem Anbaudach, und eine Marktstand-Lampe schwebte. Alle drei sind behoben und durch die Strukturprüfungen abgedeckt.
-- **Ein Commit mit roten Tests:** Der Commit „Phase 4“ (`c01f283`) wurde mit 2 fehlschlagenden Tests eingecheckt. Die Tests erwarteten noch, dass Baum, Marktstand und Bahnhof „nicht verfügbar“ sind. Der Fehler lag in den Tests, nicht in der App, und wurde im direkt folgenden Commit `9d666bf` behoben. Seitdem wird nur nach einem vollständig grünen Lauf committet.
+- Standard-Ausrichtung des Fasses war `up` statt `north`; Endstab und Blitzableiter waren gekippt modelliert (Vergleich mit den Originalmodellen).
+- Türen wurden nicht gesetzt (Stufe über dem Sockel abgelehnt), Fenster lagen in der Türspalte, Streben blockierten Fenster – Reihenfolge und Prüfungen korrigiert.
+- `dirt_path` lag unter festen Blöcken (wäre im Spiel zu Erde geworden).
+- Leiter im Turm hing vor einem Fenster (Validator entfernte sie) – Leiter sucht jetzt eine volle Wand.
+- Marktmarkise bestand nur aus Stufen statt aus Treppen.
+- Glockenprofil überschritt den Anstieg ab Wandoberkante; die Begrenzung flachte es zur Gerade ab – jetzt bleibt die Krümmung.
+- Girlanden hingen in die Türfreiheit.
+- Gebäudetitel ignorierte das Thema.
+- Bahnhof wuchs nicht mit der Größe.
+- Fenster-/Türfamilie, Erker und Balkon standen im Schema, wirkten aber nicht – jetzt umgesetzt bzw. mit Hinweis, wenn sie nicht passen.
+- **Sichtprüfung mit echten Texturen:** Das Pultdach des Anbaus stieg am Giebel über den Ortgang und schnitt durchs Hauptdach (jetzt Pultdach nur unter ausreichend hoher Traufe, sonst eigener niedrigerer Giebel); Walmdächer auf fast quadratischem Grundriss wirkten wie Stufenpyramiden (Japanisch/Kirschblüte jetzt breiter als tief mit Krüppelwalm, Bahnhofsflügel mit Giebeln); Kamine neben Walmdächern standen wie freie Säulen (jetzt durch die Dachfläche); moderne Häuser mit Steildach hatten keinen Überstand; die Bahnhofsuhr war nicht als Uhr lesbar.
 
 ## Nicht getestet bzw. offen
 
-- **In-Game-Import noch nicht verifiziert.** In dieser Umgebung gibt es keine Minecraft-Instanz.
-  - Offen sind `//schem load` und `//paste` in Minecraft 1.21.11 mit WorldEdit 7.3.18+ bzw. 7.4.x, die Sichtprüfung und Screenshots.
-  - Die Schritte stehen in `docs/WORLD_EDIT_IMPORT.md`.
-  - Bis dahin gilt das Release-Gate „In Minecraft mit WorldEdit getestet“ als **nicht erfüllt**.
-- **Lauf mit einem echten Sprachmodell** (Ollama): `ollama.com` und die Modell-Downloads waren gesperrt. Getestet sind nur der Client und die Oberfläche gegen simulierte Antworten. Wie gut echte Pläne werden, ist offen.
-- **Windows:**
-  - `start-windows.cmd` und `npm run test:worldedit` (jetzt ein Node-Skript statt Shell-Syntax) wurden nicht auf Windows ausgeführt.
-  - Ebenso wenig der Reader-Build unter Git Bash/WSL.
-  - Die App selbst ist plattformunabhängiges Node.js/Next.js.
-- **WorldEdit-Varianten:**
-  - WorldEdit-Versionen außer dem 7.4.2-Reader, FastAsyncWorldEdit, das Laden über den DataFixer und andere Minecraft-Versionen sind nicht getestet.
-  - `WE_MODE=enginehub` (Binärdateien direkt von EngineHub) ist nicht getestet, weil der Host gesperrt war.
-- **Gedrehtes Einfügen** (`//rotate`) ist nicht getestet.
-- **Browser und Touch:**
-  - Andere Browser als Chromium sind nicht getestet.
-  - Echte Touch-Gesten (Drehen mit einem Finger, Pinch-Zoom) sind nur über die OrbitControls-Standardkonfiguration abgedeckt, nicht automatisiert gemessen.
-- **Texturen unter Windows:** Die automatische Suche in den Ordnern von CurseForge, Modrinth und Prism wurde nicht auf einem echten Windows-PC getestet, nur mit nachgebauten Ordnern. Fallback ist die Dateiauswahl in der App.
-- **Leistung auf echter Grafikkarte:** Die Tests liefen mit Software-WebGL (SwiftShader). Auf einer echten GPU sollte die Vorschau schneller sein, gemessen wurde das nicht.
+- **In-Game-Import noch nicht verifiziert.** Auf diesem PC lief keine Minecraft-Welt mit WorldEdit; Schritte und Checkliste stehen in `docs/WORLD_EDIT_IMPORT.md`. Das Release-Gate „In Minecraft mit WorldEdit getestet“ ist **nicht erfüllt**.
+- **Lauf mit einem echten Sprachmodell:** Ollama ist nicht installiert; es gibt keine echten Messwerte (Befehl in `docs/LOCAL_AI.md`).
+- **WorldEdit-Varianten:** andere Versionen als 7.4.2, FastAsyncWorldEdit, DataFixer, gedrehtes Einfügen nicht getestet.
+- **Browser:** nur Chromium; die E2E-Tests laufen mit Software-WebGL.
+- **Registries des WorldEdit-Readers** sind selbst erzeugt (Vorbehalt in `docs/COMPATIBILITY.md`).
 
 ## In-Game-Abnahme (manuell auszufüllen)
 

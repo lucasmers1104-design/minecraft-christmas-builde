@@ -4,50 +4,49 @@
 
 ```text
 Text ──► Regel-Parser (parseDescription) ─┐
-     └─► optional: lokale KI (Ollama) ────┤  (Wunsch-Patch; KI-Plan ersetzt den Parser nur für genau diesen Text)
+     └─► optional: lokale KI (Ollama) ────┤  (beide liefern denselben Bauplan; der KI-Plan ersetzt den Parser nur für genau diesen Text)
 UI-Einstellungen (manuell, Vorrang) ──────┤
 Seed, Minecraft-Version ──────────────────┘
         ▼ resolveSpec
-BuildSpec (Zod-validiert, inkl. options)
+BuildSpec v2 (Zod-validiert: Typ, Stil, Thema, Größe, Detailgrad, options)
         ▼ generateBuilding (deterministisch)
-kanonisches VoxelModel ◄──── Editor (setzen/entfernen/ersetzen, Undo/Redo) ───┐
-   ├─► 3D-Vorschau (buildTexturedMesh bzw. buildVoxelMesh → VoxelScene)        │
-   ├─► Materialliste (countMaterials)                                         │
-   ├─► Projekte (IndexedDB, VoxelTransport)                                   │
-   └─► .schem-Export (writeSpongeV3 → validateSchematic) ──────────────────────┘
+   Stil → Palette → Rollen-Materialien → Masse/Plan → Wände, Dächer, Öffnungen, Bauteile, Landschaft, Festschicht
+        ▼ VoxelBuilder.finalize: Zustandsauflöser → Validator (Reparaturen) → Zustandsauflöser
+kanonisches VoxelModel ◄──── Editor (setzen/entfernen/ersetzen, Undo/Redo, gleicher Auflöser) ──┐
+   ├─► 3D-Vorschau (Chunks im Web Worker, echte Texturen oder Farben)                             │
+   ├─► Materialliste (countMaterials: Blöcke und Items)                                          │
+   ├─► Projekte (IndexedDB v2, VoxelTransport RLE)                                                │
+   └─► .schem-Export (writeSpongeV3 → unabhängiger Validator) ─────────────────────────────────────┘
 ```
 
-Es gibt genau **ein** Blockmodell pro Variante.
+Es gibt genau **ein** Blockmodell pro Variante. Vorschau, Materialliste, Speichern und Export lesen es unverändert; der Editor erzeugt bei jeder Änderung ein neues, neu gehashtes Modell. `POST /api/export` exportiert das übergebene Modell und generiert nie neu.
 
-- Vorschau, Materialliste, Speichern und Export lesen es unverändert. Der Editor erzeugt bei jeder Änderung ein neues, neu gehashtes Modell.
-- Die Kamera zentriert das Modell nur visuell: Eine Three.js-Gruppe wird verschoben, die Blockkoordinaten bleiben unverändert.
-- `POST /api/export` exportiert das übergebene Modell und generiert nie neu.
+## Blöcke: Registry, Formen, Auflöser, Validator (`src/core/blocks/`)
+
+- **Registry** (`registry.ts`, `families.ts`): jeder Block mit Formklasse, Eigenschaften, Standardwerten, Kategorie, Lichtstärke und Profilen. Zustände sind vollständig und alphabetisch sortiert (`minecraft:oak_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]`), wie WorldEdits `getAsString()`. `checkBlockState(state, version)` prüft gegen die Zielversion; `profileBlockId` benennt um, wo sich Namen unterscheiden (`iron_chain` in 1.21.11 ↔ `chain` in 1.21.1).
+- **Formen** (`shapes.ts`, `faces.ts`): Vanilla-Kollisions- und Stützboxen in 1/16 je Formklasse (Treppe, Stufe, Zaun, Mauer, Scheibe, Tür, Falltür, Laterne, Kette, Kerze, Laub …). Daraus entstehen Flächenmasken (voll, Mitte stützend) für Verbindungen und Stützregeln. Ein Test vergleicht die Masken mit den echten Modellen der Client-Datei.
+- **Zustandsauflöser** (`stateResolver.ts`): berechnet, was Minecraft beim Setzen selbst berechnen würde – Treppenformen (`inner_*`/`outer_*`), Zaun-, Scheiben- und Gitterverbindungen, Mauerseiten und -pfosten (von oben nach unten), Zauntor `in_wall`, obere Türhälfte, `snowy` beim Gras, Laubdistanzen. Damit sehen WorldEdit-Import und Vorschau gleich aus; ein zweiter Lauf ändert nichts (Fixpunkt-Test).
+- **Validator** (`validator.ts`): repariert, was im Spiel nicht hielte – Laterne ohne Halt, Kerze, Tür, Teppich, Pflanze, Schiene, Knopf, Leiter ohne Wand, Schnee auf ungeeignetem Grund oder zu nah am Licht (würde schmelzen), Golem-Muster, `dirt_path` unter festen Blöcken. Jede Reparatur wird protokolliert; erzeugte Bauwerke müssen **null** Reparaturen haben (Test über alle Stile, Größen, Themen und Typen).
+- **Drehen/Spiegeln** (`transform.ts`) für Vorlagen.
 
 ## Datenmodelle
 
-### BuildSpec (`src/core/schema/buildSpec.ts`, `buildOptions.ts`)
+### BuildSpec v2 (`src/core/schema/buildSpec.ts`, `buildOptions.ts`)
 
 | Feld | Werte |
 |---|---|
-| `kind` | `house`, `tree`, `market_stall`, `station` |
-| `style` | `christmas`, `fairytale`, `realistic` |
-| `size` | `small`, `medium`, `large` |
-| `materialTheme` | `spruce`, `oak`, `stone` |
-| `colorTheme` | `red_green`, `ice_blue`, `natural` |
+| `kind` | `house`, `tree`, `market_stall`, `station`, `tower` |
+| `style` | `medieval`, `fantasy`, `rustic`, `nordic`, `japanese`, `cherry`, `modern`, `mediterranean` |
+| `theme` | `none`, `winter`, `christmas` |
+| `size` | `small`, `medium`, `large`, `huge` |
 | `detailLevel` | 1, 2, 3 |
 | `seed` | 0 … 2³¹−1 |
 | `targetMinecraftVersion` | `1.21.11` (Standard), `1.21.1` |
-| `options` | alles optional (`undefined` = automatisch aus Größe, Stil und Detailgrad), siehe unten |
+| `options` | alles optional (`undefined` = der Stil entscheidet) |
 
-Die Felder in `options`:
+`options`: Maße (`width`/`depth` ungerade 5–61, `floors` 1–8, `floorHeight` 4–6), Dach (`roofType`, `roofProfile`, `overhang` 0–3, `dormers` 0–6), Form (`symmetry`, `wings` L/T/U, `annex`, `tower` eckig/rund, `towerPosition`), Fenster und Türen (`windows`, `windowFamily`, `doorFamily`), Bauteile (`jetty`, `oriel`, `porch`, `balcony`, `chimney`), Licht und Fest (`lanternDensity`, `soulLanterns`, `garland`, `christmasTree`, `presents`, `snow`, `garden`), Material (`palette`, `materials.{wall, roof, frame, plinth, accent}` – nur Katalog-IDs).
 
-- **Maße:** `width` (ungerade 7–33), `depth` (ungerade 5–25), `wallHeight` (3–8).
-- **Form:** `roofShape` (`gable`, `steep`, `hip`), `windows` (`few`, `normal`, `many`).
-- **Schalter:** `snow`, `chimney`, `lights`, `garland`, `christmasTree`, `presents`.
-- **Bauteile:** `tower` und `annex` (`none`, `left`, `right`), `porch`, `hedge`.
-- **Material:** `frameWood` (`spruce`, `oak`, `dark_oak`, `birch`) und `materials.{wall, roof, floor, foundation, accent}`. Jedes Bauteil hat eine feste Liste erlaubter Blöcke.
-
-Welche Optionen ein Bauwerkstyp nutzt, steht in `APPLICABLE_OPTIONS` (`generateBuilding.ts`). Optionen ohne Wirkung werden in der API-Antwort als Hinweis gemeldet.
+Welche Optionen ein Typ nutzt, steht in `APPLICABLE_OPTIONS` (`generateBuilding.ts`); Optionen ohne Wirkung und Wünsche, die der Plan anpassen musste (Turm an andere Ecke, Erker passt nicht, Türform passt nicht …), kommen als **Hinweise** zurück. Alte Projekte (v1) werden beim Laden mit `migrateSpecLike` übersetzt.
 
 ### VoxelModel (`src/core/schema/voxelModel.ts`)
 
@@ -63,155 +62,98 @@ interface VoxelModel {
 }
 ```
 
-- **Koordinaten:** X = Breite (Osten), Y = Höhe, Z = Tiefe (Süden). Der Index ist `x + width * (z + length * y)`, also dieselbe Reihenfolge wie bei Sponge v3.
-- **Blockstates:** alle Eigenschaften angegeben, alphabetisch sortiert, z. B. `minecraft:rail[shape=east_west,waterlogged=false]`. Das entspricht WorldEdits `getAsString()`.
-- **Palette:** Luft auf Index 0, danach in der Reihenfolge des ersten Auftretens; ungenutzte Einträge werden entfernt. Gleiche Blöcke ergeben so immer denselben Hash.
-- **Hash:** SHA-256 über einen Kopf aus Maßen und Palette und über die Indizes als little-endian uint16.
-- **Grenzen:** 48 × 32 × 48 Blöcke und 1024 Paletteneinträge. Geprüft wird im Generator, im Transport, beim Speichern, im Export und im Validator.
+- **Koordinaten:** X = Osten, Y = oben, Z = Süden. Index `x + width * (z + length * y)` (Sponge-v3-Reihenfolge). Die Vorderseite eines Hauses zeigt nach Norden.
+- **Palette:** Luft auf Index 0, danach in der Reihenfolge des ersten Auftretens; gleiche Blöcke ergeben immer denselben Hash.
+- **Hash:** SHA-256 über Maße, Palette und die Indizes als little-endian uint16 (gestreamt).
+- **Grenzen:** 192 × 384 × 192 Blöcke (volle Bauhöhe einer Java-Welt), 4096 Paletteneinträge. Gemessen über den ganzen Datenweg in `tests/integration/largeModels.test.ts` (siehe `TEST_REPORT.md`).
 
-## Text, Einstellungen und Herkunft (`resolveSpec`)
+## Stile als Daten (`src/core/style/`)
 
-Der wirksame Spec wird schichtweise zusammengesetzt; spätere Schichten gewinnen:
+- **Materialien** (`materials.ts`): Familien (Holz, Stamm, Stein, Ziegel, Putz, Metall …) mit Formen (Block, Treppe, Stufe, Zaun, Mauer, Tür, Falltür, Scheibe …) und Ersatzformen, wo ein Block keine eigene hat. Helligkeit und Farbsättigung stammen aus den echten Texturen (`textureStats.ts`, abgeleitete Zahlen, keine Mojang-Dateien).
+- **Paletten** (`palettes.ts`): 18 Paletten, je Rolle (Sockel, Wand, Obergeschoss, Füllung, Rahmen, Balken, Dach, Dachkante, First, Untersicht, Fenster, Laden, Tür, Boden, Weg, Kamin, Akzent) gewichtete Materialien.
+- **Stile** (`styles.ts`): acht Stile mit Paletten, Dachformen und -profilen (gewichtet), Proportionen je Größe, Überstand, Geschosshöhe, Sockel, Fachwerk, Symmetrie, Detailwahrscheinlichkeiten, Fenster- und Türvorlagen, Laternenart und Stichwörtern für Parser und KI.
+- **Lints** (`lints.ts`): Helligkeitsabstand ΔL ≥ 15 zwischen Wand und Rahmen, Dach ≠ Wand, 3–5 Materialfamilien, Dach mit Treppen, verbotene Namensteile je Stil. Getestet für alle Paletten.
+- **Verwitterung** (`texturing.ts`): Varianten (moosig, rissig …) unten, an Ecken und unter Überständen, deterministisch aus Seed und Position.
+- **Seeds:** `createSeededRandom(seed)` mit `fork(label)` je Teil – eine geänderte Option verschiebt nicht den Zufall anderer Teile.
 
-1. Standardwerte, Seed und Version;
-2. Wünsche aus dem Text, entweder vom Regel-Parser oder, falls aktiv, aus dem KI-Plan;
-3. **manuelle UI-Einstellungen**.
+## Haus-Generator (`src/core/generator/house/`)
 
-Jedes Feld kennt seine Herkunft (`standard`, `text`, `ki`, `manuell`); die Oberfläche zeigt sie als Etikett an. Widersprüche zwischen Text und Einstellung werden aufgelistet.
+1. **Eingabe** (`resolveInput.ts`): Stil + Wünsche → `HouseInput` (Maße, Geschosse, Dach, Bauteile, Materialien je Rolle, Fenster- und Türvorlagen).
+2. **Plan** (`plan.ts`): Massen – Hauptkörper, Flügel (L/T/U), Zwerchgiebel (verwinkelt), Anbau mit Pultdach, eckiger oder runder Turm (an einer freien Ecke) – mit Geschossen, Jetty, Anschlüssen und Türposition.
+3. **Wände** (`walls.ts`, `studs.ts`): Sockel 1–3 hoch mit Treppenschürze und Verwitterung; Wand- bzw. Füllebene d = 0, Ständer und Balken eine Ebene davor (d = +1); Ständerraster wie im Bericht; Geschossbänder, Jetty auf Kopfüber-Treppen-Konsolen; echte Geschossdecken; Fachwerk-Streben in freien Feldern; Treppe oder Leiter zwischen den Geschossen.
+4. **Dächer** (`roof/roofEngine.ts`, `roof/profiles.ts`): siehe unten.
+5. **Öffnungen** (`openings.ts`): Tür aus den Vorlagen (mit Freiraum davor und dahinter und Laternen), Fenster in den Feldern des Ständerrasters oder auf symmetrischen Achsen, Erker (W09) und Balkon im ersten Obergeschoss; Vorlagen werden nur gesetzt, wenn alles vor der Wand frei ist.
+6. **Bauteile** (`components.ts`): Gauben, Veranda/Vordach, Kamin mit Lagerfeuer (Rauch frei).
+7. **Rundturm** (`roundTower.ts`): Wandring aus der Geometriebibliothek, Sockel mit Schürze, Geschossbänder, Böden mit Leiter, Fenster in den geraden Stücken der Achsen, Konsolenkranz und Kegel (D + 2, Profil gerade/konkav/konvex), Kuppel, Zinnen (nur bei symmetrischem D) oder Brüstung. Am Haus bleibt der Ring in dessen Räumen offen.
+8. **Landschaft und Festschicht** (`landscape.ts`, `festive.ts`, `christmasTree.ts`): Weg, Garten, Laternenpfähle; Girlanden unter den Traufen, Kranz über der Tür, Kerzen auf den Simsen, Geschenke, Baum; Schnee nur auf ausdrücklichen Wunsch (Bodenfläche und Schneeschichten nur dort, wo sie im Spiel liegen bleiben); keine Eiszapfen.
 
-Der Parser (`parseDescription.ts`) arbeitet mit deutschen Wortstämmen und Komposita:
+Weitere Typen: **Weihnachtsbaum** (Stufenprofil mit Stamm, Stern, Kugeln, Lichtern), **Marktstand** (Buden mit rot-weißer Treppenmarkise, Theke, Waren, Laternen), **Bahnhof** (Halle und zwei Flügel mit eigenen Dächern, Bahnsteig mit Kante und Dach, Gleis auf festem Grund, Uhr), **Turm** (`tower.ts`: der Rundturm frei stehend mit Eingang aus den Türvorlagen).
 
-- Er akzeptiert Umlaute in beiden Schreibweisen und erkennt Verneinungen („ohne“, „kein“), Maße („15 x 11“), Farbe plus Bauteil („rotes Dach“) und Seitenangaben bei Turm und Anbau.
-- Bekannte, aber nicht baubare Wünsche (Pool, Treppen, Türblöcke, Möbel …) und unverstandene Satzteile werden als **Warnung** gemeldet.
+### Dach-Engine
 
-## Generatoren
+- Jeder Abschnitt (Hauptdach, Flügel, Gauben, Vordach) ist ein **Höhenfeld in halben Blöcken**; Abschnitte werden je Spalte mit dem höchsten Wert vereinigt. Daraus entstehen Kehlen und Grate; die Treppenformen an Ecken setzt der Auflöser.
+- **Profile als Δ-Folgen** je Spalte (45° 2,2,2 …, steil 4,4 …, flach 1,1 …, Glocke 1,1,2,2,2,4,4 …); `normalizeDeltas` sorgt für gerade Treppenoberkanten. Die Spalte wird aus Treppe, Stufen und vollen Blöcken gebaut.
+- **Anstieg ≤ 7 Blöcke** je Abschnitt ab Wandoberkante (Glocke und ausgestellte Traufe behalten dabei ihre Krümmung).
+- Formen: Sattel, Walm, Krüppelwalm, Pyramide, Mansard, Gambrel, Saltbox, A-Frame, Flach, Pult, Pagode (Walm, gestuft). Überstand mit Untersicht aus Kopfüber-Treppen, Kontrastkante, First in fünf Varianten, Giebel aus der Giebelrolle.
 
-`VoxelBuilder` (`geometry.ts`) prüft alle Grenzen und arbeitet mit Schreibprioritäten:
+### Fassadenvorlagen (`src/core/templates/`)
 
-| Priorität | Wert |
-|---|---|
-| `DECOR` | 10 |
-| `ROOF_COVER` | 20 |
-| `ROOF` | 30 |
-| `STRUCTURE` | 50 |
-| `CHIMNEY` | 60 |
-| `ANNEX` | 70 |
-| `OPENING` | 80 |
-| `CLEARANCE` | 100 |
+Fenster W01–W18 und Türen T01–T10 als **Daten**: Zellen mit Rolle (nicht Block), Form und Tiefe d (−1 innen, 0 Wand, +1/+2 davor), kanonisch für die Südfassade, beim Setzen gedreht und gespiegelt. Bögen (W07b, W17b, T04) kommen aus der Bogen-Bibliothek. Fenster- und Türfamilien der Feinparameter wählen Vorlagen aus diesem Katalog; der Balkon (`balcony.ts`) ist eine eigene Vorlage.
 
-Ein Block wird nur gesetzt, wenn seine Priorität mindestens so hoch ist wie die gespeicherte. Deko kann deshalb nie den Eingang zustellen oder ein Fenster überschreiben.
+### Geometrie (`src/core/geometry/`)
 
-Helfer: `setBlock`, `fillBox`, `hollowBox`, `line`, `placeSymmetric`, `roofGable`, `roofHip`, `firstSolidAbove`.
+Kreise dünn/dick/gefüllt nach „Blockmitte im Kreis“, Ellipse, Kugel und Kuppel (6er-Hülle), Kegel mit Profilen, Rotationskörper, Zwiebelprofil (experimentell), Bögen rund/spitz/Segment mit Treppen-Glättung, Zinnenmuster mit Symmetrieprüfung. Regressionstests gegen die veröffentlichten Zahlen (Kreis D5 = 12/16/21, D15 = 40/56/177, Kugel D15 hohl = 530, Kegel D15/H15 = 919).
 
-### Haus (`buildHouse.ts`, `houseComponents.ts`, `decorations.ts`)
+### Prüfungen je Bauwerk (`src/core/analysis/buildingLints.ts`)
 
-1. **Ränder planen:** Dachüberstand plus Platz für Turm, Anbau, Vordach und Hecke.
-2. **Fundament und Boden.**
-3. **Wände:** vier Wände mit Eckpfosten und Balken.
-4. **Eingang:** offen, 2 Blöcke hoch, mit Freiraum davor und dahinter.
-5. **Bauteile:**
-   - Turm: 5×5, Pyramidendach, offener Schacht mit Durchgang ins Haus.
-   - Anbau: eigenes Satteldach und Durchgang.
-   - Vordach und Hecke mit Weg und Eckleuchten.
-6. **Fenster:** aus Glas, je nach Dichte; Fenster hinter Bauteilen entfallen.
-7. **Dach:** gestuftes Sattel- oder Walmdach aus vollen Blöcken, Stufen zwei Blöcke tief, optional mit Schnee.
-8. **Schornstein:** auf der hinteren Dachseite, die Seite bestimmt der Seed.
-9. **Deko:** Licht, Bodenleuchten, Giebelfenster, Girlanden, Kranz, Baum mit Kugeln und Geschenken.
+Nichts schwebt (18er-Nachbarschaft zum Boden), Auflöser-Fixpunkt, keine flache Wand breiter als 5 ohne Tiefensprung, Überstand ≥ 1, Anstieg ≤ 7 (+1 First), Dach ohne Lücken, Türen vollständig und frei, Laterne am Eingang. Dazu `VoxelBuilder` mit Schreibprioritäten (`DECOR` 10 … `CLEARANCE` 100): Deko kann nie den Eingang zustellen oder ein Fenster überschreiben.
 
-### Weitere Typen
+## Text, Einstellungen und Herkunft
 
-- **Weihnachtsbaum** (`buildTree.ts`):
-  - Bodenscheibe, Stamm, kegelförmige Stufen in Sägezahnform.
-  - Schmuck und Lichter am Rand, Lichterspirale, Schnee auf den Stufen, Stern und Geschenke.
-- **Marktstand** (`buildMarketStall.ts`):
-  - 1–3 Buden mit gemeinsamen Pfosten, Theke mit freier Ausgabestelle und Waren.
-  - Rückwand mit Lampe, Seitenwände mit Händlerzugang.
-  - Gestreiftes Satteldach, Girlande, gepflasterter Kundenbereich.
-- **Bahnhof** (`buildStation.ts`):
-  - 1–2 Gleise aus Bett, Schwellen und `minecraft:rail[shape=east_west]` auf festem Grund.
-  - Bahnsteig mit gelber Kante und Überdachung (Licht, Girlande).
-  - Gebäude mit Tür zum Bahnsteig, Uhr, Fenstern, Dach und Schornstein; Baum auf dem Bahnsteig.
-
-Zufall gibt es nur über `createSeededRandom(spec.seed)` (mulberry32).
+- **Parser** (`parseDescription.ts`): deutsche Wortstämme und Komposita, Umlaute in beiden Schreibweisen, Verneinungen über Aufzählungen („ohne Schnee und Girlanden“), Mengen und Maße, Bauwerkstypen, Stile mit gewichteten Stimmen, Thema, Dach, Bauteile, Turmposition, Fenster- und Türformen, Materialien. Nicht baubare Wünsche (Pool, Möbel, Keller …) landen in `unsupported`, Unverstandenes in `warnings`; dazu eine kurze Erklärung.
+- **Bauplan** (`src/core/ai/planSchema.ts`): ein flaches, aus dem Katalog erzeugtes Format für Parser und KI (Details in `LOCAL_AI.md`).
+- **resolveSpec**: Standardwerte → Text (Parser oder KI-Plan) → manuelle Einstellungen. Jedes Feld kennt seine Herkunft (`standard`, `text`, `ki`, `manuell`); Widersprüche werden angezeigt.
 
 ## Editor (`src/core/editor/editOperations.ts`)
 
-- **Befehle** speichern pro Zelle den Blockstate vorher und nachher: `setBlockCommand`, `removeBlockCommand`, `replaceAllCommand` und `fillBoxCommand`. `applyCommand` erzeugt ein neues, kanonisches und neu gehashtes Modell.
-- **Rückgängig** stellt den ursprünglichen Hash exakt wieder her.
-- **Verlauf:** `EditHistory` hält begrenztes Undo/Redo pro Variante.
-- **Picking in 3D:** Jede Fläche des Mesh merkt sich ihren Block (`faceCells`). Ein Klick bestimmt daraus den getroffenen Block und die freie Nachbarzelle. Das funktioniert auch für flache Blöcke. Ziehen gilt als Kamerabewegung, nicht als Klick.
+Befehle speichern pro Zelle den Zustand vorher und nachher (`setBlockCommand`, `removeBlockCommand`, `replaceAllCommand`, `fillBoxCommand`). Nach jeder Änderung laufen Auflöser und Validator im betroffenen Bereich; Partner (obere Türhälfte, Nachbartreppen, Zäune) ändern sich mit, Hinweise („Laterne ohne Halt“) werden gemeldet. Rückgängig stellt den Hash exakt wieder her.
 
-## Vorschau (`buildVoxelMesh.ts`, `VoxelScene.tsx`)
+## Vorschau (`src/components/preview/`, `src/core/textures/`)
 
-- `buildVoxelMesh` ist eine reine Funktion. Sie erzeugt nur Flächen zu nicht verdeckenden Nachbarn.
-- Glas bekommt einen eigenen transparenten Mesh, Leuchtblöcke werden unbeleuchtet gezeichnet.
-- Schienen sind flache Platten mit 1/16 Blockhöhe und verdecken keine Nachbarflächen.
-- `maxY` schaltet den Ebenenschnitt.
-
-### Echte Texturen (`src/core/textures/`, `src/lib/textures/`, `src/components/preview/textures/`)
-
-Details für Nutzer: `docs/TEXTURES.md`.
-
-- **Server:**
-  - `minecraftJar.ts` liest die Client-Datei des Nutzers mit dem eigenen ZIP-Leser `zipReader.ts` (Größe und CRC-32 je Eintrag geprüft).
-  - Herausgezogen werden alle `blockstates`, `models/block` und `textures/block`, als JSON-Cache in `.minecraft-assets/` (änderbar mit `MCB_ASSET_CACHE_DIR`).
-  - Die Launcher-Suche ist begrenzt (Tiefe 7, höchstens 4000 Ordner, bekannte große Ordner übersprungen).
-  - `mojangDownload.ts` lädt nur nach EULA-Bestätigung, nur von Mojang-Hosts und mit SHA-1-Prüfung.
-- **`core/textures/blockModel.ts`** (rein, getestet) bildet das Modell-Backen des Spiels nach:
-  - Variante bzw. Multipart, Elternkette und `#`-Verweise;
-  - Standard-UVs, Flächendrehung, Elementdrehung mit `rescale`;
-  - Varianten-x/y (erst x, dann y, im Uhrzeigersinn) und `uvlock` (weltfeste Projektion).
-  - Ergebnis sind Quads in Blockeinheiten mit Cullface, Richtung, Tint-Index und Shade-Flag.
-- **`core/textures/closure.ts`** liefert nur die für die Registry-Blöcke nötigen Modelle und Texturen aus (etwa 95 KB für 1.21.11).
-- **Browser:**
-  - `textureAtlas.ts` packt die Texturen in einen Atlas: 16-px-Kacheln in 32-px-Zellen mit wiederholtem Rand, damit Mipmaps nicht überlaufen.
-  - Jede Textur wird als `opaque`, `cutout` oder `translucent` eingestuft.
-  - Die Datei backt Blockzustände bei Bedarf und erzeugt Symbole für Materialliste und Block-Auswahl.
-- **`core/textures/texturedMesh.ts`** (rein, getestet):
-  - Nachbar-Ausblendung wie im Spiel: Volle Blöcke mit deckenden Texturen verdecken; Glas verdeckt gleiches Glas; Laub nicht.
-  - Seitenhelligkeit 1/0,8/0,6/0,5 und Laubfärbung, als lineare Vertexfarben.
-- **`VoxelScene`:**
-  - Zeichnet drei Meshes mit `MeshBasicMaterial` und Atlas (deckend, Cutout mit `alphaTest`, transparent), mit `NearestFilter` und Mipmaps.
-  - Ohne Texturen nutzt sie den alten Farb-Mesh.
-  - `data-render-mode` an der Szene zeigt `textures` oder `colors`.
+- Das Modell wird in Würfel zu 32³ Zellen zerlegt und **im Web Worker** gemeshed (ohne Worker in kleinen Stücken auf dem Hauptthread). Jeder Chunk liest seine Nachbarn, alle zusammen ergeben genau das Mesh des ganzen Modells; eine Bearbeitung erneuert nur die betroffenen Chunks.
+- **Echte Texturen:** Die Client-Datei des Nutzers wird zur Laufzeit gelesen (`.minecraft-assets/`, nicht im Repo). Das Modell-Backen bildet das Spiel nach (Varianten, Multipart, Elternketten, UV, Drehungen, `uvlock`); geformte Blöcke erscheinen mit ihrer echten Geometrie. Ohne Texturen zeichnet die Szene Farben aus den Texturstatistiken.
+- `data-render-mode` an der Szene zeigt `textures` oder `colors`; `window.__mcbSetView(azimut, höhe, zoom)` dient dem Screenshot-Skript.
 
 ## Projekte (`src/lib/persistence/projects.ts`)
 
-- Speicher ist IndexedDB über Dexie, Datenbankschema Version 1.
-- **Gespeichert:** Beschreibung, manuelle Einstellungen, Seed, Version, die Voxeldaten aller Varianten (inklusive Bearbeitungen), Bearbeitungszähler, Auswahl und ein eventueller KI-Plan.
-- **Beim Laden geprüft:** Schema, Registry, Grenzen und Hashes. Beschädigte Datensätze erzeugen eine sichtbare Fehlermeldung.
+IndexedDB über Dexie, Schema Version 2 (Upgrade von 1 ohne Datenverlust). Gespeichert werden Beschreibung, manuelle Einstellungen, Seed, Version, alle Varianten als VoxelTransport (inklusive Bearbeitungen), Auswahl und ein eventueller KI-Plan. Beim Laden: Migration, Schema, Registry, Grenzen und Hashes.
 
 ## API-Verträge
 
 | Route | Request | Antwort / Fehler |
 |---|---|---|
-| `POST /api/generate` | `{ spec, variants? }` (max. 16 KB) | `{ generator, profile, variants[{ seed, hash, dimensions, totalBlocks, model }], warnings }`. Fehler: 400 (Schema/JSON), 413 (zu groß), 422 (passt nicht in die Grenzen) |
-| `POST /api/export` | `VoxelTransport` (max. 512 KB) | `.schem` mit `Content-Disposition: attachment` und `X-MCB-Voxel-Hash`. Fehler: 400 (Modell abgelehnt, inkl. Hash/Registry), 413, 422 (Selbstprüfung) |
+| `POST /api/generate` | `{ spec, variants? }` (max. 16 KiB) | `{ generator, profile, variants[{ seed, hash, dimensions, totalBlocks, model }], warnings }`. Fehler: 400 (Schema/JSON), 413 (zu groß), 422 (passt nicht in die Grenzen) |
+| `POST /api/export` | `VoxelTransport` (max. ≈ 37 MiB) | `.schem` mit `Content-Disposition: attachment` und `X-MCB-Voxel-Hash`. Fehler: 400 (Modell abgelehnt), 413, 422 (Selbstprüfung) |
 | `GET /api/ai/status` | – | `{ enabled, provider, model, reachable, modelInstalled, installedModels, message }` |
-| `POST /api/ai/plan` | `{ description }` | `{ source: 'ollama', model, durationMs, attempts, plan, patch }`. Fehler: 503 (aus/nicht erreichbar), 504 (Zeit), 502 (ungültig/HTTP) |
-| `GET /api/textures` | – | `{ available, version?, source?, importedAt?, candidates, message }`. Beim ersten Aufruf wird eine gefundene Client-Datei automatisch ausgelesen |
-| `GET /api/textures/resources` | – | `{ version, blockstates, models, textures }` für alle Registry-Blöcke; 404 ohne Texturen |
-| `POST /api/textures/import` | Rohdaten der `.jar` (max. 200 MB), Header `X-File-Name` | Status wie oben. Fehler: 400 (leer), 413, 422 (keine Minecraft-Client-Datei) |
-| `POST /api/textures/download` | `{ version, acceptEula: true }` | Status wie oben. Fehler: 400 (ohne Zustimmung/Version), 502 (Mojang nicht erreichbar, Prüfsumme falsch) |
+| `POST /api/ai/plan` | `{ description }` | `{ source: 'ollama', model, durationMs, attempts, examples, fromThinking, thinkDropped, plan, patch }`. Fehler: 503, 504, 502 |
+| `GET /api/textures` | – | Status der Texturen (Version, Quelle, Kandidaten) |
+| `GET /api/textures/resources` | – | Blockstates, Modelle und Texturen für alle Registry-Blöcke; 404 ohne Texturen |
+| `POST /api/textures/import` | Rohdaten der `.jar` (max. 200 MB) | Status. Fehler: 400, 413, 422 |
+| `POST /api/textures/download` | `{ version, acceptEula: true }` | Status. Fehler: 400, 502 |
 
 ### Transportformat `VoxelTransport`
 
 ```json
-{ "schemaVersion": 1, "dimensions": {…}, "palette": […], "indexEncoding": "u16le-base64",
+{ "schemaVersion": 1, "dimensions": {…}, "palette": […], "indexEncoding": "rle-varint-base64",
   "indices": "<base64>", "origin": {"x":0,"y":0,"z":0}, "spec": BuildSpec, "hash": "<64 hex>" }
 ```
 
-- `indices`: little-endian uint16 pro Block, base64-kodiert.
-- Größe bei 48 × 32 × 48: höchstens 147 456 Bytes, also 196 608 base64-Zeichen.
-- `decodeVoxelTransport` prüft auf Server **und** Client: Schema, Grenzen, Base64, Länge, Registry, Indizes und Hash.
+- `rle-varint-base64` (Standard): Läufe gleicher Indizes als VarInt-Paare. Ist RLE größer, wird automatisch `u16le-base64` (little-endian uint16) geschrieben; beide werden gelesen.
+- `decodeVoxelTransport` prüft auf Server **und** Client: Schema, Grenzen, Kodierung, Länge, Registry, Indizes und Hash.
 
 ## Export (Sponge Schematic v3)
 
-1. Das Modell wird geprüft und die Zielversion bestimmt das Profil: 1.21.11 ergibt DataVersion 4671, 1.21.1 ergibt 3955.
-2. Der NBT-Baum ist `""` → `Schematic` mit:
-   - `Version` 3 und `DataVersion`;
-   - `Metadata`;
-   - `Width`/`Height`/`Length` (Short) und `Offset` [0,0,0];
-   - `Blocks` mit `Palette`, `Data` (VarInt-ByteArray) und `BlockEntities` (leere Liste).
-3. Big-Endian-NBT, danach GZip. Strings werden auf Kompatibilität mit Javas „modified UTF-8“ geprüft.
-4. Ein **eigener, unabhängiger NBT-Leser** liest die Datei sofort wieder ein und vergleicht Layout, Typen, VarInts, jeden Block und den Hash. Erst danach startet der Download.
+1. Das Modell wird geprüft; die Zielversion bestimmt das Profil (1.21.11 → DataVersion 4671, 1.21.1 → 3955) und die Blocknamen.
+2. NBT: `""` → `Schematic` mit `Version` 3, `DataVersion`, `Metadata`, `Width`/`Height`/`Length`, `Offset` [0,0,0] und `Blocks` (`Palette`, `Data` als VarInt-ByteArray, leere `BlockEntities`). Big-Endian, GZip; Strings werden auf Javas „modified UTF-8“ geprüft.
+3. Ein **eigener, unabhängiger NBT-Leser** liest die Datei sofort wieder ein und vergleicht Layout, Typen, VarInts, jeden Block und den Hash. Erst danach startet der Download.
+4. Der echte WorldEdit-Reader (EngineHub WorldEdit 7.4.2, `tests/worldedit/`, `npm run test:worldedit`) liest im Test jeden Registry-Blockzustand und alle Bauwerke identisch ein.

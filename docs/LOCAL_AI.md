@@ -32,20 +32,22 @@ Die App funktioniert ohne KI vollständig. Optional kann ein **lokales Sprachmod
    - Dort sollte „Lokale KI bereit (Ollama, Modell qwen3:14b)“ stehen.
    - Den Haken **„Beim Generieren mit lokaler KI planen“** setzen und auf „Bauwerk generieren“ klicken.
 
-## Modellempfehlung für deinen PC (RTX 5060 Ti 16 GB, 32 GB RAM)
+## Modellempfehlung
 
-| Modell | Größe ca. | Einschätzung |
+Auf diesem PC wurden am 22.10.2026 eine **AMD Radeon RX 6600 (8 GB Grafikspeicher)**, **16 GB Arbeitsspeicher** und ein Ryzen 5 5600X erkannt. Ollama nutzt AMD-Karten unter Windows über ROCm bzw. Vulkan; ob die RX 6600 dabei beschleunigt wird, hängt von der Ollama-Version ab – sonst rechnet die CPU (langsamer, aber es funktioniert).
+
+| Modell | Größe ca. | Einschätzung für 8 GB Grafikspeicher |
 |---|---|---|
-| `qwen3:14b` | 9 GB | **Empfehlung:** passt komplett in den Grafikspeicher, gutes Deutsch, zuverlässige strukturierte Ausgabe |
-| `qwen3:8b` | 5 GB | schneller, etwas ungenauer |
-| `gemma3:12b` | 8 GB | Alternative mit gutem Deutsch |
-| `gpt-oss:20b` | 13–14 GB | passt knapp in 16 GB; langsamer, dafür stark beim Planen |
+| `qwen3:8b` | 5 GB | **Empfehlung:** passt in den Grafikspeicher, gutes Deutsch, zuverlässige strukturierte Ausgabe |
+| `gemma3:4b` | 3 GB | sehr schnell, ungenauer bei langen Wünschen |
+| `qwen3:14b` | 9 GB | genauer, passt aber nicht ganz in 8 GB – Teile laufen auf der CPU, deutlich langsamer |
+| `gemma3:12b` | 8 GB | Alternative mit gutem Deutsch, knapp an der Grenze |
 
-Das Modell wechselst du über `OLLAMA_MODEL` in `.env.local`.
+Mit einer Karte mit 16 GB (z. B. RTX 5060 Ti) ist `qwen3:14b` die bessere Wahl. Das Modell wechselst du über `OLLAMA_MODEL` in `.env.local` (die Beispiele oben nennen `qwen3:14b`; für diesen PC `qwen3:8b` eintragen und `ollama pull qwen3:8b` ausführen).
 
-Die Tabelle beruht auf allgemeinem Wissen über diese Modelle; **hier wurde keines davon tatsächlich ausgeführt** (siehe unten). Ob ein Modellname aktuell verfügbar ist, zeigt `ollama pull <name>`.
+Die Tabelle beruht auf allgemeinem Wissen über diese Modelle; **hier wurde keines davon tatsächlich ausgeführt** (siehe unten). Ob ein Modellname aktuell verfügbar ist, zeigt `ollama pull <name>`. Wie gut ein Modell plant, misst das Testset (Abschnitt „Testset und Messung“).
 
-Mit Grafikkarte dauert eine Planung typischerweise einige Sekunden. Beim allerersten Aufruf lädt Ollama das Modell in den Grafikspeicher, das dauert länger.
+Beim allerersten Aufruf lädt Ollama das Modell in den Speicher, das dauert länger.
 
 ## Fehlerbehebung
 
@@ -57,20 +59,48 @@ Mit Grafikkarte dauert eine Planung typischerweise einige Sekunden. Beim allerer
 | „nicht innerhalb von … s geantwortet“ | kleineres Modell wählen oder `MCB_AI_TIMEOUT_MS` erhöhen |
 | „keinen gültigen Bauplan“ | anderes Modell probieren (z. B. `qwen3:14b`) und die Beschreibung präziser formulieren |
 
+## Der Bauplan
+
+KI und regelbasierter Text-Parser liefern **dasselbe flache Planformat** (`src/core/ai/planSchema.ts`). Es wird aus dem Katalog erzeugt, enthält keine Koordinaten und keine freien Block-IDs:
+
+| Gruppe | Felder |
+|---|---|
+| Text | `explanation` (kurze deutsche Zusammenfassung), `unsupported` (Wünsche, die der Generator nicht baut) |
+| Auswahl | `kind`, `style`, `palette`, `theme`, `size`, `roofType`, `roofProfile`, `wings`, `annex`, `tower`, `towerPosition`, `symmetry`, `windows`, `windowFamily`, `doorFamily`, `lanternDensity` – jeweils mit `"auto"` für „nicht angegeben“ |
+| Zahlen | `detailLevel`, `floors`, `width`, `depth`, `overhang`, `dormers` – `null` für „nicht angegeben“ |
+| Schalter | `porch`, `balcony`, `chimney`, `oriel`, `jetty`, `garden`, `soulLanterns`, `garland`, `christmasTree`, `presents`, `snow` – `null` für „nicht angegeben“ |
+| Materialien | `wallMaterial`, `roofMaterial`, `frameMaterial`, `plinthMaterial`, `accentMaterial` – nur aus einer festen Liste je Rolle, nur wenn ein Material genannt wird |
+
+Alle Felder sind Pflicht; das macht die strukturierte Ausgabe von Ollama robuster. `normalizePlan` korrigiert kleine Abweichungen (gerade Maße → ungerade, Grenzen, Stilfremde Palette), danach prüft Zod streng. Die App zeigt den Plan Feld für Feld an.
+
 ## Technik
 
 - `GET /api/ai/status` prüft über `GET /api/tags` von Ollama, ob der Dienst läuft und das Modell installiert ist.
-- `POST /api/ai/plan` mit `{ "description": "…" }` ruft `POST /api/chat` von Ollama auf. Dabei gelten:
+- `POST /api/ai/plan` mit `{ "description": "…" }` ruft `POST /api/chat` von Ollama auf:
+  - **System-Prompt** auf Deutsch mit dem Stilkatalog (Name, Beschreibung, Stichwörter, Paletten), dem Planformat und den Regeln;
+  - **2–4 Beispielpaare** (Few-Shot), passend zum Text ausgewählt aus 26 kuratierten Beispielen (`src/core/ai/fewShotExamples.ts`; sie sind vom Testset getrennt);
   - `format` ist das JSON-Schema des Bauplans (strukturierte Ausgabe);
-  - `temperature` 0.2 und fester `seed`;
-  - `think: false`, außer `OLLAMA_THINK` sagt etwas anderes;
-  - eine Korrekturrunde bei ungültiger Antwort und ein Zeitlimit.
+  - `temperature` **0**, fester `seed` 7, `num_ctx` 8192 (der Prompt hat etwa 5 000 Tokens);
+  - `think: false`, außer `OLLAMA_THINK` sagt etwas anderes. Lehnt ein Modell `think` ab, wird ohne wiederholt; landet die Antwort im Feld `thinking`, wird sie dort gelesen;
+  - genau eine Korrekturrunde mit den Prüffehlern bei ungültiger Antwort, und ein Zeitlimit.
 - Die Ollama-Adresse kommt **nur** aus den Umgebungsvariablen des Servers, nie aus dem Browser.
 - Der KI-Plan wird mit dem Projekt gespeichert. Beim Öffnen gelten dieselben Einstellungen wieder, auch wenn Ollama dann gerade nicht läuft.
+
+## Testset und Messung
+
+- `tests/fixtures/planTestset.ts` enthält **77 deutsche Wünsche** mit den erwarteten Planfeldern.
+- Der **regelbasierte Parser** trifft alle 77 vollständig (`tests/unit/planTestset.test.ts`), und jeder dieser Wünsche wird zusätzlich bis zum fertigen Bauwerk erzeugt und geprüft (`tests/unit/wishesEndToEnd.test.ts`: keine Reparatur, alle Blockzustände gültig, Bau-Lints sauber).
+- **Messung mit einem echten Modell** (erst nach der Einrichtung oben möglich):
+  ```text
+  set MCB_OLLAMA_TESTSET=1
+  npx vitest run tests/integration/ollamaTestset.test.ts
+  ```
+  Der Lauf misst Gültigkeitsquote, Korrekturrunden, Dauer (Mittel, Median, p95) und Treffer je Wunsch und je Feld, vergleicht mit dem Parser und schreibt `reports/ki-testset.json`.
 
 ## Was geprüft ist und was nicht
 
 - **Geprüft:**
-  - Den Ollama-Client testen Integrationstests gegen einen simulierten Ollama-Server (`tests/integration/ai.test.ts`): gültiger Plan, Korrekturrunde, unsinnige Antwort, Zeitüberschreitung, fehlendes Modell, nicht erreichbar, Modell ohne „think“-Unterstützung und die API-Routen.
+  - Den Ollama-Client testen Integrationstests gegen einen simulierten Ollama-Server (`tests/integration/ai.test.ts`): gültiger Plan, Korrekturrunde, unsinnige Antwort, Zeitüberschreitung, fehlendes Modell, nicht erreichbar, Modell ohne „think“-Unterstützung, Antwort im `thinking`-Feld und die API-Routen.
+  - Derselbe Messcode wie für das echte Modell läuft immer einmal gegen einen simulierten Server (Trockenlauf).
   - Die Oberfläche testen Playwright-Tests mit simulierten KI-Endpunkten (`tests/e2e/ai.spec.ts`).
-- **Nicht geprüft:** ein Lauf mit einem echten Modell. In der Entwicklungsumgebung waren `ollama.com` und die Modell-Downloads gesperrt. Der erste echte Test findet bei dir statt. Wie gut die Pläne werden, hängt vom Modell ab.
+- **Nicht geprüft:** ein Lauf mit einem echten Modell. Auf diesem PC ist Ollama (Stand 22.10.2026) **nicht installiert**; es gibt deshalb **keine echten Messwerte**. Wie gut die Pläne werden, hängt vom Modell ab – der Testset-Lauf oben zeigt es.

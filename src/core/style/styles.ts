@@ -176,13 +176,15 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       keywords: ['japanisch', 'japan', 'pagode', 'tempel', 'schrein', 'dojo', 'shoji', 'asiatisch', 'teehaus', 'zen'],
     },
     palettes: ['japanese_classic', 'japanese_temple'],
-    roofTypes: { hip: 0.45, pagoda: 0.25, half_hip: 0.2, gable: 0.1 },
+    // Irimoya-like half-hip first: on a wider-than-deep plan it keeps a ridge (a hip on a
+    // near-square plan reads as a stepped pyramid).
+    roofTypes: { half_hip: 0.4, hip: 0.3, pagoda: 0.2, gable: 0.1 },
     roofProfiles: { flared: 0.55, bell: 0.45 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [2, 3],
       plinth: [1, 2],
-      size: { small: W(7, 7, 1), medium: W(11, 9, 1), large: W(13, 11, 2), huge: W(15, 15, 3) },
+      size: { small: W(9, 7, 1), medium: W(13, 9, 1), large: W(15, 11, 2), huge: W(19, 15, 3) },
     },
     symmetric: true,
     timber: 'all',
@@ -203,13 +205,13 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       keywords: ['kirsch', 'kirschblüte', 'kirschbluete', 'sakura', 'rosa', 'pink', 'blüten', 'blueten', 'frühling', 'fruehling'],
     },
     palettes: ['cherry_slate', 'cherry_white'],
-    roofTypes: { hip: 0.4, gable: 0.35, half_hip: 0.25 },
+    roofTypes: { half_hip: 0.35, gable: 0.35, hip: 0.3 },
     roofProfiles: { flared: 0.5, bell: 0.3, standard: 0.2 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [1, 2],
       plinth: [1, 2],
-      size: { small: W(7, 7, 1), medium: W(9, 9, 1), large: W(11, 11, 2), huge: W(15, 13, 2) },
+      size: { small: W(9, 7, 1), medium: W(11, 9, 1), large: W(13, 11, 2), huge: W(17, 13, 2) },
     },
     symmetric: true,
     timber: 'all',

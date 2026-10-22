@@ -113,6 +113,8 @@ export interface Mass {
   timber: boolean;
   /** Round tower (phase 7): built from the geometry library instead of walls and roof engine. */
   round?: RoundSpec;
+  /** Rise limit of the roof section (default 7, towers 12). */
+  maxRise?: number;
 }
 
 export interface HousePlan {
@@ -272,11 +274,16 @@ export function planHouse(input: HouseInput, rng: SeededRandom): HousePlan {
     });
   }
 
-  // Annex: one storey, lean-to roof against the main body.
+  // Annex: one storey. A lean-to roof only where it fits under the main eave (main ridge along
+  // z, eave at least three blocks above the annex wall top); against a gable end it would cut
+  // through the verge, so there the annex gets its own lower gable pointing away (cross wing).
   if (input.annex !== 'none') {
     const aw = 4;
     const ad = Math.max(5, odd(D - 2));
     const left = input.annex === 'left';
+    // Blocks between the annex wall top (one storey) and the main wall top on that side.
+    const eaveGap = (input.floors - 1) * FH;
+    const shedFits = ridgeMain === 'z' && eaveGap >= 3;
     const rect: Rect = left
       ? { x0: -aw, x1: 0, z0: Math.floor((D - ad) / 2), z1: Math.floor((D - ad) / 2) + ad - 1 }
       : { x0: W - 1, x1: W - 1 + aw, z0: Math.floor((D - ad) / 2), z1: Math.floor((D - ad) / 2) + ad - 1 };
@@ -287,12 +294,14 @@ export function planHouse(input: HouseInput, rng: SeededRandom): HousePlan {
       floors: 1,
       jetty: {},
       joins: left ? { east: true } : { west: true },
-      ridgeAxis: 'z',
-      roofType: input.roofType === 'flat' ? 'flat' : 'shed',
-      shedHigh: left ? 'east' : 'west',
+      ...(input.roofType === 'flat'
+        ? { ridgeAxis: 'z' as const, roofType: 'flat' as const }
+        : shedFits
+          ? { ridgeAxis: 'z' as const, roofType: 'shed' as const, shedHigh: (left ? 'east' : 'west') as HorizontalDirection, maxRise: eaveGap - 1 }
+          : { ridgeAxis: 'x' as const, roofType: 'gable' as const }),
       profile: 'standard',
       overhang: Math.max(1, Math.min(input.overhang, 1)),
-      ridgeStyle: 'none',
+      ridgeStyle: shedFits || input.roofType === 'flat' ? 'none' : ridgeStyle,
       frames,
       timber: false,
     });
@@ -414,6 +423,6 @@ export function roofSection(plan: HousePlan, mass: Mass, materials: RoleMaterial
     gableRecess: false,
     soffit: true,
     ...(mass.shedHigh ? { shedHigh: mass.shedHigh } : {}),
-    maxRise: mass.kind === 'tower' ? 12 : 7,
+    maxRise: mass.maxRise ?? (mass.kind === 'tower' ? 12 : 7),
   };
 }
