@@ -356,7 +356,7 @@ Führe eine Aufgabenliste (TodoWrite/Tasks) und halte sie aktuell.
 **D. Editor und Materialliste:**
 
 - Kategorien und Suche, Ausrichtung beim Setzen, Resolver nach jedem Schritt;
-- Zählregeln (Türen 1×, Doppelstufe 2, Stacks: Türen und Schilder 16, sonst 64; Kerzen als Anzahl im Block).
+- Zählregeln (Tür 1×, Doppelstufe 2, Kerzen nach `candles`-Anzahl); Stackgrößen je Item korrekt (meist 64, z. B. Schilder und Banner 16; im Zweifel nachprüfen).
 
 **E. Performance und Bedienung:** Generieren bleibt für normale Häuser unter ~2 s. Ladeanzeigen, keine eingefrorene Oberfläche.
 
