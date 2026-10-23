@@ -60,7 +60,7 @@ describe('Haus: Bauteile und Feinparameter wirken', () => {
   const base = spec({ style: 'medieval', size: 'medium', seed: 4 });
   const options: [string, BuildSpec['options']][] = [
     ['Breite', { width: 15 }],
-    ['Tiefe', { depth: 13 }],
+    ['Tiefe', { depth: 11 }],
     ['Geschosse', { floors: 3 }],
     ['Dachform Walm', { roofType: 'hip' }],
     ['Dachform Mansard', { roofType: 'mansard' }],

@@ -13,66 +13,104 @@ import { rightOf } from '@/core/templates/place';
  */
 
 export interface Dormer {
-  x: number;
-  /** Front plane (frame plane) z of the dormer and the y of its window row. */
-  z: number;
+  /** Slope the dormer sits on (its window looks this way). */
+  side: HorizontalDirection;
+  /** Position along the eave and the front plane (frame plane) across it. */
+  along: number;
+  front: number;
+  /** y of the window row. */
   y: number;
   section: RoofSectionSpec;
 }
 
-/** Dormers on the front slope of a gable roof along x (1–3, evenly spaced). */
+/** World x/z of a dormer cell `t` blocks behind its front plane, at `a` along the eave. */
+function dormerCell(d: Pick<Dormer, 'side' | 'front'>, a: number, t: number): { x: number; z: number } {
+  switch (d.side) {
+    case 'north':
+      return { x: a, z: d.front + t };
+    case 'south':
+      return { x: a, z: d.front - t };
+    case 'west':
+      return { x: d.front + t, z: a };
+    case 'east':
+      return { x: d.front - t, z: a };
+  }
+}
+
+/**
+ * Dormers (1–3 per slope, evenly spaced): on the front slope of a roof whose ridge runs along x,
+ * on both long slopes of a gable-fronted house (ridge along z, research 05/06: dormers belong on
+ * the eave sides, not only on the street front).
+ */
 export function planDormers(ctx: Ctx, mass: Mass, section: RoofSectionSpec, count: number): Dormer[] {
-  if (count <= 0 || section.ridgeAxis !== 'x' || !['gable', 'half_hip', 'gambrel', 'saltbox'].includes(section.type)) return [];
-  const span = section.x1 - section.x0 + 1;
+  if (count <= 0 || !['gable', 'half_hip', 'gambrel', 'saltbox'].includes(section.type)) return [];
+  const alongX = section.ridgeAxis === 'x';
+  const span = alongX ? section.x1 - section.x0 + 1 : section.z1 - section.z0 + 1;
   if (span < 9) return [];
   const n = Math.min(count, Math.floor((span - 2) / 5));
   const wallTop = wallTopOf(ctx.plan, mass);
+  const sides: { side: HorizontalDirection; front: number }[] = alongX
+    ? [{ side: 'north', front: section.z0 }]
+    : [
+        { side: 'west', front: section.x0 },
+        { side: 'east', front: section.x1 },
+      ];
   const dormers: Dormer[] = [];
-  for (let i = 0; i < n; i++) {
-    const x = Math.round(section.x0 + ((i + 1) * span) / (n + 1));
-    const z = section.z0;
-    dormers.push({
-      x,
-      z,
-      y: wallTop + 1,
-      section: {
-        ...section,
-        id: `dormer${i}`,
-        x0: x - 1,
-        x1: x + 1,
-        z0: z,
-        z1: z + 2,
-        wallTop: wallTop + 3,
-        type: 'gable',
-        ridgeAxis: 'z',
-        profile: 'standard',
-        overhang: 1,
-        ridgeStyle: 'slab',
-        gables: false,
-        maxRise: 3,
-      },
-    });
-  }
+  for (const { side, front } of sides)
+    for (let i = 0; i < n; i++) {
+      const along = Math.round((alongX ? section.x0 : section.z0) + ((i + 1) * span) / (n + 1));
+      const a = dormerCell({ side, front }, along - 1, 0);
+      const b = dormerCell({ side, front }, along + 1, 2);
+      dormers.push({
+        side,
+        along,
+        front,
+        y: wallTop + 1,
+        section: {
+          ...section,
+          id: `dormer${dormers.length}`,
+          x0: Math.min(a.x, b.x),
+          x1: Math.max(a.x, b.x),
+          z0: Math.min(a.z, b.z),
+          z1: Math.max(a.z, b.z),
+          wallTop: wallTop + 3,
+          type: 'gable',
+          ridgeAxis: alongX ? 'z' : 'x',
+          profile: 'standard',
+          overhang: 1,
+          ridgeStyle: 'slab',
+          gables: false,
+          maxRise: 3,
+        },
+      });
+    }
   return dormers;
 }
 
 /** Dormer walls (cheeks and front with a window); the roof comes from the roof engine. */
 export function buildDormer(ctx: Ctx, d: Dormer): void {
   const { builder, blocks } = ctx;
+  const at = (a: number, t: number) => dormerCell(d, a, t);
+  const beamAxis: 'x' | 'z' = d.side === 'north' || d.side === 'south' ? 'x' : 'z';
   for (let y = d.y; y <= d.section.wallTop; y++) {
-    for (let z = d.z; z <= d.z + 2; z++) {
+    for (let t = 0; t <= 2; t++) {
       // Cheeks in the wall material, posts only at the front corners.
-      const corner = z === d.z;
-      builder.setBlock(d.x - 1, y, z, corner ? blocks.log('frame', 'y') : blocks.block('upperWall'), Priority.ANNEX);
-      builder.setBlock(d.x + 1, y, z, corner ? blocks.log('frame', 'y') : blocks.block('upperWall'), Priority.ANNEX);
-      builder.clear(d.x, y, z, Priority.ANNEX);
+      const corner = t === 0;
+      for (const a of [d.along - 1, d.along + 1]) {
+        const p = at(a, t);
+        builder.setBlock(p.x, y, p.z, corner ? blocks.log('frame', 'y') : blocks.block('upperWall'), Priority.ANNEX);
+      }
+      const c = at(d.along, t);
+      builder.clear(c.x, y, c.z, Priority.ANNEX);
     }
   }
   // Front: a wall block as parapet, the window pane above, a beam across the top, a sill.
-  builder.setBlock(d.x, d.y, d.z, blocks.block('upperWall'), Priority.OPENING);
-  for (let y = d.y + 1; y < d.section.wallTop; y++) builder.setBlock(d.x, y, d.z, blocks.pane(), Priority.OPENING);
-  builder.setBlock(d.x, d.section.wallTop, d.z, blocks.log('beam', 'x'), Priority.OPENING);
-  if (builder.inside(d.x, d.y, d.z - 1)) builder.setBlock(d.x, d.y, d.z - 1, blocks.stairs('frame', 'south', 'top'), Priority.OPENING);
+  const f = at(d.along, 0);
+  builder.setBlock(f.x, d.y, f.z, blocks.block('upperWall'), Priority.OPENING);
+  for (let y = d.y + 1; y < d.section.wallTop; y++) builder.setBlock(f.x, y, f.z, blocks.pane(), Priority.OPENING);
+  builder.setBlock(f.x, d.section.wallTop, f.z, blocks.log('beam', beamAxis), Priority.OPENING);
+  const s = at(d.along, -1);
+  if (builder.inside(s.x, d.y, s.z)) builder.setBlock(s.x, d.y, s.z, blocks.stairs('frame', OPPOSITE[d.side] as HorizontalDirection, 'top'), Priority.OPENING);
   // The back of the dormer stays open into the attic.
 }
 

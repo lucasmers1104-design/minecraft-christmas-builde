@@ -129,7 +129,8 @@ function placeFinials(ctx: Ctx, roof: RoofResult, sections: readonly RoofSection
   let kind = FINIAL[plan.input.styleId];
   if (kind === 'end_rod' && plan.input.festive.snow) kind = 'rod';
   if (kind === 'none') return;
-  const rod = plan.input.minecraftVersion === '1.21.11' ? 'waxed_lightning_rod' : 'lightning_rod';
+  // Renamed to lightning_rod for 1.21.1 by the registry profile.
+  const rod = 'waxed_lightning_rod';
   const massIds = new Set(plan.masses.map((m) => m.id));
   for (const s of sections) {
     if (!massIds.has(s.id) || !GABLE_LIKE.has(s.type)) continue;

@@ -95,8 +95,11 @@ describe('Sponge-v3-Export des Weihnachtshauses', () => {
     expect(report.decoded?.dataVersion).toBe(3955);
     expect(report.decoded?.minecraftVersion).toBe('1.21.1');
     expect(validateSchematic(writeSpongeV3(house)).decoded?.dataVersion).toBe(4671);
-    // Same blocks, different target => different file, same block hash.
-    expect(old.hash).toBe(house.hash);
+    // Same blocks except the version spellings (iron_chain ↔ chain, waxed_lightning_rod ↔
+    // lightning_rod), different target => different file.
+    const canon = (s: string) => s.replace(/^minecraft:chain\[/, 'minecraft:iron_chain[').replace(/^minecraft:lightning_rod\[/, 'minecraft:waxed_lightning_rod[');
+    expect(old.palette.map(canon)).toEqual(house.palette.map(canon));
+    expect(Buffer.from(old.indices.buffer).equals(Buffer.from(house.indices.buffer))).toBe(true);
     expect(writeSpongeV3(old).equals(writeSpongeV3(house))).toBe(false);
     // A 1.21.1 file is rejected when 1.21.11 is expected.
     expect(validateSchematic(writeSpongeV3(old), { expected: house }).issues.join()).toMatch(/DataVersion/);

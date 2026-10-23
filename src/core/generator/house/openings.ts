@@ -294,12 +294,21 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
         };
         if (mass.frames && facadePanels.length > 1) {
           const timber = isTimberStorey(ctx, mass, k);
+          const n = facadePanels.length;
+          // Rhythm instead of a window in every panel (research 08/19/20): the corner panels
+          // of a timber facade stay closed and carry braces, the windows sit in the middle
+          // panels. Always from five panels on; on smaller side and back facades for most
+          // houses; the entrance front keeps its windows. The choice is per facade, so the
+          // window axes of all storeys line up.
+          const rhythm =
+            density !== 'many' && n >= 3 && (n >= 5 || (side !== 'north' && ctx.rng.fork(`rhythm:${mass.id}:${side}`).chance(0.65)));
           facadePanels.forEach((panel, i) => {
             const width = panel.u1 - panel.u0 + 1;
             const brace = () => {
               if (timber) addBraces(ctx, f, panel, y0, floorY(plan, k + 1));
             };
             if (doorSpan && panel.u1 >= doorSpan[0] && panel.u0 <= doorSpan[1]) return;
+            if (rhythm && (i === 0 || i === n - 1)) return brace();
             if (density === 'few' && i % 2 === 1 && facadePanels.length > 2) return brace();
             if (density !== 'many' && width < 2 && facadePanels.length > 3) return brace();
             if (!tryWindow(panel.u0, width, Math.min(width, width >= 4 ? 2 : width))) {
