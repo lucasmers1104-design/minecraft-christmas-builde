@@ -1,5 +1,31 @@
 # Testbericht
 
+## Ausbaustufe „Bauqualität“ (Stand 2026-10-23, Arbeits-Laptop)
+
+Grundlage: 20 Rechercheberichte in `research_notes/Bauqualitaet 2026-10/`. Alle Ergebnisse dieses Abschnitts stammen aus Befehlen, die auf dem **Arbeits-Laptop** ausgeführt wurden (Windows 10 Home 10.0.19045, Node.js 24.22.1, npm 11.19.1, TypeScript 6.0.2), Branch `feature/bauqualitaet`.
+
+| Befehl | Ergebnis |
+|---|---|
+| `npx tsc --noEmit` | ✅ keine Fehler |
+| `npx eslint .` | ✅ 0 Fehler, 0 Warnungen |
+| `npx vitest run` (ohne Minecraft-Datei) | ✅ 38 Dateien, **924 Tests bestanden**, 44 übersprungen (WorldEdit-Reader und echte Client-Datei fehlen auf diesem Rechner, dazu die Opt-in-Werkzeuge); Dauer 185 s |
+| `npm run build` | ✅ Produktions-Build ohne Fehler |
+| Breitendurchlauf (temporärer Vitest-Lauf, nicht eingecheckt) | ✅ **2920 Kombinationen, 0 Befunde**: Haus in allen 8 Stilen × 4 Größen × 3 Themen × 3 Detailgraden × 6 Seeds; Turm, Bahnhof, Marktstand und Baum je Stil, Größe, Thema und Detailgrad; je Stil Haus, Bahnhof, Turm und Markt in 1.21.1; je Stil Winter mit Schnee. Geprüft: null Validator-Reparaturen, Häuser ohne Befund der Bau-Lints. Zwei Befunde eines ersten Durchlaufs (Traufgesims im Türfreiraum, Trampelpfad unter Deko) sind behoben und als Regressionstests eingecheckt. |
+
+**Nicht ausgeführt auf diesem Rechner** (auf dem Haupt-PC nachzuholen, dort ist alles eingerichtet):
+
+- `npm run test:worldedit` (echter WorldEdit-7.4.2-Reader; Java und Maven fehlen hier),
+- `MCB_MINECRAFT_JAR=<1.21.11-Client-Datei> npx vitest run` (Tests gegen die echte Client-Datei, u. a. Formen und Texturen der neuen Blöcke Kies und Podsol),
+- `npx playwright test` (Browser- und Mobiltests),
+- `node scripts/screenshots.mjs docs/screenshots/faelle.json` (Screenshots mit echten Texturen; die Bilder in `docs/screenshots/` zeigen noch den Stand vor dieser Ausbaustufe),
+- ein Import in eine echte Minecraft-Welt.
+
+Sichtprüfungen dieser Stufe liefen nur mit dem Iso-Renderer (`tests/integration/renderIso.test.ts`, Farben statt Texturen).
+
+---
+
+## Ausbaustufe Phasen 1–8
+
 **Stand:** 2026-10-22, Ausbaustufe Phasen 1–8. Alle Ergebnisse unten stammen aus tatsächlich ausgeführten Befehlen **auf dem Windows-PC des Nutzers** (keine Simulation). Frühere Stände (Linux-Container) sind in der Git-Historie dieses Dokuments nachlesbar.
 
 ## Umgebung
