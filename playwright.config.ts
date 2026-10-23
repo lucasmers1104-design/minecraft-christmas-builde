@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = Number(process.env.E2E_PORT ?? 3200);
+// Optional installed browser instead of Playwright's own Chromium, e.g. PW_CHANNEL=msedge.
+const channel = process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {};
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -24,10 +26,10 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } },
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, ...channel },
       testIgnore: /mobile\.spec\.ts/,
     },
-    { name: 'mobile-chromium', use: { ...devices['Pixel 7'] }, testMatch: /mobile\.spec\.ts/ },
+    { name: 'mobile-chromium', use: { ...devices['Pixel 7'], ...channel }, testMatch: /mobile\.spec\.ts/ },
   ],
   webServer: {
     command: `npm run build && npx next start -p ${PORT}`,
