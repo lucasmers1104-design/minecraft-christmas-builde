@@ -233,6 +233,12 @@ function buildHut(ctx: Ctx, h: HutPlan, rng: SeededRandom): RoofResult {
   set(b, h.x0 + doorU, 1, zBack, blockState(style.door, { facing: back, half: 'lower', hinge: doorU === 1 ? 'left' : 'right' }), Priority.OPENING);
   b.clear(h.x0 + doorU, 2, zBack, Priority.OPENING);
   for (const d of [-(D - 2), -D]) for (const y of [1, 2]) if (b.inside(h.x0 + doorU, y, hutZ(h, d))) b.clear(h.x0 + doorU, y, hutZ(h, d), Priority.OPENING);
+  // Supplies behind the hut beside the door (research 19, T12: traces of use): a barrel,
+  // sometimes a second one next to it.
+  const sr = rng.fork('supplies');
+  const supplyU = doorU === 1 ? W - 2 : 1;
+  set(b, h.x0 + supplyU, 1, hutZ(h, -D), blockState('barrel', { facing: 'up' }), Priority.DECOR);
+  if (sr.chance(0.5)) set(b, h.x0 + supplyU + (supplyU === 1 ? 1 : -1), 1, hutZ(h, -D), blockState('barrel', { facing: sr.chance(0.5) ? 'up' : back }), Priority.DECOR);
 
   // Front: parapet, opening, lintel; the lower shutter folded down as display in front.
   for (let u = 1; u < W - 1; u++) {
