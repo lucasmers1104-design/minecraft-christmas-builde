@@ -106,6 +106,7 @@ function Divider({ vertical = false }: { vertical?: boolean }) {
 /**
  * Camera controls ("Ansicht"): a small floating column over the 3D view, like map controls.
  * Mouse and touch users rarely need it; keyboard users can do everything from here.
+ * No backdrop blur on overlays above the canvas: it would be recomputed on every WebGL frame.
  */
 export function PreviewToolbar({
   onReset,
@@ -129,7 +130,7 @@ export function PreviewToolbar({
       role="toolbar"
       aria-label="Ansicht"
       aria-orientation="vertical"
-      className={`flex flex-col rounded-xl border border-line bg-surface/90 p-1 shadow-(--shadow-panel) backdrop-blur ${className}`}
+      className={`flex flex-col rounded-xl border border-line bg-surface/95 p-1 shadow-(--shadow-panel) ${className}`}
     >
       <ToolButton label="Ansicht zurücksetzen" icon={<Icon name="target" className="size-5" />} onClick={onReset} disabled={disabled} testId="reset-view" />
       <Divider />
@@ -273,7 +274,7 @@ export function LayerControl({
       role="group"
       aria-label="Ebenen"
       title="Blendet alles oberhalb einer Höhe aus – so siehst du ins Innere."
-      className={`flex min-h-10 flex-wrap items-center gap-x-3 rounded-xl border border-line bg-surface/90 px-3 shadow-(--shadow-panel) backdrop-blur ${className}`}
+      className={`flex min-h-10 flex-wrap items-center gap-x-3 rounded-xl border border-line bg-surface/95 px-3 shadow-(--shadow-panel) ${className}`}
     >
       <Switch
         checked={on}

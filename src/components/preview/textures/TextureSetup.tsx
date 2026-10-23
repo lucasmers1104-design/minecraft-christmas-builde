@@ -65,12 +65,13 @@ export function TextureSetup({ open, onOpenChange }: { open: boolean; onOpenChan
     </>
   ) : ready ? (
     <>
-      <span className="text-fg">Einfache Farben</span> – echte Texturen sind ausgeschaltet
+      <span className="text-fg">Einfache Farben</span>
+      <span className="text-fg-subtle"> – Texturen ausgeschaltet</span>
     </>
   ) : (
     <>
       <span className="text-fg">Einfache Farben</span>
-      <span className="text-fg-subtle"> – echte Minecraft-Texturen sind noch nicht eingerichtet</span>
+      <span className="text-fg-subtle"> – Texturen nicht eingerichtet</span>
     </>
   );
 
@@ -120,7 +121,7 @@ export function TextureSetup({ open, onOpenChange }: { open: boolean; onOpenChan
               close();
             }
           }}
-          className="absolute right-3 bottom-full left-3 z-20 mb-2 flex max-h-[60dvh] flex-col overflow-hidden rounded-xl border border-line-strong bg-surface shadow-(--shadow-dialog) focus:outline-none sm:right-auto sm:w-[460px]"
+          className="absolute right-3 bottom-full left-3 z-20 mb-2 flex max-h-[min(70dvh,640px)] flex-col overflow-hidden rounded-xl border border-line-strong bg-surface shadow-(--shadow-dialog) focus:outline-none sm:right-auto sm:w-[460px]"
         >
           <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
             <div className="min-w-0">
@@ -128,8 +129,8 @@ export function TextureSetup({ open, onOpenChange }: { open: boolean; onOpenChan
                 Echte Minecraft-Texturen
               </h3>
               <p className="mt-0.5 text-[13px] leading-snug text-fg-muted">
-                Die Vorschau kann die Original-Texturen zeigen. Sie werden aus deiner eigenen Minecraft-Installation gelesen und bleiben auf
-                diesem PC – das Projekt enthält keine Mojang-Dateien.
+                Aus deiner eigenen Minecraft-Installation, nur lokal ausgelesen. Sie bleiben auf diesem PC; das Projekt enthält keine
+                Mojang-Dateien.
               </p>
             </div>
             <button
@@ -164,34 +165,38 @@ export function TextureSetup({ open, onOpenChange }: { open: boolean; onOpenChan
             <ol className="flex flex-col gap-4">
               <Step number={1} title="Automatisch suchen">
                 <p>
-                  Die App sucht in den Ordnern des offiziellen Launchers, von CurseForge, Modrinth und Prism. Die Version {version} muss dort
-                  einmal gestartet worden sein.
+                  In den Ordnern des offiziellen Launchers, von CurseForge, Modrinth und Prism. Version {version} muss dort einmal gestartet
+                  worden sein.
                 </p>
                 <Button size="sm" icon={<Icon name="refresh" />} onClick={refresh} disabled={!!busy} className="self-start" data-testid="texture-refresh">
                   Erneut suchen
                 </Button>
               </Step>
 
-              <Step number={2} title="Datei selbst auswählen">
-                <p>Wähle die Client-Datei {version}.jar aus. Typische Orte unter Windows:</p>
-                <dl className="flex flex-col gap-1.5 rounded-lg border border-line bg-canvas/60 px-3 py-2">
-                  <div>
-                    <dt className="text-xs text-fg-subtle">CurseForge</dt>
-                    <dd>
-                      <code className="font-mono text-xs break-all text-fg">
-                        C:\Users\&lt;Name&gt;\curseforge\minecraft\Install\versions\{version}\{version}.jar
-                      </code>
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs text-fg-subtle">Offizieller Launcher</dt>
-                    <dd>
-                      <code className="font-mono text-xs break-all text-fg">
-                        %APPDATA%\.minecraft\versions\{version}\{version}.jar
-                      </code>
-                    </dd>
-                  </div>
-                </dl>
+              <Step number={2} title="Minecraft-Datei selbst auswählen">
+                <p>Die Client-Datei {version}.jar deiner Installation.</p>
+                <details className="group rounded-lg border border-line bg-canvas/60">
+                  <summary className="flex min-h-8 cursor-pointer list-none items-center gap-1.5 px-3 text-fg hover:text-fg [&::-webkit-details-marker]:hidden">
+                    <Icon name="chevron-right" className="size-3.5 text-fg-subtle transition-transform group-open:rotate-90" />
+                    Wo liegt die Datei?
+                  </summary>
+                  <dl className="flex flex-col gap-1.5 border-t border-line px-3 py-2">
+                    <div>
+                      <dt className="text-xs text-fg-subtle">CurseForge</dt>
+                      <dd>
+                        <code className="font-mono text-xs break-all text-fg">
+                          C:\Users\&lt;Name&gt;\curseforge\minecraft\Install\versions\{version}\{version}.jar
+                        </code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-fg-subtle">Offizieller Launcher</dt>
+                      <dd>
+                        <code className="font-mono text-xs break-all text-fg">%APPDATA%\.minecraft\versions\{version}\{version}.jar</code>
+                      </dd>
+                    </div>
+                  </dl>
+                </details>
                 <Button
                   size="sm"
                   icon={<Icon name="folder" />}
@@ -218,8 +223,7 @@ export function TextureSetup({ open, onOpenChange }: { open: boolean; onOpenChan
 
               <Step number={3} title="Von Mojang laden">
                 <p>
-                  Lädt die offizielle Client-Datei {version} (ca. 30 MB) von Mojangs Servern. Die Datei wird vor der Verwendung mit der
-                  Prüfsumme aus Mojangs Versionsliste geprüft.
+                  Die offizielle Client-Datei {version} (ca. 30 MB) von Mojangs Servern, geprüft mit der Prüfsumme aus Mojangs Versionsliste.
                 </p>
                 <label htmlFor={eulaId} className="flex cursor-pointer items-start gap-2.5 py-1">
                   <input

@@ -4,7 +4,6 @@ import { useMemo, type KeyboardEvent } from 'react';
 import { AIR } from '@/core/blocks/registry';
 import type { VoxelModel } from '@/core/schema/voxelModel';
 import { Badge } from '@/components/ui/Badge';
-import { Icon } from '@/components/ui/Icon';
 
 const TOTALS = new WeakMap<VoxelModel, number>();
 
@@ -75,10 +74,7 @@ export function VariantSelector({
                 active ? 'border-accent/80 bg-accent/10 ring-1 ring-accent/40' : 'border-line bg-raised hover:border-line-strong hover:bg-hover'
               }`}
             >
-              <span className="flex w-full items-center justify-between gap-2">
-                <span className={`truncate text-sm font-medium ${active ? 'text-accent-text' : 'text-fg'}`}>Variante {index + 1}</span>
-                {active ? <Icon name="check" className="size-4 text-accent-text" /> : null}
-              </span>
+              <span className={`text-sm font-medium ${active ? 'text-accent-text' : 'text-fg'}`}>Variante {index + 1}</span>
               <span className="flex flex-wrap gap-x-3 text-xs text-fg-muted">
                 <span>Seed {model.spec.seed}</span>
                 <span className="tabular-nums">{total.toLocaleString('de-DE')} Blöcke</span>
