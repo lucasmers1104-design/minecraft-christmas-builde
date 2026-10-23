@@ -95,8 +95,11 @@ describe('Sponge-v3-Export des Weihnachtshauses', () => {
     expect(report.decoded?.dataVersion).toBe(3955);
     expect(report.decoded?.minecraftVersion).toBe('1.21.1');
     expect(validateSchematic(writeSpongeV3(house)).decoded?.dataVersion).toBe(4671);
-    // Same blocks, different target => different file, same block hash.
-    expect(old.hash).toBe(house.hash);
+    // Same blocks, different target => different file. The grids are identical up to the
+    // version renames (hanging lanterns: iron_chain in 1.21.11 is chain in 1.21.1).
+    const canonical = (s: string) => s.replace(/^minecraft:chain\[/, 'minecraft:iron_chain[');
+    expect(old.indices.length).toBe(house.indices.length);
+    expect(old.indices.every((v, i) => canonical(old.palette[v]!) === house.palette[house.indices[i]!])).toBe(true);
     expect(writeSpongeV3(old).equals(writeSpongeV3(house))).toBe(false);
     // A 1.21.1 file is rejected when 1.21.11 is expected.
     expect(validateSchematic(writeSpongeV3(old), { expected: house }).issues.join()).toMatch(/DataVersion/);

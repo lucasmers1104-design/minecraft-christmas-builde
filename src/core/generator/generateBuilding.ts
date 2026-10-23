@@ -8,9 +8,9 @@ import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRa
 import { buildHouseV2, type HouseResult } from '@/core/generator/house/buildHouse';
 import { resolveHouseInput, type HouseWishes } from '@/core/generator/house/resolveInput';
 import type { HouseInput } from '@/core/generator/house/plan';
-import { buildChristmasTree, treeProfile } from '@/core/generator/christmasTree';
+import { decorateHouseFestive, decorateTreePlot, TREE_PLOT_HEIGHT, treePlotHalf } from '@/core/generator/festiveLayer';
 import { buildLandscape } from '@/core/generator/landscape';
-import { addSnowCover, decorateFestive } from '@/core/generator/festive';
+import { addSnowCover } from '@/core/generator/festive';
 import { buildMarket } from '@/core/generator/marketStall';
 import { buildStation } from '@/core/generator/station';
 import { buildTower, towerDiameter } from '@/core/generator/tower';
@@ -140,47 +140,16 @@ function finishHouse(spec: BuildSpec, input: HouseInput, house: HouseResult, rng
     snowGround: input.festive.snow,
     fenceWood: 'spruce',
   });
-  if (input.festive.christmasTree && spec.theme !== 'none') {
-    const spot = yard.find((c) => c.z < main.rect.z0 - 4 && Math.abs(c.x - plan.door.x) > 5);
-    if (spot) buildChristmasTree(builder, rng.fork('gardenTree'), spot.x, 1, spot.z, 7, { theme: spec.theme, intensity: spec.detailLevel, lights: true, star: true });
-  }
-  if (spec.theme !== 'none') {
-    decorateFestive(builder, rng.fork('festive'), { eaves: house.roof.eaveCells, doors: house.openings.doors, sills: house.openings.sills, yard }, {
-      theme: spec.theme,
-      intensity: spec.detailLevel,
-      garland: input.festive.garland,
-      presents: input.festive.presents,
-      lantern: input.lantern,
-      lanternDensity: input.lanternDensity,
-      minecraftVersion: spec.targetMinecraftVersion,
-    });
-  }
+  decorateHouseFestive(builder, rng, spec, input, house, yard);
   return builder;
 }
 
 function buildTreePlot(spec: BuildSpec, rng: SeededRandom): VoxelBuilder {
-  const height = { small: 12, medium: 18, large: 26, huge: 40 }[spec.size];
-  const maxR = Math.max(...treeProfile(height).radii);
-  const half = maxR + 4;
+  const height = TREE_PLOT_HEIGHT[spec.size];
+  const half = treePlotHalf(height);
   const b = new VoxelBuilder({ width: 2 * half + 1, height: height + 3, length: 2 * half + 1 });
   for (let x = 0; x <= 2 * half; x++) for (let z = 0; z <= 2 * half; z++) b.setBlock(x, 0, z, blockState(spec.options.snow ? 'snow_block' : 'grass_block'), Priority.DECOR);
-  buildChristmasTree(b, rng.fork('tree'), half, 1, half, height, { theme: spec.theme, intensity: spec.detailLevel, lights: true, star: spec.theme !== 'none' });
-  const presents = spec.options.presents ?? (spec.theme === 'christmas' && spec.detailLevel >= 2);
-  const yard: { x: number; y: number; z: number }[] = [];
-  for (let x = 1; x < 2 * half; x++)
-    for (let z = 1; z < 2 * half; z++) {
-      const d = Math.hypot(x - half, z - half);
-      if (d > maxR + 0.5 && d < maxR + 2.5 && b.isAir(x, 1, z)) yard.push({ x, y: 1, z });
-    }
-  decorateFestive(b, rng.fork('festive'), { eaves: [], doors: [], sills: [], yard }, {
-    theme: spec.theme,
-    intensity: spec.detailLevel,
-    garland: false,
-    presents,
-    lantern: spec.options.soulLanterns ? 'soul_lantern' : 'lantern',
-    lanternDensity: 'none',
-    minecraftVersion: spec.targetMinecraftVersion,
-  });
+  decorateTreePlot(b, rng, spec, half);
   return b;
 }
 
