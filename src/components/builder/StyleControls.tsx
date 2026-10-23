@@ -14,9 +14,13 @@ import {
 } from '@/core/schema/buildSpec';
 import { STYLES } from '@/core/style/styles';
 import { sourceOf, type SettingPath, type SettingSource } from '@/core/schema/resolveSpec';
+import { Button } from '@/components/ui/Button';
+import { Field, TextInput } from '@/components/ui/Field';
+import { Icon } from '@/components/ui/Icon';
 import { Panel } from '@/components/ui/Panel';
 import { Segmented } from '@/components/ui/Segmented';
 import { SourceBadge } from '@/components/ui/SourceBadge';
+import { StepNumber } from '@/components/builder/PromptPanel';
 import { BUILDING_TYPE_LABELS, DETAIL_LABELS, SIZE_LABELS, STYLE_LABELS, THEME_LABELS } from '@/components/builder/labels';
 
 export interface SettingsBinding {
@@ -29,6 +33,7 @@ export interface SettingsBinding {
   disabled: boolean;
 }
 
+/** Step 2: the main settings. Manual choices override what was read from the text. */
 export function StyleControls({
   binding,
   onSeedChange,
@@ -48,19 +53,22 @@ export function StyleControls({
   );
   return (
     <Panel
-      title="Einstellungen"
+      title="Anpassen"
       headingId="settings-heading"
-      description="Manuelle Einstellungen haben Vorrang vor dem Text."
+      icon={<StepNumber n={2} />}
+      description="Optional. Was du hier wählst, hat Vorrang vor dem Text."
       actions={
         manualCount > 0 ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Icon name="undo" />}
             onClick={onResetAll}
-            className="text-[11px] text-mist-400 underline-offset-2 hover:text-snow-50 hover:underline"
             data-testid="reset-manual"
+            title="Alle manuellen Einstellungen zurücksetzen – dann gelten wieder Text und Standard"
           >
-            {manualCount} manuelle zurücksetzen
-          </button>
+            {manualCount} zurücksetzen
+          </Button>
         ) : null
       }
     >
@@ -80,19 +88,21 @@ export function StyleControls({
             hint: isImplementedBuildingType(kind) ? undefined : 'noch nicht verfügbar',
           }))}
         />
-        <Segmented
-          legend="Stil"
-          name="style"
-          testId="control-style"
-          value={spec.style}
-          disabled={disabled}
-          badge={badge('style', 'Stil')}
-          onChange={(style) => set('style', style)}
-          options={STYLE_IDS.map((v) => ({ value: v, label: STYLE_LABELS[v] }))}
-        />
-        <p className="-mt-2 text-[11px] text-mist-400" data-testid="style-summary">
-          {STYLES[spec.style].summary}
-        </p>
+        <div className="flex flex-col gap-2">
+          <Segmented
+            legend="Stil"
+            name="style"
+            testId="control-style"
+            value={spec.style}
+            disabled={disabled}
+            badge={badge('style', 'Stil')}
+            onChange={(style) => set('style', style)}
+            options={STYLE_IDS.map((v) => ({ value: v, label: STYLE_LABELS[v] }))}
+          />
+          <p className="text-xs leading-snug text-fg-subtle" data-testid="style-summary">
+            {STYLES[spec.style].summary}
+          </p>
+        </div>
         <Segmented
           legend="Thema"
           name="theme"
@@ -120,41 +130,48 @@ export function StyleControls({
           value={spec.detailLevel}
           disabled={disabled}
           badge={badge('detailLevel', 'Detailgrad')}
+          description="Wie viel Schmuck und Kleinteile das Bauwerk bekommt."
           onChange={(detailLevel) => set('detailLevel', detailLevel)}
           options={DETAIL_LEVELS.map((v) => ({ value: v, label: DETAIL_LABELS[v] }))}
         />
-        <Segmented
-          legend="Minecraft-Version (Java)"
-          name="targetMinecraftVersion"
-          testId="control-version"
-          value={spec.targetMinecraftVersion}
-          disabled={disabled}
-          onChange={onVersionChange}
-          options={PROFILES.map((p) => ({ value: p.minecraftVersion, label: `${p.minecraftVersion} (DataVersion ${p.dataVersion})` }))}
-        />
-        <div>
-          <label htmlFor="seed" className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-mist-400">
-            Seed (Startwert für Varianten)
-          </label>
-          <input
-            id="seed"
-            data-testid="control-seed"
-            type="number"
-            inputMode="numeric"
-            min={0}
-            max={MAX_SEED}
-            step={1}
+
+        <div className="flex flex-col gap-4 border-t border-line pt-4">
+          <Segmented
+            legend="Minecraft-Version (Java)"
+            name="targetMinecraftVersion"
+            testId="control-version"
+            value={spec.targetMinecraftVersion}
             disabled={disabled}
-            value={spec.seed}
-            onChange={(e) => {
-              const seed = Number.parseInt(e.target.value, 10);
-              if (Number.isInteger(seed) && seed >= 0 && seed <= MAX_SEED) onSeedChange(seed);
-            }}
-            className="w-full rounded-lg border border-white/10 bg-night-950/70 px-3 py-2 text-sm text-snow-50 focus:border-gold-400/60 focus:outline-none"
+            description="Blöcke und Exportdatei passen genau zu dieser Version deiner Welt."
+            onChange={onVersionChange}
+            options={PROFILES.map((p) => ({
+              value: p.minecraftVersion,
+              label: p.minecraftVersion,
+              hint: `DataVersion ${p.dataVersion}`,
+            }))}
           />
-          <p className="mt-1 text-[11px] text-mist-400">
-            Erzeugt werden drei Varianten mit Seed {variantSeeds(spec.seed).join(', ')}.
-          </p>
+          <Field
+            label="Seed (Startwert)"
+            htmlFor="seed"
+            hint={`Gleiche Zahl, gleiches Ergebnis. Erzeugt werden drei Varianten mit Seed ${variantSeeds(spec.seed).join(', ')}.`}
+          >
+            <TextInput
+              id="seed"
+              data-testid="control-seed"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={MAX_SEED}
+              step={1}
+              disabled={disabled}
+              value={spec.seed}
+              onChange={(e) => {
+                const seed = Number.parseInt(e.target.value, 10);
+                if (Number.isInteger(seed) && seed >= 0 && seed <= MAX_SEED) onSeedChange(seed);
+              }}
+              className="tabular-nums"
+            />
+          </Field>
         </div>
       </div>
     </Panel>
