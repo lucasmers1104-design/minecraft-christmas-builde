@@ -1,7 +1,7 @@
 import type { HorizontalDirection } from '@/core/blocks/directions';
 import { AIR, definitionOf } from '@/core/blocks/registry';
 import { Priority } from '@/core/generator/geometry';
-import { floorY, nearRoundTower, storeyRect, type HousePlan, type Mass } from '@/core/generator/house/plan';
+import { floorY, joinedAt, nearRoundTower, storeyRect, type HousePlan, type Mass } from '@/core/generator/house/plan';
 import { addBraces, facadeOf, facadePos, isTimberStorey, type Ctx, type Facade, type Panel } from '@/core/generator/house/walls';
 import { BALCONY_TEMPLATES } from '@/core/templates/balcony';
 import { baseTemplateId, getTemplate, templateBounds, templatesByIds } from '@/core/templates/catalog';
@@ -259,7 +259,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
       const y0 = floorY(plan, k);
       const rows = plan.floorHeight - 1;
       for (const side of ['north', 'east', 'south', 'west'] as const) {
-        if (mass.joins[side]) continue;
+        if (joinedAt(plan, mass, side, k)) continue;
         const f = facadeOf(rect, side);
         const facadePanels = perStorey[k]?.get(side) ?? [];
         // Door: ground storey, front of the door mass.

@@ -253,7 +253,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
     roofProfiles: { standard: 1 },
     proportions: {
       floorHeight: [4, 5],
-      overhang: [0, 1],
+      overhang: [0, 2],
       plinth: [1, 1],
       roofRise: { factor: 0.3, min: 3, max: 5, minPitch: 'P27' },
       size: { small: W(9, 7, 1), medium: W(11, 9, 2), large: W(15, 11, 2), huge: W(19, 15, 3) },

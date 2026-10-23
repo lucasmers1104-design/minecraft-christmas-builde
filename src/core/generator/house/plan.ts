@@ -169,6 +169,31 @@ export function wallTopOf(plan: Pick<HousePlan, 'plinth' | 'floorHeight'>, mass:
   return floorY(plan, mass.floors);
 }
 
+/**
+ * True if this side of the mass opens into another mass at storey k. A one-storey annex only
+ * joins the ground floor; the storeys above it are an ordinary facade with windows.
+ */
+export function joinedAt(plan: Pick<HousePlan, 'masses'>, mass: Mass, side: HorizontalDirection, k: number): boolean {
+  if (!mass.joins[side]) return false;
+  const r = mass.rect;
+  return plan.masses.some((o) => {
+    if (o === mass || o.round || o.floors <= k) return false;
+    const q = o.rect;
+    const overlapX = q.x0 <= r.x1 && q.x1 >= r.x0;
+    const overlapZ = q.z0 <= r.z1 && q.z1 >= r.z0;
+    switch (side) {
+      case 'east':
+        return overlapZ && q.x0 <= r.x1 && q.x1 > r.x1 - 1;
+      case 'west':
+        return overlapZ && q.x1 >= r.x0 && q.x0 < r.x0 + 1;
+      case 'south':
+        return overlapX && q.z0 <= r.z1 && q.z1 > r.z1 - 1;
+      case 'north':
+        return overlapX && q.z1 >= r.z0 && q.z0 < r.z0 + 1;
+    }
+  });
+}
+
 /** Wall plane of a storey (upper storeys include the jetty). */
 export function storeyRect(mass: Mass, storey: number): Rect {
   if (storey === 0) return mass.rect;
@@ -278,15 +303,18 @@ export function planHouse(input: HouseInput, rng: SeededRandom): HousePlan {
   // z, eave at least three blocks above the annex wall top); against a gable end it would cut
   // through the verge, so there the annex gets its own lower gable pointing away (cross wing).
   if (input.annex !== 'none') {
-    const aw = 4;
+    // Modern: a wide one-storey cube shifted two blocks forward (offset volumes, research 12).
+    const modernCube = input.styleId === 'modern';
+    const aw = modernCube ? Math.max(5, odd(Math.round(W * 0.6))) - 1 : 4;
     const ad = Math.max(5, odd(D - 2));
+    const az0 = modernCube ? -2 : Math.floor((D - ad) / 2);
     const left = input.annex === 'left';
     // Blocks between the annex wall top (one storey) and the main wall top on that side.
     const eaveGap = (input.floors - 1) * FH;
     const shedFits = ridgeMain === 'z' && eaveGap >= 3;
     const rect: Rect = left
-      ? { x0: -aw, x1: 0, z0: Math.floor((D - ad) / 2), z1: Math.floor((D - ad) / 2) + ad - 1 }
-      : { x0: W - 1, x1: W - 1 + aw, z0: Math.floor((D - ad) / 2), z1: Math.floor((D - ad) / 2) + ad - 1 };
+      ? { x0: -aw, x1: 0, z0: az0, z1: az0 + ad - 1 }
+      : { x0: W - 1, x1: W - 1 + aw, z0: az0, z1: az0 + ad - 1 };
     masses.push({
       id: 'annex',
       kind: 'annex',

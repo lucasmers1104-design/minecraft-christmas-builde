@@ -2,7 +2,7 @@ import { VECTOR, type HorizontalDirection } from '@/core/blocks/directions';
 import { AIR, blockIdOf, definitionOf, propsOf } from '@/core/blocks/registry';
 import { PaletteGrid, resolveStates } from '@/core/blocks/stateResolver';
 import type { HouseResult } from '@/core/generator/house/buildHouse';
-import { floorY, storeyRect } from '@/core/generator/house/plan';
+import { floorY, joinedAt, storeyRect } from '@/core/generator/house/plan';
 import { facadeOf, facadePos } from '@/core/generator/house/walls';
 import { planRoofs } from '@/core/generator/roof/roofEngine';
 import { blockAt, type VoxelModel } from '@/core/schema/voxelModel';
@@ -111,7 +111,7 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
       const y0 = floorY(plan, k) + 1;
       const y1 = floorY(plan, k + 1) - 1;
       for (const side of ['north', 'east', 'south', 'west'] as const) {
-        if (mass.joins[side]) continue;
+        if (joinedAt(plan, mass, side, k)) continue;
         const f = facadeOf(rect, side);
         const depth: string[][] = [];
         for (let u = 0; u < f.length; u++) {

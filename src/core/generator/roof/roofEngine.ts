@@ -352,11 +352,16 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
       const material = trim ? m.trim : blendedRoof(s, x, z, l);
       const pieces: { y: number; state: string }[] = [];
       let topHalf: number;
-      if (s.type === 'flat') {
+      if (s.type === 'flat' && s.overhang === 0) {
+        // Parapet in the wall material with a thin trim cap instead of a dark two-block lid.
         const edge = l.d === 0;
-        pieces.push({ y: base, state: edge ? full(m.trim) : slab(m.roof, 'bottom') });
+        pieces.push({ y: base, state: edge ? full(m.gable) : slab(m.roof, 'bottom') });
         if (edge) pieces.push({ y: base + 1, state: slab(m.trim, 'bottom') });
         topHalf = base * 2 + (edge ? 3 : 1);
+      } else if (s.type === 'flat') {
+        // Cantilevered roof plate: a thin trim slab sticking out beyond the walls (research 12).
+        pieces.push({ y: base, state: outside ? slab(m.trim, 'top') : slab(m.roof, 'bottom') });
+        topHalf = base * 2 + (outside ? 2 : 1);
       } else if (l.ridge) {
         const tPrev = t[Math.min(l.d, t.length) - 1] ?? 0;
         topHalf = base * 2 + tPrev;

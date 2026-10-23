@@ -95,7 +95,10 @@ export function resolveHouseInput(
     // Pitched roofs always overhang (modern flat roofs may sit flush with the parapet).
     overhang: wishes.overhang ?? Math.max(roofType === 'flat' ? 0 : 1, r.fork('overhang').int(ohMin, ohMax)),
     wings,
-    annex: wishes.annex ?? (asym && feature('annex', 'annex') ? (r.fork('annexSide').chance(0.5) ? 'left' : 'right') : 'none'),
+    // Modern houses from medium on are two offset cubes, never a single box (research 12/19).
+    annex:
+      wishes.annex ??
+      ((asym && feature('annex', 'annex')) || (styleId === 'modern' && size !== 'small') ? (r.fork('annexSide').chance(0.5) ? 'left' : 'right') : 'none'),
     tower: wishes.tower ?? 'none',
     towerPosition: wishes.towerPosition ?? 'front_right',
     symmetry,

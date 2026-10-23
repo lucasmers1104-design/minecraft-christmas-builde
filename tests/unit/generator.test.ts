@@ -320,3 +320,18 @@ describe('Irimoya', () => {
     expect(types).toContain('irimoya');
   });
 });
+
+describe('Modern: versetzte Baukörper', () => {
+  it('ab mittlerer Größe zwei Kuben mit Versatz und unterschiedlicher Höhe, kein dunkler Balkenring', () => {
+    for (const size of ['medium', 'large'] as const)
+      for (const seed of [1, 2, 3]) {
+        const r = generateBuildingWithReport(spec({ style: 'modern', size, seed }));
+        const masses = r.house!.plan.masses;
+        expect(masses.length, `${size} ${seed}`).toBeGreaterThanOrEqual(2);
+        const [main, annex] = [masses[0]!, masses.find((m) => m.kind === 'annex')!];
+        expect(annex.rect.z0).toBeLessThan(main.rect.z0); // steps forward
+        expect(r.repairs).toEqual([]);
+        expect(lintHouse(r.model, r.house!)).toEqual([]);
+      }
+  });
+});

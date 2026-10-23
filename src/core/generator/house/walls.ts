@@ -4,7 +4,7 @@ import { AIR } from '@/core/blocks/registry';
 import { Priority, type VoxelBuilder } from '@/core/generator/geometry';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import type { Blocks } from '@/core/generator/house/materials';
-import { floorY, storeyRect, wallTopOf, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
+import { floorY, joinedAt, storeyRect, wallTopOf, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { rightOf } from '@/core/templates/place';
 import type { Role } from '@/core/style/palettes';
 import { getMaterial } from '@/core/style/materials';
@@ -166,14 +166,14 @@ export function buildStorey(ctx: Ctx, mass: Mass, storey: number): { panels: Map
         set(ctx, x, y, z, blocks.log(role, axis));
         if (!corner) continue;
         const side: HorizontalDirection = axis === 'x' ? (x === rect.x0 ? 'west' : 'east') : z === rect.z0 ? 'north' : 'south';
-        if (mass.joins[side]) continue;
+        if (joinedAt(plan, mass, side, storey)) continue;
         const [dx, , dz] = VECTOR[side];
         set(ctx, x + dx, y, z + dz, blocks.log(role, axis));
       }
 
   for (const side of SIDES) {
     const f = facadeOf(rect, side);
-    if (mass.joins[side]) {
+    if (joinedAt(plan, mass, side, storey)) {
       panelsBySide.set(side, []);
       continue;
     }
@@ -244,10 +244,13 @@ export function buildTop(ctx: Ctx, mass: Mass): void {
   const { plan, blocks } = ctx;
   const top = storeyRect(mass, mass.floors - 1);
   const y = wallTopOf(plan, mass);
+  // Unframed walls (render, concrete) end in their own material: a dark beam ring on top would
+  // read as a heavy lid under the roof edge (research 12).
+  const ring = (x: number) => (mass.frames ? blocks.log('beam', x === top.x0 || x === top.x1 ? 'z' : 'x') : blocks.block(wallRole(mass, mass.floors - 1, plan)));
   for (let x = top.x0; x <= top.x1; x++)
     for (let z = top.z0; z <= top.z1; z++) {
       const edge = x === top.x0 || x === top.x1 || z === top.z0 || z === top.z1;
-      set(ctx, x, y, z, edge ? blocks.log('beam', x === top.x0 || x === top.x1 ? 'z' : 'x') : blocks.block('floor'));
+      set(ctx, x, y, z, edge ? ring(x) : blocks.block('floor'));
     }
 }
 
