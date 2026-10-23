@@ -1,9 +1,10 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, type KeyboardEvent } from 'react';
 import { AIR } from '@/core/blocks/registry';
 import type { VoxelModel } from '@/core/schema/voxelModel';
-import { Panel } from '@/components/ui/Panel';
+import { Badge } from '@/components/ui/Badge';
+import { Icon } from '@/components/ui/Icon';
 
 const TOTALS = new WeakMap<VoxelModel, number>();
 
@@ -19,6 +20,10 @@ function nonAirBlocks(model: VoxelModel): number {
   return total;
 }
 
+/**
+ * Horizontal strip of variant cards, meant to sit directly under the 3D preview. Renders nothing
+ * until a building was generated (the preview's empty state explains the steps).
+ */
 export function VariantSelector({
   variants,
   selected,
@@ -31,46 +36,62 @@ export function VariantSelector({
   edits?: number[];
 }) {
   const totals = useMemo(() => variants.map(nonAirBlocks), [variants]);
+  if (variants.length === 0) return null;
+
+  // Radio-group keyboard pattern: arrow keys move the selection, only the checked card is tabbable.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (step === 0) return;
+    e.preventDefault();
+    const next = (selected + step + variants.length) % variants.length;
+    onSelect(next);
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-testid="variant-${next}"]`)?.focus();
+  };
+
   return (
-    <Panel title="Varianten" headingId="variants-heading" description="Jede Variante ist ein eigenes, echtes Blockvolumen.">
-      {variants.length === 0 ? (
-        <p className="text-sm text-mist-400">Noch keine Varianten – zuerst ein Bauwerk generieren.</p>
-      ) : (
-        <div role="radiogroup" aria-labelledby="variants-heading" className="grid grid-cols-3 gap-2">
-          {variants.map((model, index) => {
-            const active = index === selected;
-            const total = totals[index] ?? 0;
-            return (
-              <button
-                key={model.hash}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                data-testid={`variant-${index}`}
-                data-hash={model.hash}
-                onClick={() => onSelect(index)}
-                className={`rounded-xl border px-2 py-2.5 text-left transition-colors ${
-                  active
-                    ? 'border-gold-400/70 bg-gold-400/10'
-                    : 'border-white/8 bg-white/3 hover:border-white/20'
-                }`}
-              >
-                <span className={`block text-sm font-semibold ${active ? 'text-gold-300' : 'text-snow-50'}`}>
-                  Variante {index + 1}
-                </span>
-                <span className="block text-[11px] text-mist-400">Seed {model.spec.seed}</span>
-                <span className="block text-[11px] text-mist-400">{total.toLocaleString('de-DE')} Blöcke</span>
-                <span className="mt-1 block font-mono text-[10px] text-mist-400/80">{model.hash.slice(0, 8)}</span>
-                {(edits[index] ?? 0) > 0 ? (
-                  <span className="mt-0.5 block text-[10px] text-gold-300" data-testid={`variant-${index}-edited`}>
-                    bearbeitet ({edits[index]})
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </Panel>
+    <section aria-labelledby="variants-heading" className="shrink-0 rounded-xl border border-line bg-surface px-3 pt-2.5 pb-3 shadow-(--shadow-panel)">
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-0.5">
+        <h2 id="variants-heading" className="text-sm font-semibold text-fg">
+          Varianten
+        </h2>
+        <p className="text-xs text-fg-subtle">Gleiche Beschreibung, jeweils ein anderer Startwert (Seed)</p>
+      </div>
+      <div role="radiogroup" aria-labelledby="variants-heading" onKeyDown={onKeyDown} className="grid grid-cols-3 gap-2">
+        {variants.map((model, index) => {
+          const active = index === selected;
+          const total = totals[index] ?? 0;
+          const editCount = edits[index] ?? 0;
+          return (
+            <button
+              key={model.hash}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              tabIndex={active ? 0 : -1}
+              data-testid={`variant-${index}`}
+              data-hash={model.hash}
+              onClick={() => onSelect(index)}
+              className={`flex min-w-0 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-left transition-colors ${
+                active ? 'border-accent/80 bg-accent/10 ring-1 ring-accent/40' : 'border-line bg-raised hover:border-line-strong hover:bg-hover'
+              }`}
+            >
+              <span className="flex w-full items-center justify-between gap-2">
+                <span className={`truncate text-sm font-medium ${active ? 'text-accent-text' : 'text-fg'}`}>Variante {index + 1}</span>
+                {active ? <Icon name="check" className="size-4 text-accent-text" /> : null}
+              </span>
+              <span className="flex flex-wrap gap-x-3 text-xs text-fg-muted">
+                <span>Seed {model.spec.seed}</span>
+                <span className="tabular-nums">{total.toLocaleString('de-DE')} Blöcke</span>
+              </span>
+              {editCount > 0 ? (
+                <Badge tone="gold" data-testid={`variant-${index}-edited`}>
+                  bearbeitet ({editCount})
+                </Badge>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
