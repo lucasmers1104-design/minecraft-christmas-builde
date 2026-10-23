@@ -425,6 +425,8 @@ export function roofSection(plan: HousePlan, mass: Mass, materials: RoleMaterial
     soffit: true,
     ...(mass.shedHigh ? { shedHigh: mass.shedHigh } : {}),
     maxRise: mass.maxRise ?? (mass.kind === 'tower' ? 12 : roofRiseCap(plan, mass)),
+    // Weathered roof blend (dark streaks from the eave); modern roofs stay uniform.
+    ...(plan.input.styleId === 'modern' ? {} : { blendSeed: (plan.input.seed ^ [...mass.id].reduce((h, ch) => Math.imul(h, 31) + ch.charCodeAt(0), 7)) >>> 0 }),
   };
 }
 

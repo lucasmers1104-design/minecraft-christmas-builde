@@ -59,6 +59,8 @@ export interface RoofSectionSpec {
   maxRise?: number;
   /** Pitch ladder step shared by the whole house (planar profiles; see `housePitch`). */
   pitch?: PitchId;
+  /** Seed for the roof material blend (unset: one material only). */
+  blendSeed?: number;
   /** Fill the gable triangles (default true for gable-like types). */
   gables?: boolean;
   priority?: PriorityValue;
@@ -226,6 +228,62 @@ function sectionTops(s: RoofSectionSpec, n: number): number[] {
   return t;
 }
 
+/**
+ * Roof blend partners (research 07 T1, 06 R23, 13 P3): a darker sister material runs up from
+ * the eave in streaks along the fall line (water), a lighter one bleaches a few cells near the
+ * ridge. Only the material changes; facing, half and shape stay, so the resolver computes the
+ * same corners. Materials without a fitting sister stay plain.
+ */
+const ROOF_BLEND: Readonly<Record<string, { darker?: string; lighter?: string }>> = {
+  spruce_planks: { darker: 'dark_oak_planks', lighter: 'oak_planks' },
+  dark_oak_planks: { lighter: 'spruce_planks' },
+  oak_planks: { darker: 'spruce_planks', lighter: 'birch_planks' },
+  birch_planks: { darker: 'oak_planks' },
+  jungle_planks: { darker: 'spruce_planks' },
+  deepslate_tiles: { darker: 'cobbled_deepslate', lighter: 'deepslate_bricks' },
+  polished_deepslate: { darker: 'deepslate_tiles', lighter: 'deepslate_bricks' },
+  deepslate_bricks: { darker: 'deepslate_tiles' },
+  bricks: { lighter: 'granite' },
+  cobblestone: { darker: 'mossy_cobblestone', lighter: 'andesite' },
+  stone_bricks: { darker: 'mossy_stone_bricks' },
+  tuff_bricks: { darker: 'tuff', lighter: 'polished_tuff' },
+};
+
+/** Share of darker-partner columns by distance from the eave: 55 / 35 / 15 / 5 %. */
+const DRIP = [0.55, 0.35, 0.15, 0.05];
+
+function hash(...v: number[]): number {
+  let h = 0x811c9dc5;
+  for (const n of v) {
+    h ^= n | 0;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x2c1b3c6d) >>> 0;
+  return (h >>> 8) / 0x1000000;
+}
+
+function blendedRoof(s: RoofSectionSpec, x: number, z: number, l: Layout): string {
+  const blend = s.blendSeed === undefined ? undefined : ROOF_BLEND[s.materials.roof];
+  if (!blend || l.ridge || !l.facing || l.n < 3) return s.materials.roof;
+  // Coordinate along the eave of this slope face: one streak length per eave column.
+  const a = l.facing === 'north' || l.facing === 'south' ? x : z;
+  const face = ['north', 'east', 'south', 'west'].indexOf(l.facing);
+  if (blend.darker) {
+    const r = hash(s.blendSeed!, a, face, 1);
+    let streak = 0;
+    while (streak < DRIP.length && r < DRIP[streak]!) streak++;
+    if (l.d < streak) return blend.darker;
+  }
+  if (blend.lighter) {
+    // Sun bleaching: short streaks down from the ridge (1–2 rows) on some columns.
+    const r = hash(s.blendSeed!, a, face, 2);
+    const streak = r < 0.08 ? 2 : r < 0.2 ? 1 : 0;
+    if (l.d >= l.n - streak) return blend.lighter;
+  }
+  return s.materials.roof;
+}
+
 /** Number of slope columns (eave to ridge) of a section. */
 export function slopeColumns(s: RoofSectionSpec): number {
   const { X0, Z0 } = outer(s);
@@ -267,7 +325,7 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
       // Contrast only as a thin barge board on the outermost verge column; the eaves stay in
       // the roof material (research 06: a full contrast ring covered 36–43 % of the roof).
       const trim = l.verge && (s.ridgeAxis === 'x' || s.type === 'shed' ? x === X0 || x === X1 : z === Z0 || z === Z1);
-      const material = trim ? m.trim : m.roof;
+      const material = trim ? m.trim : blendedRoof(s, x, z, l);
       const pieces: { y: number; state: string }[] = [];
       let topHalf: number;
       if (s.type === 'flat') {

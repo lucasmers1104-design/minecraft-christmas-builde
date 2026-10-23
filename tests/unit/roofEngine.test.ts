@@ -154,3 +154,29 @@ describe('Dach-Engine', () => {
     expect(slope.some((s) => s === 'minecraft:spruce_planks')).toBe(true);
   });
 });
+
+describe('Dachmischung', () => {
+  it('dunkler Partner in Streifen von der Traufe aus, Formen unverändert, deterministisch', () => {
+    const plain = build([section({ materials: { ...MATERIALS, roof: 'spruce_planks' } })]).model;
+    const mixed = build([section({ materials: { ...MATERIALS, roof: 'spruce_planks' }, blendSeed: 42 })]).model;
+    const again = build([section({ materials: { ...MATERIALS, roof: 'spruce_planks' }, blendSeed: 42 })]).model;
+    expect(mixed.hash).toBe(again.hash);
+    let dark = 0;
+    let eaveDark = 0;
+    for (let x = 0; x < 16; x++)
+      for (let y = 0; y < 20; y++)
+        for (let z = 0; z < 16; z++) {
+          const a = at(plain, x, y, z);
+          const b = at(mixed, x, y, z);
+          // Same shape and properties everywhere; only the wood may differ.
+          const norm = (s: string) => s.replace(/minecraft:(dark_oak|spruce|oak)_/, 'minecraft:wood_');
+          expect(norm(b)).toBe(norm(a));
+          if (b !== a && b.includes('dark_oak_stairs')) {
+            dark++;
+            if (z === 1 || z === 9) eaveDark++;
+          }
+        }
+    expect(dark).toBeGreaterThan(0);
+    expect(eaveDark).toBeGreaterThan(0);
+  });
+});
