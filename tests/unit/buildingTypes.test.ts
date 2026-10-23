@@ -6,8 +6,9 @@ import { generateBuilding, generateBuildingWithReport } from '@/core/generator/g
 import { DEFAULT_HOUSE_SPEC, STYLE_IDS, type BuildSpec } from '@/core/schema/buildSpec';
 import { blockAt } from '@/core/schema/voxelModel';
 import { lintHouse } from '@/core/analysis/buildingLints';
-import { battlementSymmetric, circle } from '@/core/geometry';
+import { circle, dihedralImages, maskFrom, ring } from '@/core/geometry';
 import { towerCentre } from '@/core/generator/house/roundTower';
+import { wallTopOf } from '@/core/generator/house/plan';
 
 const spec = (kind: BuildSpec['kind'], over: Partial<BuildSpec> = {}): BuildSpec => ({ ...DEFAULT_HOUSE_SPEC, kind, ...over, options: {} });
 const ids = (s: BuildSpec) => new Set(countMaterials(generateBuilding(s)).byBlock.map((b) => b.blockId));
@@ -96,19 +97,31 @@ describe('Turm', () => {
       }
   });
 
-  it('Rundturm: Wandring ist der dicke Kreis der Geometriebibliothek, Zinnen nur bei symmetrischem Durchmesser', () => {
+  it('Rundturm: Wandring ist der dicke Kreis der Geometriebibliothek, Zinnen bei jedem Durchmesser symmetrisch', () => {
     for (const size of ['small', 'medium', 'large', 'huge'] as const) {
       const r = generateBuildingWithReport(spec('tower', { style: 'medieval', size, theme: 'none' }));
       const mass = r.house!.plan.masses[0]!;
       const { cx, cz, r: radius, spec: round } = towerCentre(mass);
-      expect(round.roof).toBe(battlementSymmetric(round.d) ? 'battlement' : 'cone');
-      // A storey row between bands: every ring cell is wall or window, inside is free.
+      // Merlons by angular sectors on the ring that carries them: battlements for every
+      // diameter, symmetric under all 8 symmetries of the square in the built model.
+      expect(round.roof, size).toBe('battlement');
+      const top = wallTopOf(r.house!.plan, mass);
+      const n = round.d + 2;
+      const crown = ring(n, 1);
+      const merlons = maskFrom(n, n, (x, z) => crown.has(x, z) && blockAt(r.model, cx - radius - 1 + x, top + 2, cz - radius - 1 + z) !== 'minecraft:air');
+      expect(merlons.count, size).toBeGreaterThan(0);
+      expect(merlons.cells().every(([x, z]) => dihedralImages(x, z, n).every(([a, b]) => merlons.has(a, b))), size).toBe(true);
+      // A storey row between bands: every ring cell is wall or a set-back window (an opening on
+      // an axis with the pane right behind it).
       const y = r.house!.plan.plinth + 2;
-      const ring = circle(round.d, 'thick');
+      const wall = circle(round.d, 'thick');
       for (let x = cx - radius; x <= cx + radius; x++)
         for (let z = cz - radius; z <= cz + radius; z++) {
+          if (!wall.has(x - cx + radius, z - cz + radius)) continue;
           const s = blockAt(r.model, x, y, z);
-          if (ring.has(x - cx + radius, z - cz + radius)) expect(s, `${size} ${x},${z}`).not.toBe('minecraft:air');
+          if (s !== 'minecraft:air') continue;
+          expect(x === cx || z === cz, `${size} ${x},${z}`).toBe(true);
+          expect(blockAt(r.model, x - Math.sign(x - cx), y, z - Math.sign(z - cz)), `${size} ${x},${z}`).toContain('pane');
         }
     }
   });
