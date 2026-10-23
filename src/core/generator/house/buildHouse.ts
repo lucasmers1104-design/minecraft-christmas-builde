@@ -9,6 +9,7 @@ import { buildPassages, buildPlinth, buildStairs, buildStorey, buildTop, type Ct
 import { buildChimney, buildDormer, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
 import { buildOpenings, type OpeningsResult } from '@/core/generator/house/openings';
 import { buildGables } from '@/core/generator/house/gables';
+import { buildInteriorLight } from '@/core/generator/house/interiorLight';
 import { MAX_DIMENSIONS } from '@/core/schema/voxelModel';
 import type { HorizontalDirection } from '@/core/blocks/directions';
 
@@ -150,6 +151,8 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
   openings.windows += buildGables(ctx, roof, sections).windows;
   const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;
   buildStairs(ctx, main, (x, z) => nearChimney(x, z) || nearRoundTower(plan, x, z, 1) || [...openings.reserved].some((k) => k.startsWith(`${x},`) && k.endsWith(`,${z}`)));
+  // Pendant lanterns in every storey and a lantern in the attic (after the stairs).
+  buildInteriorLight(ctx, squareMasses(plan), openings.reserved);
   // Round towers last: they replace whatever the house put into their cylinder.
   const inHouse = insideHouse(plan);
   for (const tower of plan.masses.filter((m) => m.round)) {
