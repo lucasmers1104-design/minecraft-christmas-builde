@@ -85,9 +85,21 @@ interface VoxelModel {
 5. **Öffnungen** (`openings.ts`): Tür aus den Vorlagen (mit Freiraum davor und dahinter und Laternen), Fenster in den Feldern des Ständerrasters oder auf symmetrischen Achsen, Erker (W09) und Balkon im ersten Obergeschoss; Vorlagen werden nur gesetzt, wenn alles vor der Wand frei ist.
 6. **Bauteile** (`components.ts`): Gauben, Veranda/Vordach, Kamin mit Lagerfeuer (Rauch frei).
 7. **Rundturm** (`roundTower.ts`): Wandring aus der Geometriebibliothek, Sockel mit Schürze, Geschossbänder, Böden mit Leiter, Fenster in den geraden Stücken der Achsen, Konsolenkranz und Kegel (D + 2, Profil gerade/konkav/konvex), Kuppel, Zinnen (nur bei symmetrischem D) oder Brüstung. Am Haus bleibt der Ring in dessen Räumen offen.
-8. **Landschaft und Festschicht** (`landscape.ts`, `festive.ts`, `christmasTree.ts`): Weg, Garten, Laternenpfähle; Girlanden unter den Traufen, Kranz über der Tür, Kerzen auf den Simsen, Geschenke, Baum; Schnee nur auf ausdrücklichen Wunsch (Bodenfläche und Schneeschichten nur dort, wo sie im Spiel liegen bleiben); keine Eiszapfen.
+8. **Landschaft und Festschicht** (`landscape.ts` mit `paths.ts`, `borders.ts`, `garden.ts`; `festive.ts`, `christmasTree.ts`): Weg, Grenze, Garten, Laternenpfähle (siehe „Landschaft“); Girlanden unter den Traufen, Kranz über der Tür, Kerzen auf den Simsen, Geschenke, Baum; Schnee nur auf ausdrücklichen Wunsch (Bodenfläche und Schneeschichten nur dort, wo sie im Spiel liegen bleiben); keine Eiszapfen.
 
 Weitere Typen: **Weihnachtsbaum** (Stufenprofil mit Stamm, Stern, Kugeln, Lichtern), **Marktstand** (Buden mit rot-weißer Treppenmarkise, Theke, Waren, Laternen), **Bahnhof** (Halle und zwei Flügel mit eigenen Dächern, Bahnsteig mit Kante und Dach, Gleis auf festem Grund, Uhr), **Turm** (`tower.ts`: der Rundturm frei stehend mit Eingang aus den Türvorlagen).
+
+### Landschaft (`src/core/generator/landscape*.ts`, `paths.ts`, `borders.ts`, `garden.ts`)
+
+Nach den Berichten 15 (Gelände, Gärten, Wege), 18 (Lampenpfähle) und 14 (Winter):
+
+- **Stildaten** (`landscapeStyles.ts`): je Stil Weg (Form, Schultern, Akzent, Antritt), Boden nach Ursache (Abnutzung, Schatten, Flecken, Rasenpflanzen, Beeterde), Grenze (Art vorn und seitlich, Heckenmix 60/25/15, Steine, Kappe, Töpfe), Garten (Blumen, Rückreihe, Büsche, Bäume, Requisiten, Felsen) und Lampenpfahl-Entwürfe. Bei Winter und Weihnachten gibt es keine Blumen (Farn, Fichtensetzlinge, Töpfe stattdessen) und immergrüne Hecken. Baustoffe kommen aus den Palettenrollen (`landscapeMaterials.ts`): Wegmitte = Rolle `path`, Zaunholz = `frame`/`beam`, Gartenmauer = `wall`.
+- **Grundstück** (`landscapeSite.ts`): vor dem Bauen werden eigene Bodenzellen, Hausfuß, Traufzone, Abstände zum Haus und Fensterblickfelder bestimmt; jede Spalte bekommt eine Nutzung (Weg, Grenze, Laterne, Beet, Baum …), damit nichts doppelt belegt wird.
+- **Weg** (`paths.ts`): Mittellinie mit Stützpunkten alle 4–6 Schritte (±1), Reihenpinsel ohne Löcher, Mitte ≥ 80 % Rolle `path`, Schultern 50/30/15/5 in weichen Flecken, drei Reihen Stein vor der Tür, am Tor schmaler, dahinter ausdünnend; japanisch Trittsteine, modern gerade Platten mit Grasfugen.
+- **Grenze** (`borders.ts`): zwei Blöcke innerhalb des Modellrands, höchstens 75 % des Umfangs (Vorgarten, L oder nur vorn), Tor am Hauptweg mit Pfosten (optional Laubbogen); Hecke mit Buckeln, Wallhecke, Zaun mit Pfosten, Gärdsgård, Feldsteinmauer, Steinmauer, Gartenmauer mit Töpfen, Bambuszaun, moderne Kastenhecken.
+- **Lampenpfähle** (`templates/lampPosts.ts`): 14 Entwürfe (LP02–LP18) als Daten, Licht immer ab der 3. Zelle über dem Weg; ein Entwurf je Gebäude, ein Pfahl am Tor (bei „viele“ ein Torpaar), dann alle 8–12 Schritte wechselseitig.
+- **Garten** (`garden.ts`, `templates/nature.ts`): Beete in Drifts am Haus, Bäume (Eiche, Birke, Fichte, Azalee, Kirsche, Kiefer, Zypresse, Olive) ≥ 3 von der Fassade und nicht vor Fenstern, Büsche an Hausecken und Tor, Felsen, Holzstapel, Heu, Fässer, im Winter ein Eisteich; ein freier Platz für den Weihnachtsbaum im Vorgarten (erste Hofzelle), Geschenke im Umkreis von 3.
+- **Boden und Rand:** Abnutzung an Weg und Pfählen, Schatten unter Traufen und Kronen, weiche Flecken im Rasen; die zwei äußeren Ringe bleiben Gras und lösen sich unregelmäßig auf (nie länger als 6 gleich tief). Schneeboden nur auf Wunsch und nicht unter den Traufen.
 
 ### Dach-Engine
 
