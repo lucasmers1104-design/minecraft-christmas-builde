@@ -7,6 +7,7 @@ import type { Blocks } from '@/core/generator/house/materials';
 import { floorY, storeyRect, wallTopOf, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { rightOf } from '@/core/templates/place';
 import type { Role } from '@/core/style/palettes';
+import { getMaterial } from '@/core/style/materials';
 
 /**
  * Walls with depth (research report, "Wände wirken durch Rahmen eine Ebene vor der
@@ -147,14 +148,27 @@ export function buildStorey(ctx: Ctx, mass: Mass, storey: number): { panels: Map
       }
   }
 
-  // Wall plane.
+  // Wall plane. Log walls are laid as courses (research 10/13: 89 % of the spruce logs in
+  // vanilla taiga houses lie): logs along the facade, crossing at the corners with the axis
+  // alternating per course, the end of every course sticking out one block (saddle notch).
+  const logWall = !timber && isLogMaterial(blocks.materials[role]);
   for (let y = y0 + 1; y < y1; y++)
     for (let x = rect.x0; x <= rect.x1; x++)
       for (let z = rect.z0; z <= rect.z1; z++) {
         const edge = x === rect.x0 || x === rect.x1 || z === rect.z0 || z === rect.z1;
         if (!edge) continue;
         const corner = (x === rect.x0 || x === rect.x1) && (z === rect.z0 || z === rect.z1);
-        set(ctx, x, y, z, blocks.weathered(role, x, y, z, { height: y - y0 - 1 + storey * 4, corner }));
+        if (!logWall) {
+          set(ctx, x, y, z, blocks.weathered(role, x, y, z, { height: y - y0 - 1 + storey * 4, corner }));
+          continue;
+        }
+        const axis: 'x' | 'z' = corner ? (y % 2 === 0 ? 'x' : 'z') : z === rect.z0 || z === rect.z1 ? 'x' : 'z';
+        set(ctx, x, y, z, blocks.log(role, axis));
+        if (!corner) continue;
+        const side: HorizontalDirection = axis === 'x' ? (x === rect.x0 ? 'west' : 'east') : z === rect.z0 ? 'north' : 'south';
+        if (mass.joins[side]) continue;
+        const [dx, , dz] = VECTOR[side];
+        set(ctx, x + dx, y, z + dz, blocks.log(role, axis));
       }
 
   for (const side of SIDES) {
@@ -168,7 +182,8 @@ export function buildStorey(ctx: Ctx, mass: Mass, storey: number): { panels: Map
     // framing). A stone ground floor under timber storeys keeps the grid for aligned axes.
     const { posts, panels } = facadePanels(f, framed && mass.timber);
     panelsBySide.set(side, panels);
-    if (!framed) continue;
+    // Log courses carry themselves: no posts or beams in front of them.
+    if (!framed || logWall) continue;
     const axis: 'x' | 'z' = side === 'north' || side === 'south' ? 'x' : 'z';
     const postSet = framePosts(posts, timber);
     for (const u of postSet) {
@@ -311,4 +326,9 @@ function ladderSpot(ctx: Ctx, inner: Rect, y0: number, y1: number, avoid: (x: nu
     if (ok) return c;
   }
   return null;
+}
+
+/** Log and stem materials (laid as courses instead of upright blocks). */
+export function isLogMaterial(materialId: string): boolean {
+  return getMaterial(materialId).family === 'log';
 }

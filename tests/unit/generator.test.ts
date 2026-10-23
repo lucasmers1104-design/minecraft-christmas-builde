@@ -269,3 +269,34 @@ describe('Giebelfelder und Firstzier', () => {
     expect(has(gableHouse('modern').model, 'lightning_rod')).toBe(false);
   });
 });
+
+describe('Blockhauswand', () => {
+  it('Stammwände liegen als Lagen mit Kreuzecken, ohne Pfosten davor; der Giebel liegt mit', () => {
+    const r = generateBuildingWithReport(spec({ style: 'rustic', size: 'medium', seed: 2 }, { palette: 'rustic_logs', roofType: 'gable' }));
+    const m = r.model;
+    const plan = r.house!.plan;
+    const main = plan.masses[0]!;
+    let lying = 0;
+    let upright = 0;
+    for (let k = 0; k < main.floors; k++) {
+      const rect = storeyRect(main, k);
+      for (let y = floorY(plan, k) + 1; y < floorY(plan, k + 1); y++)
+        for (let x = rect.x0; x <= rect.x1; x++)
+          for (const z of [rect.z0, rect.z1]) {
+            const s = blockAt(m, x, y, z);
+            if (blockIdOf(s) !== `minecraft:${plan.input.materials.wall}`) continue;
+            if (propsOf(s).axis === 'y') upright++;
+            else lying++;
+          }
+    }
+    expect(lying).toBeGreaterThan(10);
+    expect(upright / (lying + upright)).toBeLessThan(0.1);
+    // Saddle notch: logs stick out beyond the corner.
+    const rect = main.rect;
+    const y = floorY(plan, 0) + 1;
+    const ends = [blockAt(m, rect.x0 - 1, y, rect.z0), blockAt(m, rect.x0, y, rect.z0 - 1), blockAt(m, rect.x0 - 1, y + 1, rect.z0), blockAt(m, rect.x0, y + 1, rect.z0 - 1)];
+    expect(ends.filter((s) => s.includes('_log[')).length).toBeGreaterThanOrEqual(2);
+    expect(r.repairs).toEqual([]);
+    expect(lintHouse(m, r.house!)).toEqual([]);
+  });
+});

@@ -1,5 +1,5 @@
 import type { HorizontalDirection } from '@/core/blocks/directions';
-import { AIR, blockState } from '@/core/blocks/registry';
+import { AIR, blockState, propsOf } from '@/core/blocks/registry';
 import { Priority, type PriorityValue, type VoxelBuilder } from '@/core/generator/geometry';
 import { columnPieces, pickPitch, profileDeltas, tops, type Piece, type PitchId, type ProfileName } from '@/core/generator/roof/profiles';
 import { formOf, requireForm } from '@/core/style/materials';
@@ -416,7 +416,9 @@ export function buildRoofs(builder: VoxelBuilder, sections: readonly RoofSection
             { fixed: s.z0 + recess, side: 'north' as const },
             { fixed: s.z1 - recess, side: 'south' as const },
           ];
-    const gableBlock = full(s.materials.gable);
+    // Log gables lie like the wall courses below them (axis along the gable).
+    const plain = full(s.materials.gable);
+    const gableBlock = propsOf(plain).axis ? blockState(requireForm(s.materials.gable, 'block'), { axis: s.ridgeAxis === 'x' ? 'z' : 'x' }) : plain;
     for (const { fixed, side } of planes) {
       const from = s.ridgeAxis === 'x' ? s.z0 : s.x0;
       const to = s.ridgeAxis === 'x' ? s.z1 : s.x1;
