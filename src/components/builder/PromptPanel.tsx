@@ -35,12 +35,18 @@ export function StepNumber({ n }: { n: number }) {
 export function PromptPanel({
   description,
   onDescriptionChange,
+  ready,
   parsed,
   conflicts,
   aiActive = false,
 }: {
   description: string;
   onDescriptionChange: (value: string) => void;
+  /**
+   * False until the page is hydrated. The text field stays read-only until then, so nothing
+   * typed before hydration gets lost or mixed with the default text.
+   */
+  ready: boolean;
   parsed: ParsedDescription;
   conflicts: string[];
   /** Settings currently come from an AI plan for this exact text. */
@@ -63,6 +69,7 @@ export function PromptPanel({
         value={description}
         maxLength={MAX_DESCRIPTION_LENGTH}
         onChange={(e) => onDescriptionChange(e.target.value)}
+        readOnly={!ready}
         rows={5}
         aria-describedby="prompt-help"
         className="min-h-32 resize-y"

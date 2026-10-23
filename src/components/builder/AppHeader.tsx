@@ -48,7 +48,6 @@ export function AppHeader({
   projectName,
   onOpenLibrary,
   onOpenSettings,
-  aiConfigured,
   plannedBy,
 }: {
   status: BuilderStatus;
@@ -58,14 +57,11 @@ export function AppHeader({
   projectName: string | null;
   onOpenLibrary: () => void;
   onOpenSettings: () => void;
-  /** An AI provider is switched on in the settings (changes the button text). */
-  aiConfigured: boolean;
   /** Set if the shown building was planned by an AI, else null. */
   plannedBy: PlannedBy;
 }) {
   const view = STATUS_VIEW[status];
   const statusLabel = status === 'arbeitet' && busyLabel ? busyLabel : view.label;
-  const settingsLabel = aiConfigured ? 'KI-Einstellungen' : 'KI einrichten';
   return (
     <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-line bg-surface px-4 lg:px-5">
       <div className="flex min-w-0 items-center gap-3">
@@ -86,7 +82,7 @@ export function AppHeader({
         <Badge
           tone={plannedBy ? 'accent' : 'neutral'}
           icon={<Icon name={plannedBy ? 'sparkles' : 'cube'} className="size-3.5" />}
-          className="hidden lg:inline-flex"
+          className="max-lg:hidden"
           title={
             plannedBy
               ? 'Die KI hat den Bauplan geliefert, alle Blöcke setzt der regelbasierte Generator.'
@@ -135,10 +131,11 @@ export function AppHeader({
           onClick={onOpenSettings}
           data-testid="open-settings"
           aria-haspopup="dialog"
-          title="KI-Anbindung: ohne KI, Ollama (lokal) oder OpenRouter (Cloud)"
-          icon={<Icon name={aiConfigured ? 'settings' : 'sparkles'} />}
+          title="Einstellungen der KI-Anbindung: ohne KI, Ollama (lokal) oder OpenRouter (Cloud)"
+          icon={<Icon name="sparkles" />}
         >
-          <span className="sr-only sm:not-sr-only">{settingsLabel}</span>
+          {/* Same wording as the server messages and docs/KI.md. */}
+          <span className="sr-only sm:not-sr-only">KI einrichten</span>
         </Button>
       </div>
     </header>

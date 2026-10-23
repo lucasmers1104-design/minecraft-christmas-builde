@@ -507,7 +507,6 @@ export function BuilderApp() {
         projectName={project?.name ?? null}
         onOpenLibrary={() => setLibraryOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
-        aiConfigured={!!aiStatus?.enabled}
         plannedBy={variants.length > 0 ? plannedBy : null}
       />
       <ProjectLibrary
@@ -553,6 +552,7 @@ export function BuilderApp() {
           <PromptPanel
             description={description}
             onDescriptionChange={setDescription}
+            ready={hydrated}
             aiActive={aiActive}
             parsed={parsed}
             conflicts={resolved.conflicts}

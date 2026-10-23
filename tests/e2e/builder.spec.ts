@@ -92,6 +92,8 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
 
   test('Tastaturbedienung: Generieren per Tastatur', async ({ page }) => {
     await page.goto('/');
+    // The button is disabled until the page is hydrated; a disabled button cannot take focus.
+    await expect(page.getByTestId('generate-button')).toBeEnabled();
     await page.getByTestId('generate-button').focus();
     await page.keyboard.press('Enter');
     await waitForRenderedModel(page);
