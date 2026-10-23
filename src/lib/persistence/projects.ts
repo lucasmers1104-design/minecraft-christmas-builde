@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import { z } from 'zod';
+import { planSchema } from '@/core/ai/planSchema';
 import { migrateSpecLike } from '@/core/schema/migrateSpec';
 import { SUPPORTED_MINECRAFT_VERSIONS } from '@/core/compat/profile';
 import type { SpecPatch } from '@/core/generator/parseDescription';
@@ -53,7 +54,12 @@ export function migrateStoredSpec(raw: unknown): unknown {
   }
 }
 
-/** A local-AI plan the project was generated from (kept so reopening restores the same settings). */
+/**
+ * An AI plan the project was generated from (kept so reopening restores the same settings).
+ * `plan`, `attempts`, `source` and `costUsd` are optional: projects saved before OpenRouter
+ * existed lack them (source missing = Ollama). A stored `plan` or `attempts` that no longer
+ * fits the current catalogue is dropped instead of making the whole project unreadable.
+ */
 const storedAiPlanSchema = z
   .object({
     description: z.string().max(MAX_DESCRIPTION_LENGTH),
@@ -62,6 +68,11 @@ const storedAiPlanSchema = z
     explanation: z.string().max(600),
     unsupported: z.array(z.string().max(200)).max(12),
     patch: specPatchSchema,
+    plan: planSchema.optional().catch(undefined).optional(),
+    attempts: z.number().int().min(1).max(10).optional().catch(undefined).optional(),
+    source: z.enum(['ollama', 'openrouter']).optional(),
+    /** Cost reported by OpenRouter in US dollars (null = not reported). */
+    costUsd: z.number().nonnegative().nullable().optional(),
   })
   .strict();
 

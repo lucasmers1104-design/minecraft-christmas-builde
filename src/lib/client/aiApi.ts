@@ -16,7 +16,7 @@ export interface AiPlanState {
   /** 1 = valid at once, 2 = after the repair round. */
   attempts?: number;
   /** Who planned it; missing in projects saved before OpenRouter existed (= Ollama). */
-  source?: AiProvider;
+  source?: Exclude<AiProvider, 'off'>;
   /** Real cost reported by OpenRouter in US dollars (null/absent = unknown or free). */
   costUsd?: number | null;
 }
@@ -28,13 +28,21 @@ export async function fetchAiStatus(): Promise<AiStatus> {
 }
 
 export class AiRequestError extends Error {
+  /** Server error code of /api/ai/plan, e.g. "no_key", "auth", "credits", "timeout" (see planValidation.ts). */
+  readonly code: string | undefined;
+  /** What a failed plan request still cost on OpenRouter in US dollars (null = unknown, undefined = nothing reported). */
+  readonly costUsd: number | null | undefined;
+
   constructor(
     readonly status: number,
     message: string,
     readonly issues: string[] = [],
+    extra: { code?: string; costUsd?: number | null } = {},
   ) {
     super(message);
     this.name = 'AiRequestError';
+    this.code = extra.code;
+    this.costUsd = extra.costUsd;
   }
 }
 
@@ -75,13 +83,13 @@ export async function requestAiPlan(description: string, signal?: AbortSignal): 
     body: JSON.stringify({ description }),
     signal,
   });
-  const body = (await res.json().catch(() => ({}))) as Partial<AiPlanResponse> & { error?: string; issues?: string[] };
+  const body = (await res.json().catch(() => ({}))) as Partial<AiPlanResponse> & { error?: string; issues?: string[]; code?: string };
   if (!res.ok || !body.plan || !body.patch) {
     const detail = body.issues && body.issues.length > 0 ? ` (${body.issues.slice(0, 3).join('; ')})` : '';
-    throw new AiRequestError(res.status, `${body.error ?? `HTTP ${res.status}`}${detail}`, body.issues ?? []);
+    throw new AiRequestError(res.status, `${body.error ?? `HTTP ${res.status}`}${detail}`, body.issues ?? [], { code: body.code, costUsd: body.costUsd });
   }
-  const source: AiProvider = (body as { source?: string }).source === 'openrouter' ? 'openrouter' : 'ollama';
-  const costUsd = (body as { costUsd?: number | null }).costUsd;
+  const source: Exclude<AiProvider, 'off'> = body.source === 'openrouter' ? 'openrouter' : 'ollama';
+  const costUsd = body.costUsd;
   return {
     description,
     model: body.model ?? '',
