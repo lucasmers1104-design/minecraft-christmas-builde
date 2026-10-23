@@ -218,11 +218,16 @@ function placeSegment(site: Site, seg: Segment, ls: LandscapeStyle, m: Landscape
         if (seg.kind === 'gardsgard') {
           put(x, 1, z, fence);
           if (i % 3 === 0 || isEnd(i)) put(x, 2, z, fence);
-        } else if (postAt.has(i)) {
+        } else if (postAt.has(i) && isEnd(i)) {
+          // Corners and ends: a log post one higher than the fence.
           put(x, 1, z, post);
           put(x, 2, z, post);
           ground(x, z);
-        } else put(x, 1, z, fence);
+        } else {
+          // In between: light fence posts every 4–6 (two fences high), rails 1 high.
+          put(x, 1, z, fence);
+          if (postAt.has(i)) put(x, 2, z, fence);
+        }
       });
       claimAll();
       return;

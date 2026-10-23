@@ -439,18 +439,20 @@ export function placeProps(site: Site, frame: PlotFrame, ls: LandscapeStyle, m: 
 export function placePond(site: Site, frame: PlotFrame, rng: SeededRandom): boolean {
   let vh = 0;
   for (let x = 0; x < site.W; x++) for (let z = 0; z < site.L; z++) if (site.foot[site.i(x, z)]) vh = Math.max(vh, frame.toPlot(x, z)[1]);
-  const cells = lawnCells(site).filter(([x, z]) => site.edge(x, z) >= 3 && site.distFoot[site.i(x, z)]! >= 3);
-  const shape = (cx: number, cz: number, ax: number, az: number) => {
-    const out: [number, number][] = [];
-    for (let dx = -ax; dx <= ax; dx++)
-      for (let dz = -az; dz <= az; dz++) if ((dx * dx) / (ax * ax + 0.5) + (dz * dz) / (az * az + 0.5) <= 1) out.push([cx + dx, cz + dz]);
-    return out;
-  };
-  const ax = rng.int(1, 2);
-  const az = ax === 2 ? 1 : 2;
-  const second: [number, number] = rng.pick(DIRS4);
-  for (const [cx, cz] of rng.shuffle(cells).sort((a, b) => (frame.toPlot(b[0], b[1])[1] >= vh ? 1 : 0) - (frame.toPlot(a[0], a[1])[1] >= vh ? 1 : 0))) {
-    const ice = [...shape(cx, cz, ax, az), ...shape(cx + second[0], cz + second[1], 1, 1)];
+  // Irregular 4–7 cells (research 14/U1: 4–9), no straight edge longer than 3.
+  const SHAPES: readonly (readonly [number, number][])[] = [
+    [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [1, -1]],
+    [[0, 0], [1, 0], [0, 1], [1, 1], [2, 1], [-1, 0], [1, 2]],
+    [[0, 0], [0, 1], [1, 1], [1, 2], [0, 2], [-1, 1]],
+    [[0, 0], [1, 0], [1, 1], [2, 1], [0, -1]],
+  ];
+  const form = rng.pick(SHAPES);
+  const flip = rng.chance(0.5);
+  const cells = lawnCells(site).filter(([x, z]) => site.edge(x, z) >= 3 && site.distFoot[site.i(x, z)]! >= 2);
+  const behind = (x: number, z: number) => (frame.toPlot(x, z)[1] >= vh - 2 ? 1 : 0);
+  for (const [cx, cz] of rng.shuffle(cells).sort((a, b) => behind(b[0], b[1]) - behind(a[0], a[1]))) {
+    const ice = form.map(([dx, dz]): [number, number] => (flip ? [cx + dz, cz + dx] : [cx + dx, cz + dz]));
+    if (!ice.every(([x, z]) => site.isLawn(x, z) && site.edge(x, z) >= 3 && site.distFoot[site.i(x, z)]! >= 2)) continue;
     const keys = new Set(ice.map(([x, z]) => `${x},${z}`));
     const shore: [number, number][] = [];
     for (const [x, z] of ice)
@@ -461,16 +463,18 @@ export function placePond(site: Site, frame: PlotFrame, rng: SeededRandom): bool
           shore.push([x + dx, z + dz]);
         }
       }
-    const all = [...ice, ...shore];
-    if (!all.every(([x, z]) => site.isLawn(x, z) && site.edge(x, z) >= 2 && site.distFoot[site.i(x, z)]! >= 2)) continue;
+    if (shore.some(([x, z]) => site.usage(x, z) === Use.PATH)) continue;
     for (const [x, z] of ice) {
+      // Packed and blue ice never melt (plain ice would next to a lantern).
       site.set(x, 0, z, blockState(cellHash(rng.seed, x, z, 1) < 0.25 ? 'blue_ice' : 'packed_ice'));
       site.claim(x, z, Use.POND);
     }
+    // Shore: stones and trodden earth on the free lawn around it.
     for (const [x, z] of shore) {
+      if (!site.isLawn(x, z) || site.edge(x, z) < 2) continue;
       const u = cellHash(rng.seed, x, z, 2);
-      if (u < 0.45) site.set(x, 0, z, blockState(u < 0.25 ? 'andesite' : 'stone'));
-      else if (u < 0.7) site.set(x, 0, z, blockState('coarse_dirt'));
+      if (u < 0.4) site.set(x, 0, z, blockState(u < 0.2 ? 'andesite' : 'stone'));
+      else if (u < 0.65) site.set(x, 0, z, blockState('coarse_dirt'));
       site.claim(x, z, Use.POND);
     }
     return true;

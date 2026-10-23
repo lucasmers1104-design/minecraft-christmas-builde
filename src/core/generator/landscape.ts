@@ -111,11 +111,12 @@ export function buildLandscape(b: VoxelBuilder, rng: SeededRandom, entrances: re
   const anchor = o.christmasTree ? reserveAnchor(site, frame, main, r) : null;
   const g: GardenOptions = { detailLevel: o.detailLevel, minecraftVersion: o.minecraftVersion, flowers };
   plantBeds(site, ls, g, r.fork('beds'));
+  // Winter: the frozen pond is the second anchor, before trees take the space.
+  if (o.theme !== 'none') placePond(site, frame, r.fork('pond'));
   const trees = plantTrees(site, frame, ls, g, r.fork('trees'));
   placeProps(site, frame, ls, m, g, r.fork('props'));
   plantBushes(site, ls, g, border.gatePosts, r.fork('bushes'));
   placeRocks(site, frame, ls, r.fork('rocks'));
-  if (o.theme !== 'none') placePond(site, frame, r.fork('pond'));
 
   // 6. Ground texture, plot edge, lawn plants.
   textureGround(site, ls, r.fork('ground'));
@@ -337,10 +338,12 @@ function plantLawn(site: Site, ls: LandscapeStyle, o: LandscapeOptions, rng: See
       cells.push([x, z]);
       if (site.edge(x, z) >= 2 && [-1, 1].some((d) => site.usage(x + d, z) === Use.PATH || site.usage(x, z + d) === Use.PATH)) edgeCells.push([x, z]);
     }
-  if (ls.path.edgePlants.length > 0) {
+  // Beside the path: the style's edge plants, else a quarter short grass (research 15, T5).
+  const edgeMix = ls.path.edgePlants.length > 0 ? ls.path.edgePlants : ls.garden.formal ? [] : ([['short_grass', 1]] as const);
+  if (edgeMix.length > 0) {
     for (const [x, z] of edgeCells) {
-      if (cellHash(seed, x, z, 7) >= 0.3) continue;
-      site.set(x, 1, z, plantState(pickBy(ls.path.edgePlants, cellHash(seed, x, z, 8)), rng));
+      if (cellHash(seed, x, z, 7) >= (ls.path.edgePlants.length > 0 ? 0.3 : 0.22)) continue;
+      site.set(x, 1, z, plantState(pickBy(edgeMix, cellHash(seed, x, z, 8)), rng));
     }
   }
   const share = ls.ground.plantShare * (o.detailLevel === 1 ? 0.6 : 1);
