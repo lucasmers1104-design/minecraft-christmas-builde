@@ -331,6 +331,10 @@ export function buildRoundTower(
   const doorY = plan.plinth + 1;
   const entrance = spec.door ? { x: cx + VECTOR[spec.door][0] * (r + 1), z: cz + VECTOR[spec.door][2] * (r + 1) } : null;
   const nearEntrance = (x: number, z: number, reach = 2.5) => !!entrance && (x - entrance.x) ** 2 + (z - entrance.z) ** 2 <= reach * reach;
+  // Portal zone: outside the wall in front of the entrance, up to four rows above the door – the
+  // door template puts its frame, hood and lanterns there, so no part of the tower may (this
+  // matters for low storeys and one-storey towers, whose sills or crown would come down to it).
+  const portal = (x: number, y: number, z: number) => !!entrance && y <= doorY + 4 && !has(disk, x, z) && nearEntrance(x, z, 3.5);
 
   // Ladder: inside the wall on the ladder side, one cell beside the axis (the axis keeps its
   // window), on the side away from the house.
@@ -360,7 +364,8 @@ export function buildRoundTower(
     const h = slit && rows >= 4 ? 3 : 2;
     const yb = slit || rows < 4 ? y0 + 1 : y0 + 2;
     const outside = HORIZONTAL.filter((s) => {
-      if (k === 0 && s === spec.door) return false;
+      // No window in the entrance, nor one whose sill would sit in the portal zone above it.
+      if (s === spec.door && (k === 0 || yb - 1 <= doorY + 4)) return false;
       const [vx, , vz] = VECTOR[s];
       const ax = cx + vx * r;
       const az = cz + vz * r;
@@ -446,7 +451,7 @@ export function buildRoundTower(
   const trimSlab = roleWith('slab', ...trimRoles);
   for (const band of design.bands)
     for (const { x, z } of cellsOf(k1)) {
-      if ((band.y <= doorY + 4 && nearEntrance(x, z)) || !freeOut(x, band.y, z)) continue;
+      if (portal(x, band.y, z) || !freeOut(x, band.y, z)) continue;
       set(x, band.y, z, band.kind === 'cornice' ? blocks.stairs(trimStairs, facingIn(x, z), 'top') : blocks.slab(trimSlab, 'top'), Priority.STRUCTURE);
     }
 
@@ -519,11 +524,12 @@ export function buildRoundTower(
     const every = density === 'many' ? 2 : density === 'normal' ? 4 : 0;
     const lit = new Set<number>();
     for (const { mx, mz, x, z } of cellsOf(k1)) {
-      if (inHouse(x, corbelY, z)) continue;
+      if (inHouse(x, corbelY, z) || portal(x, corbelY, z)) continue;
       const merlon = merlons.has(mx, mz);
       let lantern = false;
-      if ((!design.machicolation || merlon) && free(x, corbelY, z)) set(x, corbelY, z, blocks.stairs(corbelStairs, facingIn(x, z), 'top'), Priority.STRUCTURE);
-      else if (design.machicolation && every > 0 && free(x, corbelY, z) && N4.some(([a, b]) => !has(outerDisk, x + a, z + b))) {
+      const open = (y: number) => free(x, y, z) && !portal(x, y, z);
+      if ((!design.machicolation || merlon) && open(corbelY)) set(x, corbelY, z, blocks.stairs(corbelStairs, facingIn(x, z), 'top'), Priority.STRUCTURE);
+      else if (design.machicolation && every > 0 && open(corbelY) && N4.some(([a, b]) => !has(outerDisk, x + a, z + b))) {
         const gap = Math.floor(Math.atan2(z - cz, x - cx) / period + 100 * layout.merlons);
         if (gap % every === 0 && !lit.has(gap)) {
           lit.add(gap);
@@ -531,15 +537,15 @@ export function buildRoundTower(
           set(x, corbelY, z, blocks.fixed(plan.input.lantern, { hanging: 'true' }), Priority.STRUCTURE);
         }
       }
-      for (const y of [top, top + 1]) if (free(x, y, z)) set(x, y, z, crownWall, Priority.STRUCTURE);
-      if (merlon && free(x, top + 2, z)) set(x, top + 2, z, crownWall, Priority.STRUCTURE);
+      for (const y of [top, top + 1]) if (open(y)) set(x, y, z, crownWall, Priority.STRUCTURE);
+      if (merlon && open(top + 2)) set(x, top + 2, z, crownWall, Priority.STRUCTURE);
       if (!lantern) result.eaves.push({ x, y: corbelY - 1, z, outward: outward(x, z) });
     }
   } else {
     // Corbel ring that carries the helm's eave (the cornice under a dome's drum).
     const corbelStairs = roleWith('stairs', 'roofTrim', 'wall', 'plinth');
     for (const { x, z } of cellsOf(k1)) {
-      if (!freeOut(x, top, z)) continue;
+      if (!freeOut(x, top, z) || portal(x, top, z)) continue;
       set(x, top, z, blocks.stairs(corbelStairs, facingIn(x, z), 'top'), Priority.STRUCTURE);
       if (design.helm.kind !== 'witch') result.eaves.push({ x, y: top - 1, z, outward: outward(x, z) });
     }
@@ -557,10 +563,15 @@ export function buildRoundTower(
     }
   }
 
-  buildHelm(ctx, design.helm, cx, cz, set);
+  buildHelm(ctx, design.helm, cx, cz, (x, y, z, state) => {
+    if (!portal(x, y, z)) set(x, y, z, state);
+  });
   // Garlands of a witch hat lie on its brim, against the hat band (report 09, winter variant).
   if (design.helm.kind === 'witch')
-    for (const { x, z } of cellsOf(k2)) if (free(x, design.helm.y0 + 1, z)) result.eaves.push({ x, y: design.helm.y0 + 1, z, outward: outward(x, z) });
+    for (const { x, z } of cellsOf(k2)) {
+      const y = design.helm.y0 + 1;
+      if (free(x, y, z) && !portal(x, y, z) && !free(x, y - 1, z)) result.eaves.push({ x, y, z, outward: outward(x, z) });
+    }
   return result;
 }
 

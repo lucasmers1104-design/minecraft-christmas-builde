@@ -392,6 +392,36 @@ describe('Rundtürme: harte Regeln', () => {
       }
   });
 
+  it.each([
+    ['1 Geschoss', { floors: 1 }],
+    ['8 Geschosse, Höhe 6', { floors: 8, floorHeight: 6 }],
+    ['Höhe 4, viele Fenster', { floorHeight: 4, windows: 'many' }],
+    ['wenige Fenster, keine Laternen', { windows: 'few', lanternDensity: 'none' }],
+    ['viele Laternen', { lanternDensity: 'many' }],
+    ['Flachdach', { roofType: 'flat' }],
+    ['steiles Profil', { roofProfile: 'steep' }],
+    ['flaches Profil', { roofProfile: 'shallow' }],
+    ['Glockenprofil', { roofProfile: 'bell' }],
+  ] as const)('Optionen (%s): frei stehender Turm und Haus mit Rundturm ohne Reparaturen und ohne Lint-Befund', (_, options) => {
+    for (const style of STYLE_IDS)
+      for (const minecraftVersion of ['1.21.11', '1.21.1'] as const) {
+        const extra = { targetMinecraftVersion: minecraftVersion, seed: 5 };
+        const t = build('tower', style, 'large', extra, options);
+        clean(t, `Turm ${style} ${minecraftVersion}`);
+        expect(t.house!.openings.doors).toHaveLength(1);
+        // The house itself may have findings of its own with unusual options (one-storey medieval
+        // houses: an entrance step of the house, also without any tower); the round tower must
+        // not add any: per rule at most as many findings as the same house without a tower.
+        const h = build('house', style, 'large', extra, { ...options, tower: 'round' });
+        const plain = build('house', style, 'large', extra, { ...options, tower: 'none' });
+        expect(h.repairs, `Haus ${style} ${minecraftVersion}`).toEqual([]);
+        const count = (r: ReturnType<typeof build>) => lintHouse(r.model, r.house!).reduce((m, i) => m.set(i.rule, (m.get(i.rule) ?? 0) + 1), new Map<string, number>());
+        const withTower = count(h);
+        const without = count(plain);
+        for (const [rule, n] of withTower) expect(n, `Haus ${style} ${minecraftVersion} ${rule}`).toBeLessThanOrEqual(without.get(rule) ?? 0);
+      }
+  });
+
   it('deterministisch: gleicher Seed ergibt ein bitgleiches Modell', () => {
     for (const style of ['medieval', 'fantasy', 'mediterranean'] as const) {
       const a = build('tower', style, 'large', { seed: 11 });
