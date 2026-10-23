@@ -50,7 +50,7 @@ export function planDormers(ctx: Ctx, mass: Mass, section: RoofSectionSpec, coun
   const n = Math.min(count, Math.floor((span - 2) / 5));
   const wallTop = wallTopOf(ctx.plan, mass);
   const sides: { side: HorizontalDirection; front: number }[] = alongX
-    ? [{ side: 'north', front: section.z0 }]
+    ? [{ side: 'north', front: section.z0 }, ...(count >= 2 ? [{ side: 'south' as const, front: section.z1 }] : [])]
     : [
         { side: 'west', front: section.x0 },
         { side: 'east', front: section.x1 },

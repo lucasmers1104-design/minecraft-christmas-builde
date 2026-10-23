@@ -5,7 +5,7 @@ import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRa
 import { Blocks } from '@/core/generator/house/materials';
 import { nearRoundTower, planHouse, roofSection, storeyRect, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { buildRoundTower, roundTowerTop } from '@/core/generator/house/roundTower';
-import { buildPassages, buildPlinth, buildStairs, buildStorey, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
+import { buildPassages, buildPlinth, buildStairs, buildStorey, buildStringCourses, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
 import { buildChimney, buildDormer, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
 import { buildOpenings, type OpeningsResult } from '@/core/generator/house/openings';
 import { buildGables } from '@/core/generator/house/gables';
@@ -151,6 +151,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
     else buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
   }
   const openings = buildOpenings(ctx, panels);
+  buildStringCourses(ctx, squareMasses(plan));
   // Gable fields (timber, windows) and ridge finials, after the chimney so nothing hides behind it.
   openings.windows += buildGables(ctx, roof, sections).windows;
   const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;

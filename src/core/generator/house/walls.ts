@@ -335,3 +335,29 @@ function ladderSpot(ctx: Ctx, inner: Rect, y0: number, y1: number, avoid: (x: nu
 export function isLogMaterial(materialId: string): boolean {
   return getMaterial(materialId).family === 'log';
 }
+
+/**
+ * String courses (after the openings, only into free cells): rendered walls without a frame
+ * get a stone band at every storey line, an upside-down stair in front of the floor layer
+ * (research 01: a horizontal element at each storey boundary; the shadow under it is the
+ * darkest line on a plain wall). Doors, oriels and balconies keep their cells.
+ */
+export function buildStringCourses(ctx: Ctx, masses: readonly Mass[]): void {
+  const { plan, blocks, builder } = ctx;
+  if (plan.input.styleId !== 'mediterranean' || !blocks.has('plinth', 'stairs')) return;
+  for (const mass of masses) {
+    if (mass.frames || mass.round) continue;
+    for (let k = 1; k < mass.floors; k++) {
+      const rect = storeyRect(mass, k);
+      const y = floorY(plan, k);
+      for (const side of SIDES) {
+        if (joinedAt(plan, mass, side, k) || joinedAt(plan, mass, side, k - 1)) continue;
+        const f = facadeOf(rect, side);
+        for (let u = -1; u <= f.length; u++) {
+          const p = facadePos(f, u, 1);
+          if (builder.inside(p.x, y, p.z) && builder.isAir(p.x, y, p.z)) set(ctx, p.x, y, p.z, blocks.stairs('plinth', OPPOSITE[side] as HorizontalDirection, 'top'), Priority.STRUCTURE);
+        }
+      }
+    }
+  }
+}
