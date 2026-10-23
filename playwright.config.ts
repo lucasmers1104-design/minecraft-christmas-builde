@@ -37,6 +37,11 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
     // Imported test textures go to a throw-away folder, not the project's .minecraft-assets.
-    env: { ...(process.env as Record<string, string>), MCB_ASSET_CACHE_DIR: join(tmpdir(), `mcb-e2e-assets-${process.pid}`) },
+    // Own settings folder: AI settings saved on this PC must not change what the tests see.
+    env: {
+      ...(process.env as Record<string, string>),
+      MCB_ASSET_CACHE_DIR: join(tmpdir(), `mcb-e2e-assets-${process.pid}`),
+      MCB_SETTINGS_DIR: join(tmpdir(), `mcb-e2e-settings-${process.pid}`),
+    },
   },
 });

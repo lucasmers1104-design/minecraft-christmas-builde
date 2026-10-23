@@ -10,7 +10,7 @@ import { AI_OFF_MESSAGE, DEFAULT_OPENROUTER_MODEL, DEFAULT_REASONING, type AiSet
 import { resetOpenRouterModelCache } from '@/lib/ai/openRouterModels';
 import { aiStatus } from '@/lib/ai/planner';
 import { loadAiConfig, settingsFilePath, toSettingsView, writeAiSettings, writeFileAtomic } from '@/lib/ai/settingsStore';
-import { isLoopbackHost } from '@/lib/http/apiResponses';
+import { isDirectHost, isLoopbackHost } from '@/lib/http/apiResponses';
 import { GOOD_KEY, NO_LIMIT_KEY, PLAN_COST, startFakeOpenRouter, type FakeOpenRouter } from '../helpers/fakeOpenRouter';
 
 /**
@@ -244,6 +244,23 @@ describe('POST /api/ai/plan, GET /api/ai/status und /api/ai/models', () => {
     const res = await postPlan({ description: 'Haus' }, { origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' });
     expect(res.status).toBe(403);
     expect(fake.chat).toHaveLength(0);
+  });
+
+  it('DNS-Rebinding: fremder Hostname mit passendem Origin wird abgelehnt, LAN-Adressen nicht', async () => {
+    process.env.MCB_AI_PROVIDER = 'openrouter';
+    process.env.OPENROUTER_API_KEY = GOOD_KEY;
+    const evil = 'http://rebind.evil.example:3000';
+    const res = await planRoute(
+      request(`${evil}/api/ai/plan`, { method: 'POST', body: { description: 'Haus' }, headers: { origin: evil, 'sec-fetch-site': 'same-origin' } }),
+    );
+    expect(res.status).toBe(403);
+    expect(fake.chat).toHaveLength(0);
+    for (const host of ['localhost:3000', '127.0.0.1:3000', '192.168.178.91:3000', '[::1]:3000', 'desktop-luca:3000']) {
+      expect(isDirectHost(host), host).toBe(true);
+    }
+    for (const host of ['rebind.evil.example:3000', 'localhost.evil.example', '127.0.0.1.nip.io']) {
+      expect(isDirectHost(host), host).toBe(false);
+    }
   });
 
   it('mit OpenRouter: source openrouter, Kosten und ein gültiger Patch', async () => {

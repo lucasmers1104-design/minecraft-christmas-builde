@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { AI_PROVIDERS, isOpenRouterModelId, openRouterKeyProblem, REASONING_EFFORTS, type AiSettingsUpdate } from '@/core/ai/providers';
 import { loadAiConfig, toSettingsView, writeAiSettings } from '@/lib/ai/settingsStore';
-import { jsonError, jsonNoStore, readJsonBody, rejectUnlessLocal, RequestBodyError } from '@/lib/http/apiResponses';
+import { jsonError, jsonNoStore, readJsonBody, rejectCrossOrigin, rejectUnlessLocal, RequestBodyError } from '@/lib/http/apiResponses';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -78,7 +78,9 @@ function issueText(issue: z.core.$ZodIssue): string {
 }
 
 /** The AI settings as the browser may see them (no API key, only a masked hint). */
-export async function GET(): Promise<NextResponse> {
+export async function GET(request?: Request): Promise<NextResponse> {
+  const denied = request ? rejectCrossOrigin(request) : null;
+  if (denied) return denied;
   return jsonNoStore(toSettingsView(await loadAiConfig()));
 }
 

@@ -67,8 +67,26 @@ export function crossOriginProblem(request: Request): string | null {
 export const CROSS_ORIGIN_MESSAGE =
   'Diese Anfrage kommt nicht von der App selbst (z. B. von einer fremden Webseite) und wurde aus Sicherheitsgründen abgelehnt.';
 
+/**
+ * Host names the app is really reached under: localhost, IP literals and single-label LAN
+ * names ("desktop-luca"). A dotted name ("evil.example") pointing at this PC is a DNS
+ * rebinding attempt – there Origin and Host match, so the origin check alone cannot see it.
+ */
+export function isDirectHost(host: string): boolean {
+  if (isLoopbackHost(host)) return true;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${host}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith('[') || /^[a-z0-9-]+$/.test(hostname);
+}
+
 /** 403 unless the request comes from the app's own page (or from no browser at all). */
 export function rejectCrossOrigin(request: Request): NextResponse<ApiErrorBody> | null {
+  const host = requestHost(request);
+  if (!isDirectHost(host)) return jsonError(403, CROSS_ORIGIN_MESSAGE, [`Host: ${host.slice(0, 100)}`]);
   const problem = crossOriginProblem(request);
   return problem ? jsonError(403, CROSS_ORIGIN_MESSAGE, [problem]) : null;
 }

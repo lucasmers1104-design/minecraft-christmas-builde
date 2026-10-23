@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { aiStatus } from '@/lib/ai/planner';
 import { loadAiConfig } from '@/lib/ai/settingsStore';
-import { jsonNoStore } from '@/lib/http/apiResponses';
+import { jsonNoStore, rejectCrossOrigin } from '@/lib/http/apiResponses';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,6 +11,9 @@ export const dynamic = 'force-dynamic';
  * credit, model with structured output; Ollama = server reachable, model pulled; off = no
  * network access at all.
  */
-export async function GET(): Promise<NextResponse> {
+export async function GET(request?: Request): Promise<NextResponse> {
+  // The status shows the remaining credit – only for the app's own page.
+  const denied = request ? rejectCrossOrigin(request) : null;
+  if (denied) return denied;
   return jsonNoStore(await aiStatus(await loadAiConfig()));
 }
