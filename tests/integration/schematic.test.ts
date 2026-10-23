@@ -191,9 +191,12 @@ describe('Negative Fälle', () => {
     });
     expect(validateSchematic(dataVersion).issues.join()).toMatch(/DataVersion/);
 
+    // An index just past the palette (one or two VarInt bytes, depending on the palette size).
     const badIndex = tamper((r) => {
       const data = blocks(r).Data as nbt.ByteArray;
-      data.value = data.value.map((b, i) => (i === 0 ? 120 : b));
+      const v = house.palette.length;
+      const bytes = v < 128 ? [v] : [(v & 0x7f) | 0x80, v >> 7];
+      data.value = data.value.map((b, i) => (i < bytes.length ? (bytes[i]! << 24) >> 24 : b));
     });
     expect(validateSchematic(badIndex).issues.join()).toMatch(/verweist auf keinen Paletteneintrag/);
 

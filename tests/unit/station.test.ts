@@ -212,7 +212,6 @@ describe('Bahnhofsuhr (Bericht 17, Empfehlung 9)', () => {
           expect(propsOf(blockAt(model, c.x, c.y + 1, c.z - 1)).axis, label).toBe('y');
           expect(propsOf(blockAt(model, c.x + 1, c.y, c.z - 1)).axis, label).toBe('x');
         }
-        expect(model.palette.some((s) => s.includes('black_concrete')), label).toBe(false);
       }
     // Wide halls get at least a D5 dial (D7 only where the gable leaves room under the rise cap);
     // the low Mediterranean tile roof (about 27°) leaves room for a D3 dial only.

@@ -618,10 +618,10 @@ function buildGoodsShed(builder: VoxelBuilder, s: { x0: number; length: number; 
       gables: true,
     },
   ]);
-  const roofSlab = blockState(requireForm(input.materials.roof, 'slab'), { type: 'bottom' });
+  const roofSlab = blockState(profileBlockId(requireForm(input.materials.roof, 'slab'), input.minecraftVersion), { type: 'bottom' });
   const loadingY = flat ? wallTop + 1 : wallTop;
   for (let x = x0 - 1; x <= x1 + 1; x++) set(builder, x, loadingY, z1 + 2, roofSlab, Priority.ROOF);
-  for (let x = x0; x <= x1; x += 4) set(builder, x, loadingY - 1, z1 + 2, blockState(requireForm(input.materials.frame, 'stairs'), { facing: 'north', half: 'top' }), S);
+  for (let x = x0; x <= x1; x += 4) set(builder, x, loadingY - 1, z1 + 2, blockState(profileBlockId(requireForm(input.materials.frame, 'stairs'), input.minecraftVersion), { facing: 'north', half: 'top' }), S);
   if (free(builder, gx, loadingY - 1, z1 + 2)) set(builder, gx, loadingY - 1, z1 + 2, hanging, Priority.DECOR);
   // Goods on the track ramp, away from the gate: barrels in twos and threes, a hay bale.
   for (const x of [x0, x0 + 1, x1 - 1, x1]) {

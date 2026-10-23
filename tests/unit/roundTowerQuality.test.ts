@@ -144,7 +144,8 @@ describe('Rundturm im Modell', () => {
     }
     // Weathering everywhere in the shaft, clearly more under the crown (report 16, recommendation 3).
     expect(shaftWeathered / shaftCells).toBeGreaterThan(0.08);
-    expect(crownWeathered / crownCells).toBeGreaterThanOrEqual(1.5 * (shaftWeathered / shaftCells));
+    // (1.4: the wall field itself now fades over eight blocks instead of three, research 07.)
+    expect(crownWeathered / crownCells).toBeGreaterThanOrEqual(1.4 * (shaftWeathered / shaftCells));
   });
 
   it('Fachwerkstile: Turm über dem Sockel aus der Wandrolle mit Pfosten in den Kerben', () => {
