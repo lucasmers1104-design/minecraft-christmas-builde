@@ -19,7 +19,7 @@ const VIEWS: readonly SegmentOption<MaterialView>[] = [
 
 const VIEW_NOTES: Record<MaterialView, string> = {
   items:
-    'Gezählt wie im Spiel: Eine Tür zählt einmal für beide Hälften, eine doppelte Stufe als zwei Stufen, Kerzen, Schneeschichten und Blüten einzeln, ein bepflanzter Topf als Topf plus Pflanze.',
+    'Gezählt wie im Spiel: Türen einmal für beide Hälften, doppelte Stufen zweimal, Kerzen, Schneeschichten und Blüten einzeln, bepflanzte Töpfe als Topf plus Pflanze.',
   blocks: 'Blöcke im Modell (ohne Luft), nach Blocktyp zusammengefasst, egal wie sie ausgerichtet sind.',
   states: 'Jeder Blockzustand (Block mit Eigenschaften wie Ausrichtung) mit seiner Anzahl, so wie er in der .schem-Datei steht.',
 };
@@ -213,7 +213,7 @@ export function MaterialList({ model }: { model: VoxelModel | null }) {
           <span>
             {words.length > 0 ? `${de(shown.length)} von ${de(rows.length)} Einträgen. ` : null}
             {VIEW_NOTES[view]}
-            {view === 'items' ? ` Shulker-Kisten: je ${SHULKER_SLOTS} Stacks.` : null}
+            {view === 'items' ? ` Eine Shulker-Kiste fasst ${SHULKER_SLOTS} Stacks.` : null}
           </span>
         </p>
       </div>

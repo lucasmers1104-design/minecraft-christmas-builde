@@ -177,7 +177,7 @@ const optionId = (base: string, short: string) => `${base}-${short}`;
 export function CompactSelect({ children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <div className="relative">
-      <select className={`${inputClass} h-9 appearance-none pr-8 pl-2.5`} {...rest}>
+      <select className={`${inputClass} h-9 appearance-none pr-9 pl-2.5`} {...rest}>
         {children}
       </select>
       <Icon name="chevron-down" className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-fg-subtle" />

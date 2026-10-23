@@ -93,11 +93,30 @@ export function EditorPanel({
   const invalid = AXES.filter(({ axis }) => !(parsed[axis] >= 0 && parsed[axis] <= maxOf(axis))).map(({ axis }) => axis);
   const coordsValid = invalid.length === 0;
 
-  const description = model
-    ? editCount > 0
-      ? `${editCount.toLocaleString('de-DE')} Änderung${editCount === 1 ? '' : 'en'} an dieser Variante · Rückgängig mit Strg + Z`
-      : 'Unverändert wie generiert.'
-    : 'Verfügbar, sobald ein Bauwerk generiert ist.';
+  const description: ReactNode = model ? (
+    editCount > 0 ? (
+      <>
+        {editCount.toLocaleString('de-DE')} Änderung{editCount === 1 ? '' : 'en'} an dieser Variante ·{' '}
+        <span className="whitespace-nowrap">Rückgängig mit Strg+Z</span>
+      </>
+    ) : (
+      'Unverändert wie generiert.'
+    )
+  ) : (
+    'Verfügbar, sobald ein Bauwerk generiert ist.'
+  );
+
+  // States of the same block differ only in their properties; show those only where needed.
+  const ambiguous = new Set<string>();
+  const seenIds = new Set<string>();
+  for (const m of materials) {
+    if (seenIds.has(m.blockId)) ambiguous.add(m.blockId);
+    seenIds.add(m.blockId);
+  }
+  const optionText = (m: (typeof materials)[number]) => {
+    const props = m.state.slice(m.blockId.length).replace(/^\[|\]$/g, '').replace(/,/g, ', ');
+    return `${m.label} – ${m.count.toLocaleString('de-DE')} ×${ambiguous.has(m.blockId) && props ? ` (${props})` : ''}`;
+  };
 
   return (
     <Panel
@@ -229,8 +248,8 @@ export function EditorPanel({
                     data-testid="replace-from"
                   >
                     {materials.map((m) => (
-                      <option key={m.state} value={m.state}>
-                        {m.label} – {m.count.toLocaleString('de-DE')} × ({m.state.replace('minecraft:', '')})
+                      <option key={m.state} value={m.state} title={m.state}>
+                        {optionText(m)}
                       </option>
                     ))}
                   </CompactSelect>
