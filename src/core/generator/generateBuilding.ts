@@ -138,7 +138,11 @@ function finishHouse(spec: BuildSpec, input: HouseInput, house: HouseResult, rng
     lantern: input.lantern,
     lanternDensity: input.lanternDensity,
     snowGround: input.festive.snow,
-    fenceWood: 'spruce',
+    materials: input.materials,
+    minecraftVersion: spec.targetMinecraftVersion,
+    size: spec.size,
+    detailLevel: spec.detailLevel,
+    christmasTree: input.festive.christmasTree && spec.theme !== 'none',
   });
   if (input.festive.christmasTree && spec.theme !== 'none') {
     const spot = yard.find((c) => c.z < main.rect.z0 - 4 && Math.abs(c.x - plan.door.x) > 5);
