@@ -8,7 +8,8 @@ import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRa
 import { buildHouseV2, type HouseResult } from '@/core/generator/house/buildHouse';
 import { resolveHouseInput, type HouseWishes } from '@/core/generator/house/resolveInput';
 import type { HouseInput } from '@/core/generator/house/plan';
-import { decorateHouseFestive, decorateTreePlot, TREE_PLOT_HEIGHT, treePlotHalf } from '@/core/generator/festiveLayer';
+import { decorateHouseFestive, decorateTreePlot, gardenTreeFootprint, TREE_PLOT_HEIGHT, treePlotHalf } from '@/core/generator/festiveLayer';
+import { festiveChoices } from '@/core/generator/festiveKits';
 import { buildLandscape } from '@/core/generator/landscape';
 import { addSnowCover } from '@/core/generator/festive';
 import { buildMarket } from '@/core/generator/marketStall';
@@ -132,16 +133,25 @@ function finishHouse(spec: BuildSpec, input: HouseInput, house: HouseResult, rng
   const { builder, plan } = house;
   const main = plan.masses[0]!;
   const doorZ = main.rect.z0 - (main.frames ? 3 : 2);
-  const { yard } = buildLandscape(builder, rng.fork('landscape'), [{ x: plan.door.x, z: doorZ, outward: 'north' }], {
+  // The landscape keeps a spot of the right size free for the festive garden tree.
+  const tree = festiveChoices(spec.style, spec.theme, spec.detailLevel, spec.options).tree;
+  const footprint = gardenTreeFootprint(spec);
+  const { yard, report } = buildLandscape(builder, rng.fork('landscape'), [{ x: plan.door.x, z: doorZ, outward: 'north' }], {
     style: input.styleId,
     theme: input.theme,
     garden: input.garden,
     lantern: input.lantern,
     lanternDensity: input.lanternDensity,
     snowGround: input.festive.snow,
-    fenceWood: 'spruce',
+    materials: input.materials,
+    minecraftVersion: spec.targetMinecraftVersion,
+    size: spec.size,
+    detailLevel: spec.detailLevel,
+    christmasTree: tree,
+    treeRadius: footprint.radius,
+    treeHeight: footprint.height,
   });
-  decorateHouseFestive(builder, rng, spec, input, house, yard);
+  decorateHouseFestive(builder, rng, spec, input, house, yard, report.anchor);
   return builder;
 }
 

@@ -437,7 +437,8 @@ describe('Fest-Kits je Stil', () => {
         const r = generateBuildingWithReport(spec({ style, seed, size: 'medium' }));
         const m = r.model;
         expect(count(m, (id) => /_wool$/.test(id)), `${style} ${seed}`).toBe(0);
-        expect(count(m, (id) => id === 'minecraft:spruce_log'), `${style} ${seed}`).toBe(0);
+        // No christmas tree: its star is made of end rods (a garden pine may still stand there).
+        expect(count(m, (id) => id === 'minecraft:end_rod'), `${style} ${seed}`).toBe(0);
         expect(count(m, (id) => id === 'minecraft:bamboo_block'), `${style} ${seed}`).toBeGreaterThanOrEqual(2);
         expect(count(m, (id, s) => id === 'minecraft:lantern' && propsOf(s).hanging === 'true'), `${style} ${seed}`).toBeGreaterThanOrEqual(4);
         expect(r.repairs).toEqual([]);

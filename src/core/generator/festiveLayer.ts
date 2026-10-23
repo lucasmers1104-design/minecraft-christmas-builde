@@ -29,6 +29,17 @@ export const TREE_PLOT_HEIGHT: Readonly<Record<BuildSpec['size'], number>> = { s
 const MIN_GARDEN_TREE = 9;
 const GARDEN_TREE_HEIGHT: Readonly<Record<BuildSpec['size'], number>> = { small: 9, medium: 10, large: 11, huge: 12 };
 
+/** Height of the garden tree a house of this size and detail gets (before fitting). */
+export function gardenTreeHeight(spec: Pick<BuildSpec, 'size' | 'detailLevel'>): number {
+  return GARDEN_TREE_HEIGHT[spec.size] + (spec.detailLevel >= 3 ? 2 : 0);
+}
+
+/** Footprint the landscape keeps free for the garden tree: radius of its widest tier and height. */
+export function gardenTreeFootprint(spec: Pick<BuildSpec, 'size' | 'detailLevel'>): { radius: number; height: number } {
+  const h = gardenTreeHeight(spec);
+  return { radius: Math.ceil(Math.max(...treeProfile(h).radii)), height: h + 1 };
+}
+
 /** Half width of the tree plot: crown radius plus room for lobes and presents in front. */
 export function treePlotHalf(height: number): number {
   return Math.max(...treeProfile(height).radii) + 5;
@@ -101,10 +112,25 @@ function treeFits(b: VoxelBuilder, cx: number, cz: number, h: number): boolean {
  * a free yard cell: at a front corner beside the facade (not in front of it), else in a side
  * yard, else wherever it fits; always away from the path.
  */
-function placeGardenTree(b: VoxelBuilder, rng: SeededRandom, spec: BuildSpec, input: HouseInput, house: HouseResult, yard: readonly Cell[]): (TreeResult & { cx: number; cz: number }) | null {
+function placeGardenTree(
+  b: VoxelBuilder,
+  rng: SeededRandom,
+  spec: BuildSpec,
+  input: HouseInput,
+  house: HouseResult,
+  yard: readonly Cell[],
+  anchor: readonly [number, number] | null = null,
+): (TreeResult & { cx: number; cz: number }) | null {
   const main = house.plan.masses[0]!;
   const doorX = house.plan.door.x;
-  const wished = GARDEN_TREE_HEIGHT[spec.size] + (spec.detailLevel >= 3 ? 2 : 0);
+  const wished = gardenTreeHeight(spec);
+  // The landscape kept a spot of the right size free for exactly this tree: use it first.
+  if (anchor)
+    for (let h = wished; h >= MIN_GARDEN_TREE; h--) {
+      if (!treeFits(b, anchor[0], anchor[1], h)) continue;
+      const tree = buildChristmasTree(b, rng, anchor[0], 1, anchor[1], h, treeOptions(spec, input.lantern));
+      return { ...tree, cx: anchor[0], cz: anchor[1] };
+    }
   const { x0, x1, z0 } = main.rect;
   const rank = (c: Cell) => {
     const beside = c.x < x0 - 1 || c.x > x1 + 1;
@@ -302,7 +328,15 @@ function snowYard(b: VoxelBuilder): Cell[] {
  * lanterns, wreaths, candles and entrance presents (`decorateFestive`), then the extras of the
  * style kit.
  */
-export function decorateHouseFestive(builder: VoxelBuilder, rng: SeededRandom, spec: BuildSpec, input: HouseInput, house: HouseResult, gardenYard: readonly Cell[]): void {
+export function decorateHouseFestive(
+  builder: VoxelBuilder,
+  rng: SeededRandom,
+  spec: BuildSpec,
+  input: HouseInput,
+  house: HouseResult,
+  gardenYard: readonly Cell[],
+  anchor: readonly [number, number] | null = null,
+): void {
   if (spec.theme === 'none') return;
   // On snow ground the landscape reports no yard (it looks for grass): use the free snow cells.
   const yard = gardenYard.length > 0 || !input.garden || !input.festive.snow ? gardenYard : snowYard(builder);
@@ -311,7 +345,7 @@ export function decorateHouseFestive(builder: VoxelBuilder, rng: SeededRandom, s
   const christmas = spec.theme === 'christmas';
 
   let underTree = 0;
-  const tree = choice.tree ? placeGardenTree(builder, rng.fork('gardenTree'), spec, input, house, yard) : null;
+  const tree = choice.tree ? placeGardenTree(builder, rng.fork('gardenTree'), spec, input, house, yard, anchor) : null;
   if (tree && choice.presents && christmas) {
     const count = Math.min(kit.maxPresents, spec.detailLevel >= 3 ? 5 : 3);
     underTree = presentsAroundTree(builder, rng.fork('treePresents'), tree, tree.cx, 1, tree.cz, kit.present, { count, big: false, stack: false });

@@ -6,7 +6,7 @@ import { Blocks } from '@/core/generator/house/materials';
 import { nearRoundTower, planHouse, roofSection, storeyRect, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { buildRoundTower, roundTowerTop } from '@/core/generator/house/roundTower';
 import { buildPassages, buildPlinth, buildStairs, buildStorey, buildStringCourses, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
-import { buildChimney, buildDormer, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
+import { buildChimney, buildDormer, buildEaveLanterns, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
 import { buildOpenings, type OpeningsResult } from '@/core/generator/house/openings';
 import { buildGables } from '@/core/generator/house/gables';
 import { buildInteriorLight } from '@/core/generator/house/interiorLight';
@@ -31,7 +31,18 @@ export interface HouseResult {
 }
 
 /** Space around the building for plinth apron, porch, garden and festive decoration. */
+/** Space around a house without garden (plinth apron, porch, festive decoration). */
 const MARGIN = 4;
+
+/**
+ * Plot margin with a garden: grows with the house (research 15 Empf. 5: the yard should be about
+ * as large as the footprint; the old fixed margin left no room for trees, beds and the
+ * festive tree) and a deeper front garden.
+ */
+function plotMargins(input: HouseInput): { side: number; front: number } {
+  if (!input.garden) return { side: MARGIN, front: input.porch ? 3 : 0 };
+  return { side: Math.max(5, Math.min(9, 5 + Math.floor(Math.max(input.width, input.depth) / 6))), front: 4 };
+}
 
 function shiftRect(r: Rect, dx: number, dz: number): Rect {
   return { x0: r.x0 + dx, x1: r.x1 + dx, z0: r.z0 + dz, z1: r.z1 + dz };
@@ -161,6 +172,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
   buildStringCourses(ctx, squareMasses(plan));
   // Gable fields (timber, windows) and ridge finials, after the chimney so nothing hides behind it.
   openings.windows += buildGables(ctx, roof, sections, opts.plainGables ?? []).windows;
+  if (input.lanternDensity === 'many') buildEaveLanterns(ctx, roof.eaveCells, openings.reserved);
   const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;
   buildStairs(ctx, main, (x, z) => nearChimney(x, z) || nearRoundTower(plan, x, z, 1) || [...openings.reserved].some((k) => k.startsWith(`${x},`) && k.endsWith(`,${z}`)));
   // Pendant lanterns in every storey and a lantern in the attic (after the stairs).
@@ -179,14 +191,14 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
 export function buildHouseV2(input: HouseInput): HouseResult {
   const rng = createSeededRandom(input.seed).fork('house');
   const { plan: local, bounds: b } = prepareHouse(input, rng);
-  const front = input.porch || input.garden ? 3 : 0;
-  const plan = shiftPlan(local, MARGIN - b.minX, MARGIN + front - b.minZ);
+  const { side: margin, front } = plotMargins(input);
+  const plan = shiftPlan(local, margin - b.minX, margin + front - b.minZ);
   const { sections } = planSections(plan, input, rng);
   const roofPlan = planRoofs(sections);
   const height = Math.max(...plan.masses.map((m) => (m.round ? roundTowerTop(plan, m) + 2 : wallTopOf(plan, m) + 1)));
   const dims = {
-    width: b.maxX - b.minX + 1 + 2 * MARGIN,
-    length: b.maxZ - b.minZ + 1 + 2 * MARGIN + front,
+    width: b.maxX - b.minX + 1 + 2 * margin,
+    length: b.maxZ - b.minZ + 1 + 2 * margin + front,
     height: Math.max(height, roofPlan.topY + 4) + 1,
   };
   if (dims.width > MAX_DIMENSIONS.width || dims.length > MAX_DIMENSIONS.length || dims.height > MAX_DIMENSIONS.height) {

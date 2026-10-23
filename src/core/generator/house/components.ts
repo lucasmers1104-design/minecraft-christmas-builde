@@ -257,3 +257,27 @@ export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: Horizon
   }
   chimneyHead(ctx, shaft, yTop);
 }
+
+/**
+ * "Many lanterns": a lantern hanging under each end of the front eave (research 18: light at
+ * the corners frames the house; one per corner, never in the door clearance). The eave cell is
+ * the free cell right under the outermost roof row; a chain bridges to the lantern.
+ */
+export function buildEaveLanterns(ctx: Ctx, eaves: readonly { x: number; y: number; z: number; outward: HorizontalDirection }[], reserved: ReadonlySet<string>): void {
+  const { builder, blocks, plan } = ctx;
+  // Eave along the front: its two ends; gable-fronted houses: the front ends of both side eaves.
+  const front = eaves.filter((c) => c.outward === 'north');
+  const sides = (['west', 'east'] as const).map((o) => eaves.filter((c) => c.outward === o)).filter((run) => run.length >= 4);
+  const ends =
+    plan.masses[0]!.ridgeAxis === 'x' && front.length >= 4
+      ? [front.reduce((a, c) => (c.x < a.x ? c : a)), front.reduce((a, c) => (c.x > a.x ? c : a))]
+      : sides.map((run) => run.reduce((a, c) => (c.z < a.z ? c : a)));
+  for (const c of ends) {
+    const below = [c.y - 1, c.y - 2, c.y - 3];
+    if (!builder.inside(c.x, c.y, c.z) || !builder.isAir(c.x, c.y, c.z) || below.some((y) => y < 1 || !builder.isAir(c.x, y, c.z))) continue;
+    if ([c.y, ...below].some((y) => reserved.has(`${c.x},${y},${c.z}`))) continue;
+    // A short chain under the eave (chains need no support), the lantern hanging from it.
+    builder.setBlock(c.x, c.y, c.z, blocks.fixed('iron_chain', { axis: 'y' }), Priority.DECOR);
+    builder.setBlock(c.x, c.y - 1, c.z, blocks.fixed(plan.input.lantern, { hanging: 'true' }), Priority.DECOR);
+  }
+}
