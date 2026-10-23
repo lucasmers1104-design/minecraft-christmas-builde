@@ -16,6 +16,7 @@ export function Panel({
   bodyClassName = 'p-4',
   headingId,
   icon,
+  badge,
   collapsible = false,
   defaultOpen = true,
   footer,
@@ -29,6 +30,8 @@ export function Panel({
   bodyClassName?: string;
   headingId?: string;
   icon?: ReactNode;
+  /** Small label right after the title, e.g. <Badge>optional</Badge>. */
+  badge?: ReactNode;
   collapsible?: boolean;
   defaultOpen?: boolean;
   /** Bottom area below a divider (e.g. the main action of the panel). */
@@ -51,7 +54,7 @@ export function Panel({
         <div className="flex min-w-0 flex-1 items-start gap-2.5">
           {icon ? <span className="mt-0.5 text-fg-subtle">{icon}</span> : null}
           <div className="min-w-0">
-            <h2 className="text-[15px] leading-6 font-semibold text-fg">
+            <h2 className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] leading-6 font-semibold text-fg">
               {collapsible ? (
                 <button
                   type="button"
@@ -66,6 +69,7 @@ export function Panel({
               ) : (
                 <span id={headingId}>{title}</span>
               )}
+              {badge}
             </h2>
             {description ? <div className="mt-0.5 text-[13px] leading-snug text-fg-muted">{description}</div> : null}
           </div>

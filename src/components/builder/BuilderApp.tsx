@@ -77,12 +77,23 @@ function planSource(plan: object): AiProvider {
 }
 
 /**
- * The part of an AI plan a project stores. The stored schema is strict (unknown keys fail
- * the save), so the display-only fields (plan, attempts, source, costUsd) are left out.
+ * The AI plan as a project stores it. The stored schema is strict (unknown keys fail the
+ * save), so only its fields are copied; optional ones only when present.
  */
 function toStoredAiPlan(plan: AiPlanState): NonNullable<ProjectContent['aiPlan']> {
-  const { description, model, durationMs, explanation, unsupported, patch } = plan;
-  return { description, model, durationMs, explanation, unsupported, patch };
+  const { description, model, durationMs, explanation, unsupported, patch, plan: fields, attempts, source, costUsd } = plan;
+  return {
+    description,
+    model,
+    durationMs,
+    explanation,
+    unsupported,
+    patch,
+    ...(fields ? { plan: fields } : {}),
+    ...(attempts !== undefined ? { attempts } : {}),
+    ...(source ? { source } : {}),
+    ...(costUsd !== undefined ? { costUsd } : {}),
+  };
 }
 
 /** One line under the generate button: who plans the building and who sets the blocks. */

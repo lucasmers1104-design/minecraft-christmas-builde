@@ -48,18 +48,10 @@ export function AiPlannerPanel({
     <Panel
       title="KI-Planung"
       headingId="ai-heading"
-      description={
-        // Once an AI is set up, the header carries two buttons – the model line then moves into
-        // the status block below, so the narrow header column stays readable.
-        setup ? (
-          <Badge>optional</Badge>
-        ) : (
-          <>
-            <Badge className="mr-1.5 align-[1px]">optional</Badge>
-            Versteht freie Beschreibungen besser als die eingebaute Texterkennung.
-          </>
-        )
-      }
+      badge={<Badge>optional</Badge>}
+      // Once an AI is set up, the header carries two buttons – the model line then moves into
+      // the status block below, so the narrow header column stays readable.
+      description={setup ? undefined : 'Versteht freie Beschreibungen besser als die eingebaute Texterkennung.'}
       actions={
         <>
           {/* Same wording as the server's status messages ("Unter „KI einrichten“ …"). */}

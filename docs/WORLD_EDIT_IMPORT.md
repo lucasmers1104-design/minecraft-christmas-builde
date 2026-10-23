@@ -16,9 +16,9 @@
 
 ## Schritte
 
-1. In der App das Bauwerk generieren, eine Variante wählen, bei Bedarf bearbeiten und auf **„.schem herunterladen“** klicken.
+1. In der App das Bauwerk generieren, eine Variante wählen, bei Bedarf bearbeiten und im Bereich **„Export“** auf **„Als .schem herunterladen“** klicken.
    - Der Dateiname lautet z. B. `christmas-house-medium-seed1-714a2090.schem`.
-   - Die acht Zeichen am Ende sind der Anfang des Modell-Hashs, der unter „Export & Technik“ steht. Nach einer Bearbeitung ändert sich der Hash.
+   - Die acht Zeichen am Ende sind der Anfang des Modell-Hashs, der unter „Export → Technische Details“ steht. Nach einer Bearbeitung ändert sich der Hash.
 2. Die Datei in den Schematic-Ordner von WorldEdit kopieren:
    - Paper/Spigot: `plugins/WorldEdit/schematics/`
    - Fabric/NeoForge (Mod): meist `config/worldedit/schematics/`
@@ -52,7 +52,7 @@ Stil „Rustikal“, Thema „Weihnachten“, Seed 1, keine Feinparameter (Breit
 | Bahnhof | 33 × 22 × 28 | 35 × 23 × 30 | 39 × 23 × 32 | 43 × 23 × 34 |
 | Turm | 17 × 27 × 20 | 19 × 33 × 22 | 21 × 43 × 24 | 25 × 64 × 28 |
 
-Andere Stile, Flügel, Türme, Anbauten und eigene Maße ändern das Volumen. Die genauen Maße zeigt die App über der Vorschau und unter „Export & Technik“. Die größte erlaubte Box ist 192 × 384 × 192.
+Andere Stile, Flügel, Türme, Anbauten und eigene Maße ändern das Volumen. Die genauen Maße zeigt die App über der Vorschau und im Bereich „Export“. Die größte erlaubte Box ist 192 × 384 × 192.
 
 ## In-Game-Checkliste nach dem Einfügen
 

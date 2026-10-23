@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 import { DEFAULT_PROFILE, getProfileForVersion } from '@/core/compat/profile';
+import { schematicFileName } from '@/core/export/schematicFileName';
 import type { VoxelModel } from '@/core/schema/voxelModel';
 import { Button } from '@/components/ui/Button';
 import { Callout } from '@/components/ui/Callout';
@@ -12,16 +13,6 @@ export interface ExportInfo {
   fileName: string;
   bytes: number;
   hash: string;
-}
-
-/**
- * Same name the export route sends (`schematicFileName` in src/core/export/exportSchematic.ts,
- * which cannot be imported here because that module pulls in node:zlib). Only used as a
- * preview before the first download; after it the name from the response is shown.
- */
-function expectedFileName(model: VoxelModel): string {
-  const { kind, size, seed } = model.spec;
-  return `christmas-${kind}-${size}-seed${seed}-${model.hash.slice(0, 8)}.schem`;
 }
 
 function formatBytes(bytes: number): string {
@@ -111,7 +102,7 @@ export function ExportPanel({
 }) {
   const exportedThis = !!lastExport && !!model && lastExport.hash === model.hash;
   const profile = (model && getProfileForVersion(model.spec.targetMinecraftVersion)) || DEFAULT_PROFILE;
-  const fileName = exportedThis ? lastExport.fileName : model ? expectedFileName(model) : null;
+  const fileName = exportedThis ? lastExport.fileName : model ? schematicFileName(model) : null;
   const schemName = fileName?.replace(/\.schem$/, '') ?? '<Dateiname>';
 
   return (

@@ -68,7 +68,7 @@ Voraussetzung: Node.js **≥ 22.12**.
 1. **Beschreibung** eintippen oder ein Beispiel anklicken. Darunter erscheinen die erkannten Wünsche, eine kurze Erklärung und Wünsche, die nicht umsetzbar sind.
 2. Bei Bedarf **Einstellungen** oder **Feinparameter** ändern und **„Bauwerk generieren“** klicken.
 3. Eine **Variante** wählen. Im **Editor** einen Werkzeugmodus wählen (Setzen, Entfernen, Ersetzen, Pipette) und auf das Modell klicken; Ziehen dreht weiterhin die Ansicht.
-4. **„.schem herunterladen“**, danach in Minecraft einfügen: [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md).
+4. **„Als .schem herunterladen“** (Bereich „Export“), danach in Minecraft einfügen: [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md).
 5. **„Projekt speichern“**, um später weiterzuarbeiten (Menü „Projekte“ oben rechts).
 
 ## Tests
