@@ -132,6 +132,18 @@ function supportProblem(grid: MutableGrid, x: number, y: number, z: number, stat
   }
 }
 
+// Landschaft (bq-landscape): falling blocks (vanilla FallingBlock.isFree: air or a replaceable
+// block below). On the model's ground layer (y = 0) they rest on the world.
+const FALLING_BLOCKS = new Set(['minecraft:gravel']);
+const FALL_THROUGH = new Set(['minecraft:short_grass', 'minecraft:fern', 'minecraft:vine', 'minecraft:snow']);
+
+function fallProblem(grid: MutableGrid, x: number, y: number, z: number, state: string): { fix: string; reason: string } | null {
+  if (y === 0 || !FALLING_BLOCKS.has(blockIdOf(state))) return null;
+  const below = grid.get(x, y - 1, z);
+  if (below !== AIR && !FALL_THROUGH.has(blockIdOf(below))) return null;
+  return { fix: AIR, reason: `${definitionOf(state).label} ohne festen Block darunter (würde fallen) entfernt` };
+}
+
 function golemProblem(grid: MutableGrid, x: number, y: number, z: number, state: string): string | null {
   if (!PUMPKIN_HEADS.has(blockIdOf(state))) return null;
   for (const dir of Object.keys(VECTOR) as Direction[]) {
@@ -220,7 +232,7 @@ export function validateAndRepair(grid: MutableGrid, minecraftVersion: string, r
             fix(x, y, z, state, blockState('pumpkin'), `${golem}: Kopf durch ungeschnitzten Kürbis ersetzt`);
             continue;
           }
-          const support = supportProblem(grid, x, y, z, state) ?? meltProblem(grid, x, y, z, state);
+          const support = supportProblem(grid, x, y, z, state) ?? meltProblem(grid, x, y, z, state) ?? fallProblem(grid, x, y, z, state);
           if (support) fix(x, y, z, state, support.fix, support.reason);
         }
     if (repairs.length === before) break;

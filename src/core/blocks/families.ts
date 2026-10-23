@@ -377,9 +377,20 @@ const MISC: readonly BlockSeed[] = [
   { id: 'rail', label: 'Schiene', shape: 'rail', category: 'technic', color: '#8d8a84', kind: 'cutout' },
 ];
 
+// ----------------------------------------------------------------------------------------------
+// Landschaft (bq-landscape): ground blocks for paths and soil textures (research note
+// 15_gelaende_gaerten_wege.md, "Registry-Lücken"). Gravel falls without support (validator rule
+// in validator.ts); podzol carries `snowy` like grass, so it shares the grass_block shape class.
+
+const LANDSCAPE_BLOCKS: readonly BlockSeed[] = [
+  { id: 'gravel', label: 'Kies', shape: 'cube', category: 'nature', color: '#837f7e' },
+  { id: 'podzol', label: 'Podsol', shape: 'grass_block', category: 'nature', color: '#5c3f18' },
+];
+
 export function allBlockSeeds(): BlockSeed[] {
   return [
     ...MISC,
+    ...LANDSCAPE_BLOCKS,
     ...WOODS.flatMap(woodFamily),
     ...STONES.flatMap(stoneFamily),
     ...copperFamily(),
