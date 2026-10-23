@@ -24,7 +24,7 @@ Verbindliche Regeln für alle Komponenten unter `src/components/`. Ziel: **ruhig
 | `gold`, `gold-text` | Hervorhebung: „manuell“, aktuelles Projekt |
 | `info`, `warning`, `danger` (+ `-text`) | Hinweise, Warnungen, Fehler |
 
-Tönungen über Deckkraft: `bg-accent/12`, `border-warning/40`. Die alten Namen (`night-*`, `fir-*`, `holly-*`, `gold-300/400`, `mist-*`, `snow-50`, `ice-*`) sind **veraltet** und werden entfernt, sobald keine Datei sie mehr nutzt.
+Tönungen über Deckkraft: `bg-accent/12`, `border-warning/40`. Die alte Weihnachtspalette (`night-*`, `fir-*`, `holly-*`, `mist-*`, `snow-50`, `ice-*`) gibt es nicht mehr.
 
 ## Bausteine (`src/components/ui/`)
 
@@ -62,4 +62,5 @@ Neue Bausteine nur, wenn mindestens zwei Stellen sie brauchen. Keine neuen npm-A
 - Jede Eingabe hat ein sichtbares Label oder ein `aria-label`. Fokus ist immer sichtbar.
 - Status, der sich ändert, steht in `aria-live="polite"`-Bereichen; Fehler nach Aktionen mit `role="alert"`.
 - **Alle bestehenden `data-testid`-Attribute bleiben erhalten** (die Playwright-Tests in `tests/e2e/` hängen daran), ebenso die Texte, die die Tests prüfen. Wer einen geprüften Text ändern muss, passt den Test im selben Commit an.
+- Desktop: links Eingabe (Beschreiben, KI-Planung, Anpassen, fester Knopf „Bauwerk generieren“), Mitte Vorschau mit Varianten-Leiste, rechts Export → Projekt → Material → Bearbeiten.
 - Mobil (unter `lg`): drei Tabs „Eingabe“, „3D-Vorschau“, „Material & Export“; kein waagerechtes Scrollen.

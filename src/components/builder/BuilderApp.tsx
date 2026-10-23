@@ -44,7 +44,7 @@ import { PreviewPanel } from '@/components/preview/PreviewPanel';
 import type { CellAction } from '@/components/preview/VoxelScene';
 import { EditorPanel, type EditMode } from '@/components/editor/EditorPanel';
 import { AiSettingsDialog } from '@/components/settings/AiSettingsDialog';
-import { Callout } from '@/components/ui/Callout';
+import { Callout, type CalloutTone } from '@/components/ui/Callout';
 
 type MobileTab = 'input' | 'preview' | 'details';
 
@@ -123,6 +123,12 @@ export function BuilderApp() {
   const [mode, setMode] = useState<EditMode>('view');
   const [brush, setBrush] = useState(() => blockState('spruce_planks'));
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
+  const [editorTone, setEditorTone] = useState<CalloutTone>('info');
+  /** Editor feedback with its tone: success after a change, warning if nothing happened, danger on errors. */
+  const say = useCallback((text: string, tone: CalloutTone) => {
+    setEditorMessage(text);
+    setEditorTone(tone);
+  }, []);
   /** Undo/redo availability of the selected variant, synced after every history change. */
   const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
   const [regenerateArmed, setRegenerateArmed] = useState(false);
@@ -266,10 +272,10 @@ export function BuilderApp() {
       setVariants((vs) => vs.map((v, i) => (i === selected ? next : v)));
       setEdits((es) => es.map((n, i) => (i === selected ? Math.max(0, n + delta) : n)));
       syncHistoryFlags(selected);
-      setEditorMessage(message);
+      say(message, 'success');
       setStatus('bearbeitet');
     },
-    [selected],
+    [selected, say],
   );
 
   const runEdit = useCallback(
@@ -279,20 +285,20 @@ export function BuilderApp() {
       try {
         const command = build(current);
         if (!command) {
-          setEditorMessage('Keine Änderung nötig.');
+          say('Keine Änderung nötig.', 'warning');
           return;
         }
         const notes = command.notes?.length ? ` Hinweis: ${command.notes.join('; ')}.` : '';
         if (command.changes.length === 0) {
-          setEditorMessage(`Nicht gesetzt.${notes}`);
+          say(`Nicht gesetzt.${notes}`, 'warning');
           return;
         }
         replaceSelected(historyFor(selected).execute(current, command), 1, `${command.label}.${notes}`);
       } catch (e) {
-        setEditorMessage(describeError(e));
+        say(describeError(e), 'danger');
       }
     },
-    [variants, selected, replaceSelected],
+    [variants, selected, replaceSelected, say],
   );
 
   const undo = useCallback(() => {
@@ -319,10 +325,10 @@ export function BuilderApp() {
           const state = blockAtCell(current, action.hit);
           if (state !== AIR) {
             setBrush(state);
-            setEditorMessage(`Pipette: „${labelFor(state)}“ ausgewählt.`);
+            say(`Pipette: „${labelFor(state)}“ ausgewählt.`, 'info');
           }
         } catch (e) {
-          setEditorMessage(describeError(e));
+          say(describeError(e), 'danger');
         }
         return;
       }
@@ -334,7 +340,7 @@ export function BuilderApp() {
           { brush, hit: action.hit, place: action.place, face: action.face, point: action.point, look: action.look },
         );
         if (!placement.ok) {
-          setEditorMessage(placement.reason);
+          say(placement.reason, 'warning');
           return;
         }
         runEdit((m) => setBlockCommand(m, placement.cell, placement.state));
@@ -345,7 +351,7 @@ export function BuilderApp() {
       if (mode === 'remove') runEdit((m) => removeBlockCommand(m, cell));
       else if (mode === 'paint') runEdit((m) => setBlockCommand(m, cell, brush));
     },
-    [variants, selected, mode, brush, runEdit],
+    [variants, selected, mode, brush, runEdit, say],
   );
 
   // Keyboard shortcuts: Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z), Escape leaves the edit tool.
@@ -481,6 +487,8 @@ export function BuilderApp() {
       setSelected(index);
       const h = historiesRef.current[index];
       setHistoryFlags({ canUndo: !!h?.canUndo, canRedo: !!h?.canRedo });
+      // Editor feedback belongs to the variant it was about.
+      setEditorMessage(null);
       if (variants.length > 0) setStatus('generiert');
     },
     [variants.length],
@@ -622,6 +630,7 @@ export function BuilderApp() {
               model={model}
               title={title}
               busy={busy === 'generate' || busy === 'plan'}
+              planning={busy === 'plan'}
               error={error}
               editing={{
                 mode,
@@ -666,6 +675,7 @@ export function BuilderApp() {
             onReplaceAll={(from, to) => runEdit((m) => replaceAllCommand(m, from, to))}
             editCount={edits[selected] ?? 0}
             message={editorMessage}
+            messageTone={editorTone}
           />
         </div>
       </main>

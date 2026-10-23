@@ -26,7 +26,7 @@ Die App braucht die **Client-Datei** einer Minecraft-Version, z. B. `1.21.11.jar
    - **„Minecraft-Datei auswählen …“**: Du wählst die `.jar`-Datei selbst aus, z. B. wenn CurseForge in einem eigenen Ordner installiert ist.
    - **„Von Mojang laden“**: Nur nachdem du bestätigt hast, dass du Minecraft Java besitzt und die [Minecraft-EULA](https://www.minecraft.net/eula) akzeptierst. Dann lädt die App die offizielle Client-Datei (ca. 30 MB) von `piston-data.mojang.com`. Adresse und SHA-1-Prüfsumme stammen aus Mojangs Versionsliste; die Datei wird vor der Verwendung geprüft.
 
-Mit **„Texturen an/aus“** schaltest du zwischen Texturen und einfarbigen Blöcken um.
+Mit dem Schalter **„Texturen“** unter der Vorschau schaltest du zwischen Texturen und einfarbigen Blöcken um.
 
 ## Wie die Darstellung entsteht
 
