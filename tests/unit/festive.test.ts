@@ -488,6 +488,25 @@ describe('Fest-Kits je Stil', () => {
     }
   });
 
+  it('Fantasy: ein Paar Zuckerstangen am Weg, Haken zum Weg', () => {
+    let pairs = 0;
+    for (const seed of [1, 2, 3]) {
+      const r = generateBuildingWithReport(spec({ style: 'fantasy', seed, size: 'medium' }));
+      const m = r.model;
+      // Shaft: white, red, white, red (bottom up) standing on the ground.
+      const shafts: [number, number][] = [];
+      for (let z = 0; z < m.dimensions.length; z++)
+        for (let x = 0; x < m.dimensions.width; x++) {
+          const col = [1, 2, 3, 4].map((y) => blockIdOf(blockAt(m, x, y, z)));
+          if (col.join() === 'minecraft:white_concrete,minecraft:red_concrete,minecraft:white_concrete,minecraft:red_concrete') shafts.push([x, z]);
+        }
+      if (shafts.length === 2) pairs++;
+      expect(r.repairs).toEqual([]);
+      expect(lintHouse(m, r.house!), String(seed)).toEqual([]);
+    }
+    expect(pairs).toBeGreaterThanOrEqual(2);
+  });
+
   it('Winter und Weihnachten mit Schnee: alle Stile ohne Reparatur und Lint-Befund, nichts schwebt', () => {
     for (const style of STYLE_IDS)
       for (const theme of ['winter', 'christmas'] as const)

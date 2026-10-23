@@ -6,7 +6,7 @@ import { Priority, type VoxelBuilder } from '@/core/generator/geometry';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import type { EaveCell, RoofResult } from '@/core/generator/roof/roofEngine';
 import { festiveKit, leavesFor, type FestiveKit } from '@/core/generator/festiveKits';
-import { buildFarolito, buildJulenek, buildKadomatsu, buildShimekazari, isPlainWall, standingY, type Cell } from '@/core/generator/festiveProps';
+import { buildCandyCane, buildFarolito, buildJulenek, buildKadomatsu, buildShimekazari, isPlainWall, standingY, type Cell } from '@/core/generator/festiveProps';
 import { placePresentGroup, type PresentSpot } from '@/core/generator/presents';
 import { circle } from '@/core/geometry';
 import type { SizeClass, StyleId, Theme } from '@/core/style/styles';
@@ -171,6 +171,7 @@ export function decorateFestive(b: VoxelBuilder, rng: SeededRandom, t: FestiveTa
   const mainDoor = doors[0];
   if (christmas && o.intensity >= 2 && extras.includes('kadomatsu') && mainDoor) placeKadomatsu(b, mainDoor, open);
   if (christmas && extras.includes('julenek') && mainDoor) placeJulenek(b, mainDoor, open);
+  if (christmas && extras.includes('candyCanes') && mainDoor) placeCandyCanes(b, mainDoor, open);
   if (christmas && extras.includes('farolitos') && mainDoor) placeFarolitos(b, mainDoor, open, kit.candles.christmas[0] ?? 'white_candle');
   // Presents: one group beside the main entrance, outside the clearance.
   const count = Math.min(kit.maxPresents, o.entrancePresents ?? (o.presents ? 2 + (o.intensity >= 3 ? 1 : 0) : 0));
@@ -525,6 +526,30 @@ function placeJulenek(b: VoxelBuilder, d: FestiveDoor, open: Open): void {
       const lonely = [[1, 0], [-1, 0], [0, 1], [0, -1]].every(([dx, dz]) => free(b, c.x + dx!, y, c.z + dz!) && free(b, c.x + dx!, y + 1, c.z + dz!));
       if (!lonely) continue;
       buildJulenek(b, { x: c.x, y, z: c.z });
+      return;
+    }
+}
+
+/** Candy canes: a mirrored pair beside the path, 3–5 blocks in front of the door, hooks inwards. */
+function placeCandyCanes(b: VoxelBuilder, d: FestiveDoor, open: Open): void {
+  const at = doorFrame(d);
+  const right = rightOf(d.outward);
+  for (const dist of [4, 5, 3])
+    for (const off of [2, 3]) {
+      const spots: { foot: Cell; hook: [number, number] }[] = [];
+      for (const s of [-1, 1] as const) {
+        const u = s < 0 ? -off : d.width - 1 + off;
+        const c = at(u, dist, 0);
+        // Hook towards the door axis (the path).
+        const hook: [number, number] = [right[0] * -s, right[2] * -s];
+        const y = standingY(b, c.x, c.z, d.y);
+        if (y === null) break;
+        const cells = [0, 1, 2, 3].map((dy) => [c.x, y + dy, c.z] as const).concat([[c.x + hook[0], y + 3, c.z + hook[1]], [c.x + hook[0], y + 2, c.z + hook[1]]]);
+        if (!cells.every(([x, yy, z]) => open(x, yy, z))) break;
+        spots.push({ foot: { x: c.x, y, z: c.z }, hook });
+      }
+      if (spots.length < 2 || spots[0]!.foot.y !== spots[1]!.foot.y) continue;
+      for (const sp of spots) buildCandyCane(b, sp.foot, sp.hook);
       return;
     }
 }

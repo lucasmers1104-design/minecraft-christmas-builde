@@ -114,6 +114,18 @@ export function buildWoodpile(b: VoxelBuilder, cells: readonly Cell[], axis: 'x'
   });
 }
 
+/**
+ * Candy cane (14 F3, 09 E16): a shaft of alternating red and white concrete, four high, and a
+ * hook bending towards the path (`hook`: one cell towards the path).
+ */
+export function buildCandyCane(b: VoxelBuilder, foot: Cell, hook: readonly [number, number]): void {
+  const red = blockState('red_concrete');
+  const white = blockState('white_concrete');
+  for (let dy = 0; dy < 4; dy++) set(b, foot.x, foot.y + dy, foot.z, dy % 2 === 0 ? white : red);
+  set(b, foot.x + hook[0], foot.y + 3, foot.z + hook[1], white);
+  set(b, foot.x + hook[0], foot.y + 2, foot.z + hook[1], red);
+}
+
 /** Farolito (12 i): two lit candles on the ground. */
 export function buildFarolito(b: VoxelBuilder, c: Cell, color: string): void {
   set(b, c.x, c.y, c.z, blockState(color, { candles: '2', lit: 'true' }));

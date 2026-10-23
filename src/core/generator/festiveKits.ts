@@ -16,7 +16,8 @@ import type { StyleId, Theme } from '@/core/style/styles';
  * - nordic gets a julenek and a julbock of straw, lanterns instead of glowing blocks in the
  *   garland and at most two presents,
  * - modern gets a light line on the parapet instead of a fir garland and no hanging lanterns,
- * - mediterranean gets farolitos (candles along the path) and an olive (pale oak) garland.
+ * - mediterranean gets farolitos (candles along the path) and an olive (pale oak) garland,
+ * - fantasy gets a pair of candy canes beside the path (09 E16, the simple part).
  *
  * An explicit wish (tree, presents, garland) always wins over the kit default.
  */
@@ -37,7 +38,9 @@ export type FestiveExtra =
   /** Candles along both sides of the main path (mediterranean). */
   | 'farolitos'
   /** End rods on every second parapet block of flat roofs (modern). */
-  | 'parapetLights';
+  | 'parapetLights'
+  /** Pair of candy canes beside the main path, hooks towards the path (fantasy). */
+  | 'candyCanes';
 
 export interface TreeKit {
   /** Ornament blocks (full blocks) with weights; at most three. */
@@ -125,7 +128,7 @@ export const FESTIVE_KITS: Readonly<Record<StyleId, FestiveKit>> = {
     candles: { christmas: ['candle', 'white_candle'], winter: ['white_candle'] },
     treeDecor: { ornaments: [['purple_concrete', 4], ['gold_block', 3], ['light_blue_concrete', 3]], light: 'ochre_froglight', ...GOLD_STAR },
     present: { papers: ['purple_wool', 'cyan_terracotta', 'white_wool'], ribbons: ['yellow', 'white'] },
-    extras: { christmas: [], winter: [] },
+    extras: { christmas: ['candyCanes'], winter: [] },
   },
   rustic: RUSTIC,
   nordic: {
