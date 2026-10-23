@@ -1,5 +1,5 @@
 import type { HorizontalDirection } from '@/core/blocks/directions';
-import { blockState, definitionOf, profileBlockId } from '@/core/blocks/registry';
+import { blockState, definitionOf, isAvailableIn, profileBlockId } from '@/core/blocks/registry';
 import { isFaceFull } from '@/core/blocks/faces';
 import { GeometryError, Priority, VoxelBuilder, type PriorityValue } from '@/core/generator/geometry';
 import { buildHouseInto, planSections, prepareHouse, shiftPlan, type HouseResult } from '@/core/generator/house/buildHouse';
@@ -43,8 +43,12 @@ export interface StationLayout {
   canopy: { x0: number; x1: number; z0: number; z1: number; columnZ: number; columns: number[]; capitalY: number };
   /** Centre of the clock dial, its plane and diameter (null if nothing fitted). */
   clock: { x: number; y: number; z: number; d: number } | null;
+  /** Double-sided clock hanging under the platform roof (detail ≥ 2). */
+  platformClock: { x: number; y: number; z: number } | null;
   /** Lamp posts: foot cell (y = first block of the post). */
   lampPosts: { x: number; y: number; z: number; kind: 'platform' | 'portal' }[];
+  /** Railway furniture by size (C7, C8): water crane and entry signals. */
+  extras: { kind: 'water_crane' | 'signal'; x: number; z: number }[];
   /** Back door from the hall onto the platform (null if the hall had no free cell). */
   backDoor: { x: number; y: number; z: number } | null;
   house: HouseResult;
@@ -173,8 +177,10 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
   const st = STATION_STYLES[input.styleId];
   const prepared = prepareHouse(input, r, stationPlan(input));
   const b = prepared.bounds;
-  // Room for the platform ends (4–6 blocks beyond the building) and the entrance lamps.
-  const marginX = 6;
+  // Room for the platform ends (4–6 blocks beyond the building) and the entrance lamps; from a
+  // hall width of 15 also for an entry signal beyond each platform end (C8).
+  const signals = input.width >= 15;
+  const marginX = 6 + (signals ? 8 : 0);
   const marginN = 5;
   const plan = shiftPlan(prepared.plan, marginX - b.minX, marginN - b.minZ);
   const main = plan.masses[0]!;
@@ -278,14 +284,22 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
       if (free(builder, x, y, edgeZ)) set(builder, x, y, edgeZ, state, Priority.DECOR);
     }
   }
-  // Lanterns on chains in the middle of each field, hanging from the roof above the columns.
+  // Lanterns on chains in the middle of each field, hanging from the roof above the columns; in
+  // the middle field (in front of the back door) the double-sided platform clock (C4) from
+  // detail 2: a white block on a chain with a button as hub on both faces.
+  let platformClock: StationLayout['platformClock'] = null;
   for (let i = 0; i + 1 < columns.length; i++) {
     const x = Math.floor((columns[i]! + columns[i + 1]!) / 2);
     const y = capitalY - 1;
-    if (y >= 4 && free(builder, x, capitalY, columnZ) && free(builder, x, y, columnZ)) {
-      set(builder, x, capitalY, columnZ, chainY, Priority.DECOR);
-      set(builder, x, y, columnZ, hanging, Priority.DECOR);
-    }
+    if (y < 4 || !free(builder, x, capitalY, columnZ) || !free(builder, x, y, columnZ)) continue;
+    set(builder, x, capitalY, columnZ, chainY, Priority.DECOR);
+    const middle = columns[i]! < hallAxis && columns[i + 1]! > hallAxis;
+    if (middle && input.detailLevel >= 2 && free(builder, x, y, columnZ - 1) && free(builder, x, y, columnZ + 1)) {
+      set(builder, x, y, columnZ, blockState('white_concrete'), Priority.DECOR);
+      set(builder, x, y, columnZ - 1, blockState('stone_button', { face: 'wall', facing: 'north' }), Priority.DECOR);
+      set(builder, x, y, columnZ + 1, blockState('stone_button', { face: 'wall', facing: 'south' }), Priority.DECOR);
+      platformClock = { x, y, z: columnZ };
+    } else set(builder, x, y, columnZ, hanging, Priority.DECOR);
   }
 
   // --- Back door from the hall onto the platform (a real door where the hall inside is free).
@@ -349,6 +363,36 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
     for (let zz = 0; zz < front.z - 1 - f; zz++) for (let x = Math.floor(centre) - 1; x <= Math.ceil(centre) + 1; x++) set(builder, x, 0, zz, blocks.block('path'), Priority.DECOR);
   }
 
+  // --- Railway furniture by size (C7, C8; research rec. 14), on the shoulder two blocks beside
+  // the rail centre: from a hall width of 11 a water crane at the west platform end (column,
+  // arm of iron bars parallel to the track, chain as hose, lantern on top), from 15 an entry
+  // signal 8 blocks beyond each platform end (white mast with ladder, red-and-white arm across
+  // the track, lightning rod as finial).
+  const extras: StationLayout['extras'] = [];
+  const shoulderZ = trackZ + 2;
+  if (input.width >= 11) {
+    const x = px0 + 1;
+    set(builder, x, 1, shoulderZ, blockState('polished_blackstone'), Priority.STRUCTURE);
+    for (let y = 2; y <= 4; y++) set(builder, x, y, shoulderZ, blockState('polished_blackstone_wall'), Priority.STRUCTURE);
+    set(builder, x, 5, shoulderZ, blockState(input.lantern, { hanging: 'false' }), Priority.DECOR);
+    for (const ax of [x + 1, x + 2]) set(builder, ax, 4, shoulderZ, blockState('iron_bars'), Priority.STRUCTURE);
+    set(builder, x + 2, 3, shoulderZ, chainY, Priority.DECOR);
+    extras.push({ kind: 'water_crane', x, z: shoulderZ });
+  }
+  if (signals) {
+    const rod = isAvailableIn('minecraft:waxed_lightning_rod', input.minecraftVersion) ? 'waxed_lightning_rod' : 'lightning_rod';
+    for (const x of [px0 - 8, px1 + 8]) {
+      set(builder, x, 1, shoulderZ, blockState('stone_bricks'), Priority.STRUCTURE);
+      for (let y = 2; y <= 6; y++) set(builder, x, y, shoulderZ, blockState('stripped_birch_log', { axis: 'y' }), Priority.STRUCTURE);
+      for (let y = 2; y <= 4; y++) set(builder, x, y, shoulderZ + 1, blockState('ladder', { facing: 'south' }), Priority.DECOR);
+      // Arm at "stop" (horizontal): panels facing along the track, red next to the mast, white tip.
+      set(builder, x, 6, shoulderZ - 1, blockState('mangrove_trapdoor', { facing: 'east', half: 'top', open: 'true' }), Priority.DECOR);
+      set(builder, x, 6, shoulderZ - 2, blockState('birch_trapdoor', { facing: 'east', half: 'top', open: 'true' }), Priority.DECOR);
+      set(builder, x, 7, shoulderZ, blockState(rod, { facing: 'up' }), Priority.DECOR);
+      extras.push({ kind: 'signal', x, z: shoulderZ });
+    }
+  }
+
   // --- Festive layer: garlands and lanterns under the house eaves, wreaths above both doors,
   // candles on the sills; under the platform roof fir green with lights behind the valance.
   if (input.theme !== 'none') {
@@ -386,8 +430,10 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
       railY: 1,
       canopy: { x0: cx0, x1: cx1, z0: wallFaceZ + 1, z1: edgeZ, columnZ, columns, capitalY },
       clock,
+      platformClock,
       lampPosts,
       backDoor,
+      extras,
       house,
     },
   };

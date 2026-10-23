@@ -241,3 +241,38 @@ describe('Laternen am Bahnhof (Bericht 18, Empfehlung 13)', () => {
     }
   });
 });
+
+describe('Bahnsteigausstattung nach Größe (Bericht 17, C4, C7, C8)', () => {
+  it('Wasserkran ab medium, zwei Formsignale ab large, beides neben dem Gleis', () => {
+    const count = (layout: StationLayout, kind: string) => layout.extras.filter((e) => e.kind === kind).length;
+    expect(station(spec({ size: 'small' })).layout.extras).toEqual([]);
+    expect(count(station(spec({ size: 'medium' })).layout, 'water_crane')).toBe(1);
+    for (const size of ['large', 'huge'] as const)
+      for (const style of STYLE_IDS) {
+        const { model, layout } = station(spec({ style, size }));
+        expect(count(layout, 'water_crane'), `${style} ${size}`).toBe(1);
+        expect(count(layout, 'signal'), `${style} ${size}`).toBe(2);
+        for (const e of layout.extras) {
+          expect(e.z - layout.trackZ, `${style} ${size}`).toBe(2);
+          if (e.kind === 'signal') {
+            // Beyond the platform end, the arm across the track at the top of the mast.
+            expect(e.x < layout.platform.x0 - 5 || e.x > layout.platform.x1 + 5, `${style} ${size}`).toBe(true);
+            expect(definitionOf(blockAt(model, e.x, 6, e.z - 1)).shape).toBe('trapdoor');
+            expect(blockIdOf(blockAt(model, e.x, 7, e.z))).toContain('lightning_rod');
+          }
+        }
+      }
+  });
+
+  it('Bahnsteiguhr unter dem Dach im mittleren Feld ab Detailgrad 2', () => {
+    for (const style of STYLE_IDS) {
+      const { model, layout } = station(spec({ style }));
+      const c = layout.platformClock!;
+      expect(c, style).not.toBeNull();
+      expect(blockAt(model, c.x, c.y, c.z), style).toBe('minecraft:white_concrete');
+      expect(definitionOf(blockAt(model, c.x, c.y + 1, c.z)).shape, style).toBe('chain');
+      for (const dz of [-1, 1]) expect(definitionOf(blockAt(model, c.x, c.y, c.z + dz)).shape, style).toBe('button');
+    }
+    expect(station(spec({ detailLevel: 1 })).layout.platformClock).toBeNull();
+  });
+});
