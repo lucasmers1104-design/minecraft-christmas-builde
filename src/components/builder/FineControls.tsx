@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { APPLICABLE_OPTIONS } from "@/core/generator/generateBuilding";
+import { festiveChoices } from "@/core/generator/festiveKits";
 import { resolveHouseInput } from "@/core/generator/house/resolveInput";
 import { createSeededRandom } from "@/core/generator/seededRandom";
 import { FOOTPRINT_LIMITS, type BuildOptions, type MaterialRoleUi } from "@/core/schema/buildOptions";
@@ -146,8 +147,11 @@ function automaticValue(spec: BuildSpec, path: SettingPath): string {
     case "garden":
       return flag(input[key]);
     case "garland":
+      return flag(festiveChoices(spec.style, spec.theme, spec.detailLevel, {}).garland);
     case "christmasTree":
+      return flag(festiveChoices(spec.style, spec.theme, spec.detailLevel, {}).tree);
     case "presents":
+      return flag(festiveChoices(spec.style, spec.theme, spec.detailLevel, {}).presents);
     case "snow":
       return flag(input.festive[key]);
     case "soulLanterns":
