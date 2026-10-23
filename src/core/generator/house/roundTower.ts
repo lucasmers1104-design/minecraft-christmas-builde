@@ -151,7 +151,9 @@ export function designRoundTower(plan: Pick<HousePlan, 'plinth' | 'floorHeight' 
   const top = wallTopOf(plan, mass);
   const look = LOOK[plan.input.styleId];
   const alone = plan.masses[0] === mass;
-  const rng = createSeededRandom(hashSeed(plan.input.seed, `roundTower:${mass.id}`));
+  // Seeded from the building seed (not the caller's rng), so the model height can be computed
+  // before building and agrees with what is built; one fork per decision.
+  const rng = createSeededRandom(plan.input.seed).fork(`roundTower:${mass.id}`);
 
   // Plinth zone: the house's plinth when attached (lines run through); a free tower gets a heavy
   // base of about 12 % of its height, timber styles a whole stone ground storey.

@@ -140,7 +140,8 @@ export function battlementRuns(ringMask: Mask2D, merlonMask: Mask2D): { merlons:
 /**
  * Picks merlon count (multiple of 4) and share for a ring so that merlons and crenels are as
  * regular as possible along the silhouette: crenels 1–2 wide, merlons 1–3. `wide` prefers merlons
- * wider than crenels ("two up, one down", research 08 T14), `even` 1:1. Deterministic.
+ * wider than crenels ("two up, one down", at most about a third crenels, research 08 T14) where
+ * that stays regular, `even` 1:1. Deterministic.
  */
 export function battlementLayout(ringMask: Mask2D, prefer: 'wide' | 'even' = 'wide'): { merlons: number; share: number } {
   const [tm, tc] = prefer === 'wide' ? [2, 1] : [1.5, 1.2];
@@ -155,13 +156,15 @@ export function battlementLayout(ringMask: Mask2D, prefer: 'wide' | 'even' = 'wi
       const cSpread = Math.max(...runs.crenels) - Math.min(...runs.crenels);
       const meanM = mean(runs.merlons);
       const meanC = mean(runs.crenels);
+      const crenelShare = (meanC * runs.crenels.length) / (meanM * runs.merlons.length + meanC * runs.crenels.length);
       const score =
         2 * (mSpread + cSpread) +
         Math.abs(meanM - tm) +
         1.5 * Math.abs(meanC - tc) +
         (Math.max(...runs.crenels) > 2 ? 5 : 0) +
         (Math.max(...runs.merlons) > 3 ? 5 : 0) +
-        (prefer === 'wide' && meanM < meanC ? 3 : 0);
+        (prefer === 'wide' && meanM < meanC ? 3 : 0) +
+        (prefer === 'wide' && crenelShare > 0.34 ? 2 : 0);
       if (!best || score < best.score - 1e-9) best = { merlons, share, score };
     }
   if (!best) throw new RangeError('Kein Zinnenmuster für diesen Ring');

@@ -36,11 +36,16 @@ describe('Turm-Geometrie (Bericht 16)', () => {
         expect(Math.max(...runs.merlons), `D${d}`).toBeLessThanOrEqual(3);
         expect(Math.max(...runs.crenels), `D${d}`).toBeLessThanOrEqual(2);
       }
-    // "wide" gives merlons wider than crenels where the ring allows it (D 9: 8 merlons of 2–3).
+    // "wide" gives merlons wider than crenels where the ring allows it regularly: at most a
+    // third crenels on the crown rings of the free towers' D 9, 13 and 15 (report 08, T14).
+    for (const d of [9, 13, 15]) {
+      const k = ring(d + 2, 1);
+      const wide = battlementLayout(k, 'wide');
+      const runs = battlementRuns(k, sectorBattlements(k, wide.merlons, wide.share));
+      const sum = (a: number[]) => a.reduce((s, v) => s + v, 0);
+      expect(sum(runs.crenels) / (sum(runs.crenels) + sum(runs.merlons)), `D${d}`).toBeLessThanOrEqual(0.34);
+    }
     const k9 = ring(11, 1);
-    const wide = battlementLayout(k9, 'wide');
-    const runs = battlementRuns(k9, sectorBattlements(k9, wide.merlons, wide.share));
-    expect(runs.merlons.reduce((a, b) => a + b, 0)).toBeGreaterThan(runs.crenels.reduce((a, b) => a + b, 0));
     expect(() => sectorBattlements(k9, 6)).toThrow(RangeError);
     expect(() => sectorBattlements(k9, 8, 1)).toThrow(RangeError);
   });
