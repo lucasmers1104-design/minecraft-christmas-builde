@@ -4,7 +4,7 @@
 
 ```text
 Text ──► Regel-Parser (parseDescription) ─┐
-     └─► optional: lokale KI (Ollama) ────┤  (beide liefern denselben Bauplan; der KI-Plan ersetzt den Parser nur für genau diesen Text)
+     └─► optional: KI (OpenRouter/Ollama) ┤  (beide liefern denselben Bauplan; der KI-Plan ersetzt den Parser nur für genau diesen Text)
 UI-Einstellungen (manuell, Vorrang) ──────┤
 Seed, Minecraft-Version ──────────────────┘
         ▼ resolveSpec
@@ -126,7 +126,8 @@ Nichts schwebt (18er-Nachbarschaft zum Boden), Auflöser-Fixpunkt, keine flache 
 ## Text, Einstellungen und Herkunft
 
 - **Parser** (`parseDescription.ts`): deutsche Wortstämme und Komposita, Umlaute in beiden Schreibweisen, Verneinungen über Aufzählungen („ohne Schnee und Girlanden“), Mengen und Maße, Bauwerkstypen, Stile mit gewichteten Stimmen, Thema, Dach, Bauteile, Turmposition, Fenster- und Türformen, Materialien. Nicht baubare Wünsche (Pool, Möbel, Keller …) landen in `unsupported`, Unverstandenes in `warnings`; dazu eine kurze Erklärung.
-- **Bauplan** (`src/core/ai/planSchema.ts`): ein flaches, aus dem Katalog erzeugtes Format für Parser und KI (Details in `LOCAL_AI.md`).
+- **Bauplan** (`src/core/ai/planSchema.ts`): ein flaches, aus dem Katalog erzeugtes Format für Parser und KI (Details in `KI.md`).
+- **KI-Planung** (`src/lib/ai/`, nur Server): `settingsStore.ts` liest die Einstellungen (App-Datei `.mcb-local/ai-settings.json` > `.env.local` > Standard; der API-Schlüssel verlässt den Server nie), `planner.ts` verteilt Status und Planung auf den Anbieter, `openRouterPlanner.ts` (Cloud: strenges JSON-Schema, `require_parameters`, Nachdenk-Stufe, Kosten aus `usage.cost`) und `ollamaPlanner.ts` (lokal) schicken denselben Prompt; `planValidation.ts` prüft beide Antworten gleich (JSON herauslösen, normalisieren, Zod, eine Korrekturrunde). `openRouterModels.ts` hält die Modellliste eine Stunde im Speicher (Preise, strukturierte Ausgabe) und prüft Schlüssel und Guthaben kostenlos. Der gemeinsame Vertrag mit dem Browser liegt in `src/core/ai/providers.ts`.
 - **resolveSpec**: Standardwerte → Text (Parser oder KI-Plan) → manuelle Einstellungen. Jedes Feld kennt seine Herkunft (`standard`, `text`, `ki`, `manuell`); Widersprüche werden angezeigt.
 
 ## Editor (`src/core/editor/editOperations.ts`)
@@ -141,7 +142,7 @@ Befehle speichern pro Zelle den Zustand vorher und nachher (`setBlockCommand`, `
 
 ## Projekte (`src/lib/persistence/projects.ts`)
 
-IndexedDB über Dexie, Schema Version 2 (Upgrade von 1 ohne Datenverlust). Gespeichert werden Beschreibung, manuelle Einstellungen, Seed, Version, alle Varianten als VoxelTransport (inklusive Bearbeitungen), Auswahl und ein eventueller KI-Plan. Beim Laden: Migration, Schema, Registry, Grenzen und Hashes.
+IndexedDB über Dexie, Schema Version 2 (Upgrade von 1 ohne Datenverlust). Gespeichert werden Beschreibung, manuelle Einstellungen, Seed, Version, alle Varianten als VoxelTransport (inklusive Bearbeitungen), Auswahl und ein eventueller KI-Plan (mit Plan, Korrekturrunden, Anbieter und gemeldeten Kosten; ältere Projekte ohne diese Felder laden weiter). Beim Laden: Migration, Schema, Registry, Grenzen und Hashes.
 
 ## API-Verträge
 
@@ -149,8 +150,11 @@ IndexedDB über Dexie, Schema Version 2 (Upgrade von 1 ohne Datenverlust). Gespe
 |---|---|---|
 | `POST /api/generate` | `{ spec, variants? }` (max. 16 KiB) | `{ generator, profile, variants[{ seed, hash, dimensions, totalBlocks, model }], warnings }`. Fehler: 400 (Schema/JSON), 413 (zu groß), 422 (passt nicht in die Grenzen) |
 | `POST /api/export` | `VoxelTransport` (max. ≈ 37 MiB) | `.schem` mit `Content-Disposition: attachment` und `X-MCB-Voxel-Hash`. Fehler: 400 (Modell abgelehnt), 413, 422 (Selbstprüfung) |
-| `GET /api/ai/status` | – | `{ enabled, provider, model, reachable, modelInstalled, installedModels, message }` |
-| `POST /api/ai/plan` | `{ description }` | `{ source: 'ollama', model, durationMs, attempts, examples, fromThinking, thinkDropped, plan, patch }`. Fehler: 503, 504, 502 |
+| `GET /api/ai/settings` | – | `AiSettingsView`: `{ provider, source: 'app'\|'env'\|'default', openrouter: { model, reasoning, hasKey, keyHint, keyFromEnv }, ollama: { baseUrl, model }, storedIn, fileProblem? }` – **nie** der Schlüssel selbst |
+| `PUT /api/ai/settings` | `AiSettingsUpdate`: `{ provider, openrouter?: { model?, reasoning?, apiKey?: string\|null }, ollama?: { baseUrl?, model? } }` (max. 4 KiB, streng geprüft; `apiKey: null` löscht) | neue `AiSettingsView`. Fehler: 400 `{ error, issues }` (deutsch), 403 (nicht `localhost` oder nicht von der App selbst), 413, 500 (Datei nicht schreibbar) |
+| `GET /api/ai/status` | – | `AiStatus`: `{ enabled, provider, model, reachable, modelInstalled, installedModels, message, label?, creditUsd?, price?, problem? }`; kostet nichts (OpenRouter: `GET /key`, `/credits`, `/models`; Ollama: `/api/tags`; aus: kein Netzwerk) |
+| `GET /api/ai/models?model=<id>` | – | `ModelCatalogResponse`: `{ live, fetchedAt, models[{ id, name, price, contextLength, structuredOutputs, available? }], message? }`; Modellliste 1 h im Speicher, sonst Schnappschuss mit `live: false`. Fehler: 400 (ungültige ID) |
+| `POST /api/ai/plan` | `{ description }` (nur von der App selbst) | `{ source: 'openrouter'\|'ollama', model, durationMs, attempts, examples, fromThinking, thinkDropped, costUsd, usage?, paramsDropped?, provider?, plan, patch }`. Fehler `{ error, code, issues, costUsd? }`: 503 (`disabled`, `no_key`, `unreachable`), 504 (`timeout`), 402 (`credits`), 429 (`rate_limit`), 502 (`invalid`, `auth`, `model`, `unsupported`, `upstream`, `http`), 403 (fremde Herkunft) |
 | `GET /api/textures` | – | Status der Texturen (Version, Quelle, Kandidaten) |
 | `GET /api/textures/resources` | – | Blockstates, Modelle und Texturen für alle Registry-Blöcke; 404 ohne Texturen |
 | `POST /api/textures/import` | Rohdaten der `.jar` (max. 200 MB) | Status. Fehler: 400, 413, 422 |

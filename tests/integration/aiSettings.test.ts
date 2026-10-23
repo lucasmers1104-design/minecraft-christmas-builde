@@ -210,7 +210,13 @@ describe('GET/PUT /api/ai/settings', () => {
     const lan = await putSettings({ provider: 'off' }, {}, 'http://192.168.1.20:3000');
     expect(lan.status).toBe(403);
     expect(((await lan.json()) as { error: string }).error).toMatch(/nur an dem PC ändern.*http:\/\/localhost:3000/);
-    for (const headers of [{ origin: 'https://evil.example' }, { origin: 'null' }, { 'sec-fetch-site': 'cross-site', origin: LOCAL }, { origin: 'http://localhost:3001', 'sec-fetch-site': 'same-site' }]) {
+    const foreign: Record<string, string>[] = [
+      { origin: 'https://evil.example' },
+      { origin: 'null' },
+      { 'sec-fetch-site': 'cross-site', origin: LOCAL },
+      { origin: 'http://localhost:3001', 'sec-fetch-site': 'same-site' },
+    ];
+    for (const headers of foreign) {
       const res = await putSettings({ provider: 'openrouter', openrouter: { apiKey: GOOD_KEY } }, headers);
       expect(res.status, JSON.stringify(headers)).toBe(403);
       expect(((await res.json()) as { error: string }).error).toMatch(/nicht von der App selbst/);

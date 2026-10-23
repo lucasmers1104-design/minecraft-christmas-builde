@@ -34,7 +34,7 @@ Zielversion ist **Minecraft Java 1.21.11** (DataVersion 4671); 1.21.1 ist als zw
 - **Materialliste** mit Blöcken, Items und Stacks (Türen zählen einmal, doppelte Stufen zweimal, Kerzen je Kerze).
 - **Projekte speichern** im Browser (IndexedDB): öffnen, umbenennen, duplizieren und löschen, inklusive Bearbeitungen; alte Projekte werden beim Laden übersetzt.
 - **`.schem`-Export** (Sponge Schematic v3): Der Server prüft das Modell, schreibt die Datei und liest sie mit einem unabhängigen Leser zurück; erst dann startet der Download. Im Test liest der **echte EngineHub-WorldEdit-7.4.2-Reader** jeden Blockzustand und alle Bauwerke identisch.
-- **Optionale lokale KI** über Ollama auf deinem PC, ohne Kosten und ohne Cloud: Die KI liefert nur einen geprüften Bauplan; alle Blöcke setzt immer der regelbasierte Generator.
+- **Optionale KI-Planung**, eingerichtet direkt in der App („KI einrichten“): über **OpenRouter** (Cloud-Modelle, eigener API-Schlüssel, Bruchteile eines Cents pro Plan) oder über **Ollama** lokal auf deinem PC (kostenlos, ohne Cloud). Die KI liefert nur einen geprüften Bauplan; alle Blöcke setzt immer der regelbasierte Generator. Ohne Einrichtung bleibt die KI aus.
 
 **Noch offen:** Der Import in einer echten Minecraft-Welt ist **noch nicht verifiziert**, siehe unten.
 
@@ -45,7 +45,7 @@ Zielversion ist **Minecraft Java 1.21.11** (DataVersion 4671); 1.21.1 ist als zw
 3. **`start-windows.cmd` doppelklicken.** Beim ersten Mal werden die Abhängigkeiten installiert und die App gebaut. Sobald die App antwortet, öffnet sich <http://localhost:3000> im Browser.
 4. Zum Beenden das schwarze Fenster schließen. Bricht die App mit einem Fehler ab, bleibt das Fenster offen und zeigt die Meldung.
 
-Optional für die lokale KI: [`docs/LOCAL_AI.md`](docs/LOCAL_AI.md), also Ollama installieren, ein Modell laden und `.env.local` anlegen.
+Optional für die KI-Planung: [`docs/KI.md`](docs/KI.md) – OpenRouter-Konto und API-Schlüssel (mit Modellempfehlung, Kosten und Datenschutz) oder Ollama lokal; eingetragen wird beides in der App unter „KI einrichten“.
 
 ## Starten (alle Systeme, Kommandozeile)
 
@@ -77,7 +77,7 @@ Voraussetzung: Node.js **≥ 22.12**.
 |---|---|
 | `npm run typecheck` | TypeScript (`strict`) |
 | `npm run lint` | ESLint |
-| `npm test` | Vitest: Generatoren, Parser, Registry, Editor, Export, Speichern, API, KI-Client (gegen simulierten Ollama-Server), WorldEdit-Reader (falls gebaut) |
+| `npm test` | Vitest: Generatoren, Parser, Registry, Editor, Export, Speichern, API, KI-Clients und KI-Einstellungen (gegen simulierte Ollama- und OpenRouter-Server), WorldEdit-Reader (falls gebaut) |
 | `npm run worldedit:build` | baut den WorldEdit-7.4.2-Reader (JDK 21, Maven, git, python3; unter Windows Git Bash oder WSL) |
 | `npm run test:worldedit` | Exporte werden mit dem echten WorldEdit-Reader gelesen; schlägt fehl, wenn der Reader fehlt |
 | `npm run test:e2e` | Playwright-Browsertests (Desktop und Handy); baut und startet die App selbst |
@@ -103,10 +103,10 @@ src/core/schema/         BuildSpec v2 (Zod), Migration, VoxelModel, Text/Einstel
 src/core/editor/         Editier-Operationen und Verlauf
 src/core/export/         VarInt, Sponge-v3-Writer, unabhängiger NBT-Leser, Validator
 src/core/ai/             Bauplan-Schema, Prompt, Beispiele
-src/lib/                 Ollama-Client, Transportformat, IndexedDB-Projekte, Texturen, API-Helfer
+src/lib/                 KI (OpenRouter, Ollama, Einstellungen), Transportformat, IndexedDB-Projekte, Texturen, API-Helfer
 scripts/                 Screenshot-Skript (echte Texturen), WorldEdit-Testlauf
 tests/                   unit, integration, e2e, fixtures, helpers, worldedit (Java-Reader)
-docs/                    Architektur, Kompatibilität, Import, lokale KI, Texturen, Testbericht, Screenshots
+docs/                    Architektur, Kompatibilität, Import, KI, Texturen, Testbericht, Screenshots
 ```
 
 ## Grenzen
@@ -116,14 +116,14 @@ docs/                    Architektur, Kompatibilität, Import, lokale KI, Textur
 - Innenräume bleiben bewusst leer (keine Möbel); nur Licht (Laternen) wird innen gesetzt.
 - Die Vorschau zeigt Original-Texturen nur, wenn eine Minecraft-Installation gefunden oder ausgewählt wurde. Animationen, Licht und Schatten des Spiels gibt es in der Vorschau nicht.
 - Projekte liegen nur in diesem Browser auf diesem Gerät.
-- Die lokale KI kann nur kombinieren, was der Generator kennt. Ein Lauf mit einem echten Modell wurde hier nicht durchgeführt, weil Ollama nicht installiert ist (siehe `docs/LOCAL_AI.md`).
+- Die KI kann nur kombinieren, was der Generator kennt. Ein Lauf mit einem echten Modell wurde noch nicht durchgeführt: Die OpenRouter-Anbindung ist nur gegen einen simulierten Server getestet, Ollama ist auf dem Arbeitsrechner nicht installiert (siehe `docs/KI.md`).
 
 ## Dokumentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): Datenfluss, Datenmodell, Generatoren, Editor, API-Verträge
 - [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md): Versionsprofile, Verifikation, Blockliste
 - [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md): Import in Minecraft
-- [`docs/LOCAL_AI.md`](docs/LOCAL_AI.md): lokale KI mit Ollama einrichten (Windows)
+- [`docs/KI.md`](docs/KI.md): KI-Planung einrichten – OpenRouter (Modellempfehlung, Kosten, Datenschutz) oder Ollama lokal
 - [`docs/TEXTURES.md`](docs/TEXTURES.md): echte Minecraft-Texturen in der Vorschau
 - [`docs/AUFTRAG_PHASEN_1-8.md`](docs/AUFTRAG_PHASEN_1-8.md) und [`docs/PLAN_PHASEN_1-8.md`](docs/PLAN_PHASEN_1-8.md): Auftrag und Umsetzungsplan der Ausbaustufe (Phasen 1–8)
 - [`docs/screenshots/`](docs/screenshots/): Bilder aller Stile und Bauwerkstypen mit echten Texturen
