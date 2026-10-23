@@ -170,7 +170,7 @@ Alle Felder sind Pflicht; das macht die strukturierte Ausgabe robuster. `normali
 ### Sicherheit
 
 - Der Schlüssel verlässt den Server nie (`GET /api/ai/settings` liefert nur `hasKey` und eine maskierte Kurzform), wird nicht protokolliert und aus allen weitergegebenen Fehlertexten von OpenRouter entfernt.
-- `PUT /api/ai/settings` nur, wenn die Anfrage an `localhost`/`127.0.0.1`/`[::1]` ging und von der App selbst kommt (`Origin` bzw. `Sec-Fetch-Site`); sonst 403. `POST /api/ai/plan` nur von der App selbst (fremde Webseiten dürfen kein Guthaben verbrauchen).
+- `PUT /api/ai/settings` nur, wenn die Anfrage an `localhost`/`127.0.0.1`/`[::1]` ging und von der App selbst kommt (`Origin` bzw. `Sec-Fetch-Site`); sonst 403. `POST /api/ai/plan` nur von der App selbst (fremde Webseiten dürfen kein Guthaben verbrauchen). Einstellungen, Status und Planung lehnen außerdem fremde Hostnamen mit Punkt ab (Schutz vor DNS-Rebinding, bei dem eine fremde Domain auf diesen PC zeigt); `localhost`, IP-Adressen und einfache Rechnernamen im Heimnetz funktionieren.
 - Der KI-Plan wird mit dem Projekt gespeichert (mit Anbieter und Kosten). Beim Öffnen gelten dieselben Einstellungen wieder, auch wenn die KI dann nicht erreichbar ist.
 
 ## Testset und Messung

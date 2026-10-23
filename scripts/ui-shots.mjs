@@ -35,6 +35,11 @@ for (const vp of viewports) {
     await page.screenshot({ path: file, fullPage });
     console.log(file);
   };
+  // Warm up the API routes: in dev mode their first compile reloads the page (which would
+  // close an open dialog).
+  for (const route of ['/api/ai/status', '/api/ai/settings', '/api/ai/models', '/api/textures']) {
+    await page.request.get(`${BASE}${route}`, { timeout: 180_000 }).catch(() => undefined);
+  }
   await page.goto(BASE, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => !document.querySelector('[data-testid="generate-button"]')?.hasAttribute('disabled'), null, { timeout: 120_000 });
   await page.waitForTimeout(500);
@@ -44,8 +49,24 @@ for (const vp of viewports) {
     const open = page.getByTestId('open-settings').or(page.getByTestId('ai-open-settings')).first();
     await open.click();
     await page.getByTestId('ai-settings').waitFor({ state: 'visible' });
-    await page.waitForTimeout(800);
+    // Wait for the loaded form (the first request compiles the route in dev mode).
+    await page.getByTestId('ai-provider-openrouter').waitFor({ state: 'attached', timeout: 120_000 });
+    await page.waitForTimeout(500);
     await shot('settings');
+    // OpenRouter section: key, model recommendation, reasoning – scrolled step by step.
+    await page.getByTestId('ai-provider-openrouter').check({ force: true });
+    await page.waitForTimeout(1500);
+    const body = page.getByTestId('ai-settings').locator('div.overflow-y-auto').first();
+    for (let i = 1; i <= 4; i++) {
+      await shot(`settings-openrouter-${i}`);
+      const more = await body.evaluate((el) => {
+        const before = el.scrollTop;
+        el.scrollTop += el.clientHeight - 80;
+        return el.scrollTop > before;
+      });
+      if (!more) break;
+      await page.waitForTimeout(300);
+    }
     await page.keyboard.press('Escape');
   }
   if (flags.has('--library')) {

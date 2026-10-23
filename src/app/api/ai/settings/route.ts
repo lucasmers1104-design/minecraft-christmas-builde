@@ -78,8 +78,8 @@ function issueText(issue: z.core.$ZodIssue): string {
 }
 
 /** The AI settings as the browser may see them (no API key, only a masked hint). */
-export async function GET(request?: Request): Promise<NextResponse> {
-  const denied = request ? rejectCrossOrigin(request) : null;
+export async function GET(request: Request): Promise<NextResponse> {
+  const denied = rejectCrossOrigin(request);
   if (denied) return denied;
   return jsonNoStore(toSettingsView(await loadAiConfig()));
 }

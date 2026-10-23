@@ -75,7 +75,8 @@ export function SaveProjectPanel({
         <div className="flex flex-wrap gap-2">
           <Button
             type="submit"
-            variant="primary"
+            // Secondary on purpose: next to "Bauwerk generieren" and the download, saving is not the main action.
+            variant="secondary"
             className="flex-1"
             icon={<Icon name="save" />}
             loading={busy}

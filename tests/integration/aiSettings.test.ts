@@ -159,7 +159,7 @@ const putSettings = (body: unknown, headers: Record<string, string> = {}, base =
 describe('GET/PUT /api/ai/settings', () => {
   it('GET liefert die Ansicht ohne Schlüssel, mit no-store', async () => {
     expect((await putSettings({ provider: 'openrouter', openrouter: { apiKey: GOOD_KEY } })).status).toBe(200);
-    const res = await getSettingsRoute();
+    const res = await getSettingsRoute(request(`${LOCAL}/api/ai/settings`));
     expect(res.headers.get('cache-control')).toBe('no-store');
     const text = await res.text();
     expect(text).not.toContain(GOOD_KEY.slice(9, 30));
@@ -302,19 +302,19 @@ describe('POST /api/ai/plan, GET /api/ai/status und /api/ai/models', () => {
   });
 
   it('Status: aus → „nicht aktiviert“; OpenRouter ohne Schlüssel; OpenRouter bereit', async () => {
-    const off = (await (await statusRoute()).json()) as AiStatus;
+    const off = (await (await statusRoute(request(`${LOCAL}/api/ai/status`))).json()) as AiStatus;
     expect(off).toMatchObject({ enabled: false, provider: 'off', problem: 'off' });
     expect(off.message).toBe(AI_OFF_MESSAGE);
     expect(off.message).toContain('nicht aktiviert');
     expect(fake.requests).toHaveLength(0); // "off" never touches the network
 
     await putSettings({ provider: 'openrouter' });
-    const noKey = (await (await statusRoute()).json()) as AiStatus;
+    const noKey = (await (await statusRoute(request(`${LOCAL}/api/ai/status`))).json()) as AiStatus;
     expect(noKey).toMatchObject({ enabled: true, provider: 'openrouter', reachable: false, problem: 'no_key' });
     expect(noKey.message).toMatch(/Kein API-Schlüssel hinterlegt/);
 
     await putSettings({ provider: 'openrouter', openrouter: { apiKey: NO_LIMIT_KEY } });
-    const res = await statusRoute();
+    const res = await statusRoute(request(`${LOCAL}/api/ai/status`));
     expect(res.headers.get('cache-control')).toBe('no-store');
     const ready = (await res.json()) as AiStatus;
     expect(ready).toMatchObject({ reachable: true, modelInstalled: true, label: 'GPT-6 Luna über OpenRouter', creditUsd: null });

@@ -11,9 +11,9 @@ export const dynamic = 'force-dynamic';
  * credit, model with structured output; Ollama = server reachable, model pulled; off = no
  * network access at all.
  */
-export async function GET(request?: Request): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
   // The status shows the remaining credit – only for the app's own page.
-  const denied = request ? rejectCrossOrigin(request) : null;
+  const denied = rejectCrossOrigin(request);
   if (denied) return denied;
   return jsonNoStore(await aiStatus(await loadAiConfig()));
 }

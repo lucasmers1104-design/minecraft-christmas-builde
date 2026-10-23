@@ -209,7 +209,7 @@ describe('API-Routen', () => {
     process.env.MCB_AI_PROVIDER = 'ollama';
     process.env.OLLAMA_BASE_URL = baseUrl;
     try {
-      const status = await (await statusRoute()).json();
+      const status = await (await statusRoute(new Request('http://localhost:3000/api/ai/status'))).json();
       expect(status).toMatchObject({ enabled: true, reachable: true, modelInstalled: true });
       const res = await planRoute(post({ description: 'Großes Steinhaus mit Turm' }));
       expect(res.status).toBe(200);

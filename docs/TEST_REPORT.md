@@ -1,5 +1,28 @@
 # Testbericht
 
+## Ausbaustufe „OpenRouter und neue Oberfläche“ (Stand 2026-10-23, Arbeits-Laptop)
+
+KI-Planung über OpenRouter (Einstellungsdialog „KI einrichten“, Schlüssel nur lokal, Modellempfehlung), überarbeitete Oberfläche (`docs/UI_DESIGN.md`). Alle Ergebnisse stammen aus Befehlen auf dem **Arbeits-Laptop** (Windows 10 Home, Node.js 24.22.1, Microsoft Edge statt Playwright-Chromium), Branch `feature/openrouter-gui`.
+
+| Befehl | Ergebnis |
+|---|---|
+| `npx tsc --noEmit` | ✅ keine Fehler |
+| `npx eslint . --max-warnings=0` | ✅ 0 Fehler, 0 Warnungen |
+| `npx vitest run` (ohne Minecraft-Datei) | ✅ 41 Dateien, **964 Tests bestanden**, 44 übersprungen (WorldEdit-Reader, echte Client-Datei, Opt-in-Werkzeuge, echter KI-Testset-Lauf); Dauer 184 s |
+| `npm run build` | ✅ Produktions-Build ohne Fehler |
+| `PW_CHANNEL=msedge npx playwright test --project=desktop-chromium` gegen `next dev --webpack` | ✅ **27 von 27** (`builder` 14, `editor` 4, `projects` 3, `ai` 5, `textures` 1) – über zwei Läufe: im ersten scheiterten 8 Tests an veralteten Maß-Erwartungen aus der Stufe „Bauqualität“ (größere Grundstücke, z. B. jetzt `33 × 15 × 29` statt `27 × 16 × 26`; in diesem Commit korrigiert) und `textures` an einem Zeitlimit; danach alle grün |
+| `PW_CHANNEL=msedge npx playwright test --project=mobile-chromium` | ✅ 1 von 1, aber nur mit 60 s statt 15 s Wartezeit für Prüfungen (`ui-shots/pw-slow.config.ts`, nicht eingecheckt): mit 15 s lief die Erzeugung auf dem langsamen Laptop zweimal in das Zeitlimit, der Seitenzustand zeigte danach das fertige Bauwerk |
+
+**Nicht geprüft:**
+
+- ein Lauf gegen das **echte OpenRouter** (kein Schlüssel auf dem Laptop). Client, Status, Einstellungen und Routen sind nur gegen einen simulierten OpenRouter-Server getestet (`tests/integration/openRouter.test.ts`, `aiSettings.test.ts`). Die Live-Modellliste mit Preisen kam beim Test der Oberfläche tatsächlich von OpenRouter (öffentlich, ohne Schlüssel).
+- das KI-Testset mit den empfohlenen Modellen (`MCB_AI_TESTSET=1`, siehe `docs/KI.md`) – die Empfehlung beruht auf Preisen und Benchmarks vom 23.10.2026, nicht auf eigenen Messungen.
+- die Browsertests gegen den Produktions-Build (`npx playwright test` ohne laufenden Dev-Server), WorldEdit- und Jar-Tests, Import in eine echte Welt – auf dem Haupt-PC nachzuholen.
+
+Sichtprüfung: Screenshots aller Bereiche (Desktop 1440 × 900, Mobil 412 × 915) mit `scripts/ui-shots.mjs`.
+
+---
+
 ## Ausbaustufe „Bauqualität“ (Stand 2026-10-23, Arbeits-Laptop)
 
 Grundlage: 20 Rechercheberichte in `research_notes/Bauqualitaet 2026-10/`. Alle Ergebnisse dieses Abschnitts stammen aus Befehlen, die auf dem **Arbeits-Laptop** ausgeführt wurden (Windows 10 Home 10.0.19045, Node.js 24.22.1, npm 11.19.1, TypeScript 6.0.2), Branch `feature/bauqualitaet`.
