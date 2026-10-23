@@ -8,6 +8,7 @@ import { buildRoundTower, roundTowerTop } from '@/core/generator/house/roundTowe
 import { buildPassages, buildPlinth, buildStairs, buildStorey, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
 import { buildChimney, buildDormer, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
 import { buildOpenings, type OpeningsResult } from '@/core/generator/house/openings';
+import { buildGables } from '@/core/generator/house/gables';
 import { MAX_DIMENSIONS } from '@/core/schema/voxelModel';
 import type { HorizontalDirection } from '@/core/blocks/directions';
 
@@ -145,6 +146,8 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
     else buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
   }
   const openings = buildOpenings(ctx, panels);
+  // Gable fields (timber, windows) and ridge finials, after the chimney so nothing hides behind it.
+  openings.windows += buildGables(ctx, roof, sections).windows;
   const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;
   buildStairs(ctx, main, (x, z) => nearChimney(x, z) || nearRoundTower(plan, x, z, 1) || [...openings.reserved].some((k) => k.startsWith(`${x},`) && k.endsWith(`,${z}`)));
   // Round towers last: they replace whatever the house put into their cylinder.

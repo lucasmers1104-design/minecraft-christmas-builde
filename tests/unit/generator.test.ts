@@ -227,3 +227,45 @@ describe('Leistung', () => {
     expect(floatingBlocks(m)).toBe(0);
   });
 });
+
+describe('Giebelfelder und Firstzier', () => {
+  const gableHouse = (style: BuildSpec['style'], over: Partial<BuildSpec> = {}) =>
+    generateBuildingWithReport(spec({ style, size: 'large', seed: 3, ...over }, { roofType: 'gable', chimney: false }));
+
+  it('Fachwerkgiebel: zurückgesetzte Füllung, davor Firstständer und Kehlbalken, Fenster neben dem Ständer', () => {
+    const r = gableHouse('medieval');
+    const { roof, sections } = r.house!;
+    const main = sections.find((s) => s.id === 'main')!;
+    expect(main.gableRecess).toBe(true);
+    // King post: an upright log in front of the recessed gable on the ridge axis.
+    const cells = roof.gableCells.filter((c) => c.section === 'main');
+    expect(cells.length).toBeGreaterThan(10);
+    const c = cells[0]!;
+    const out = c.side === 'west' ? -1 : c.side === 'east' ? 1 : 0;
+    const zc = Math.round((main.z0 + main.z1) / 2);
+    const xc = Math.round((main.x0 + main.x1) / 2);
+    const front = (y: number) => (main.ridgeAxis === 'x' ? blockAt(r.model, c.x + out, y, zc) : blockAt(r.model, xc, y, c.z + (c.side === 'north' ? -1 : 1)));
+    const logs = Array.from({ length: 6 }, (_, i) => front(main.wallTop + 1 + i)).filter((s) => /_(log|wood)\[/.test(s));
+    expect(logs.length).toBeGreaterThanOrEqual(3);
+    expect(r.house!.openings.windows).toBeGreaterThan(0);
+    expect(lintHouse(r.model, r.house!)).toEqual([]);
+  });
+
+  it('Giebel ohne Fachwerk bekommen Fenster auf der Firstachse', () => {
+    for (const style of ['rustic', 'nordic'] as const) {
+      const r = gableHouse(style);
+      const panes = r.house!.roof.gableCells.filter((c) => blockIdOf(blockAt(r.model, c.x, c.y, c.z)).endsWith('_pane'));
+      expect(panes.length, style).toBeGreaterThanOrEqual(2);
+      expect(r.repairs, style).toEqual([]);
+    }
+  });
+
+  it('Firstzier je Stil: Blitzableiter, Endstab, gekreuzte Windbretter; bei Schnee kein Endstab', () => {
+    expect(has(gableHouse('medieval').model, 'lightning_rod')).toBe(true);
+    expect(has(gableHouse('fantasy').model, 'end_rod')).toBe(true);
+    const snowy = generateBuildingWithReport(spec({ style: 'fantasy', size: 'large', seed: 3, theme: 'winter' }, { roofType: 'gable', snow: true }));
+    expect(has(snowy.model, 'end_rod')).toBe(false);
+    expect(snowy.repairs).toEqual([]);
+    expect(has(gableHouse('modern').model, 'lightning_rod')).toBe(false);
+  });
+});

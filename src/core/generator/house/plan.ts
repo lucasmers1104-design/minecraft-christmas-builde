@@ -420,7 +420,8 @@ export function roofSection(plan: HousePlan, mass: Mass, materials: RoleMaterial
     overhang: mass.overhang,
     materials: { ...roofMaterials(materials), gable: role(mass.timber ? 'infill' : 'upperWall') },
     ridgeStyle: mass.ridgeStyle,
-    gableRecess: false,
+    // Timber gables sit one block behind the verge so the frame can stand in front (research 01/06).
+    gableRecess: mass.timber,
     soffit: true,
     ...(mass.shedHigh ? { shedHigh: mass.shedHigh } : {}),
     maxRise: mass.maxRise ?? (mass.kind === 'tower' ? 12 : roofRiseCap(plan, mass)),
