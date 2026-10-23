@@ -56,9 +56,12 @@ describe('Weihnachtsbaum', () => {
 });
 
 describe('Marktstand', () => {
-  it('Buden mit rot-weißer Treppenmarkise, Theke, Waren und Laternen über der Theke', () => {
+  it('Holzhütten mit Satteldach, Auslage-Falltür, Waren, Innenlaternen, Tannengrün und Lichterketten', () => {
     const set = ids(spec('market_stall', { size: 'large' }));
-    for (const id of ['minecraft:red_nether_brick_stairs', 'minecraft:smooth_quartz_stairs', 'minecraft:lantern', 'minecraft:barrel']) expect(set, id).toContain(id);
+    for (const id of ['minecraft:lantern', 'minecraft:barrel', 'minecraft:spruce_leaves', 'minecraft:iron_chain', 'minecraft:spruce_log']) expect(set, id).toContain(id);
+    expect([...set].some((id) => id.endsWith('_trapdoor')), 'Auslage').toBe(true);
+    expect([...set].some((id) => id.endsWith('_door')), 'Tür').toBe(true);
+    expect([...set].some((id) => id.includes('red_nether_brick')), 'kein Steindach').toBe(false);
   });
 });
 
