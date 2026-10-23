@@ -69,7 +69,8 @@ const HOUSE_OPTIONS: readonly (keyof BuildOptions)[] = [
 export const APPLICABLE_OPTIONS: Record<BuildingType, readonly (keyof BuildOptions)[]> = {
   house: HOUSE_OPTIONS,
   tree: ['presents', 'lanternDensity', 'soulLanterns', 'garden', 'snow'],
-  market_stall: ['palette', 'materials', 'garland', 'presents', 'lanternDensity', 'soulLanterns', 'snow'],
+  // The market's huts use their own style tables (templates/stalls.ts); explicit materials apply.
+  market_stall: ['materials', 'garland', 'presents', 'lanternDensity', 'soulLanterns', 'snow'],
   station: ['width', 'depth', 'floors', 'floorHeight', 'roofProfile', 'overhang', 'windows', 'windowFamily', 'doorFamily', 'chimney', 'garland', 'lanternDensity', 'soulLanterns', 'palette', 'materials', 'snow'],
   tower: ['floors', 'floorHeight', 'roofType', 'roofProfile', 'windows', 'doorFamily', 'garland', 'christmasTree', 'presents', 'lanternDensity', 'soulLanterns', 'palette', 'materials', 'garden', 'snow'],
 };
@@ -218,6 +219,8 @@ function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult
             lantern: input.lantern,
             garland: spec.options.garland ?? spec.theme === 'christmas',
             presents: spec.options.presents ?? spec.theme === 'christmas',
+            materialWishes: spec.options.materials ?? {},
+            lanternDensity: input.lanternDensity,
           },
           rng.fork('market'),
         );

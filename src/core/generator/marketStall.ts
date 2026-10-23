@@ -1,10 +1,10 @@
 import type { HorizontalDirection } from '@/core/blocks/directions';
-import { blockState, profileBlockId, propsOf } from '@/core/blocks/registry';
+import { blockState, definitionOf, profileBlockId, propsOf } from '@/core/blocks/registry';
 import { Priority, VoxelBuilder, type PriorityValue } from '@/core/generator/geometry';
 import { buildRoofs, type RoofResult } from '@/core/generator/roof/roofEngine';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import { buildChristmasTree, treeProfile } from '@/core/generator/christmasTree';
-import { requireForm } from '@/core/style/materials';
+import { formOf, hasMaterial, requireForm } from '@/core/style/materials';
 import type { RoleMaterials } from '@/core/templates/place';
 import { BIG_HUT, HUT_SIZES, STALL_STYLES, WARE_THEMES, type HutSize, type StallStyle, type StallWall, type Ware, type WareTheme } from '@/core/templates/stalls';
 import type { SizeClass, StyleId, Theme } from '@/core/style/styles';
@@ -38,6 +38,10 @@ export interface StallInput {
   lantern: 'lantern' | 'soul_lantern';
   garland: boolean;
   presents: boolean;
+  /** Explicit material wishes (catalogue ids); they apply to every hut. */
+  materialWishes?: Readonly<{ wall?: string; roof?: string; frame?: string }>;
+  /** none: no lanterns; few: a two-armed lamp post, no lanterns over the counter; many: a second post. */
+  lanternDensity?: 'none' | 'few' | 'normal' | 'many';
 }
 
 /** One hut as built (world coordinates). */
@@ -92,6 +96,9 @@ interface Ctx {
   input: StallInput;
   chain: string;
   light: string;
+  /** Corner post state (style table or the frame wish). */
+  post: string;
+  density: 'none' | 'few' | 'normal' | 'many';
 }
 
 function set(b: VoxelBuilder, x: number, y: number, z: number, state: string, priority: PriorityValue): boolean {
@@ -121,6 +128,25 @@ function roofUnderside(b: VoxelBuilder, roof: RoofResult, x: number, z: number):
 
 type HutLook = Omit<HutPlan, 'x0' | 'zFront' | 'front' | 'ridgeY'>;
 
+/** A pillar gets axis y (logs as vertical boards), any other block its plain state. */
+function uprightState(id: string): string {
+  return definitionOf(blockState(id)).shape === 'pillar' ? blockState(id, { axis: 'y' }) : blockState(id);
+}
+
+/** A wished wall material as hut wall (all huts), or null if it has no block. */
+function wallWish(material: string | undefined): StallWall | null {
+  if (!material || !hasMaterial(material)) return null;
+  const block = formOf(material, 'block');
+  if (!block) return null;
+  return { id: `wish:${material}`, block, ...(definitionOf(blockState(block)).shape === 'pillar' ? { axis: 'y' as const } : {}) };
+}
+
+/** A wished roof material, if it has the stairs, slabs and block the roof needs. */
+function roofWish(material: string | undefined): string | null {
+  if (!material || !hasMaterial(material)) return null;
+  return formOf(material, 'stairs') && formOf(material, 'slab') && formOf(material, 'block') ? material : null;
+}
+
 /**
  * Size and look per hut: no two huts share width, depth and wall height; neighbours differ in
  * width or wall height (19, rec. 12) and in wall, roof and ware theme (17, rec. 6).
@@ -133,6 +159,8 @@ function planLooks(rng: SeededRandom, input: StallInput, n: number): HutLook[] {
   const big = WARE_THEMES.find((t) => t.bigHut)!;
   const wall0 = r.int(0, style.walls.length - 1);
   const roof0 = r.int(0, style.roofs.length - 1);
+  const wishedWall = wallWish(input.materialWishes?.wall);
+  const wishedRoof = roofWish(input.materialWishes?.roof);
   const used = new Set<string>();
   const key = (s: HutSize) => `${s.width}x${s.depth}x${s.wallHeight}`;
   const out: HutLook[] = [];
@@ -156,8 +184,8 @@ function planLooks(rng: SeededRandom, input: StallInput, n: number): HutLook[] {
       overhangFront: size.width >= 7 || hr.chance(0.4) ? 2 : 1,
       // Consecutive huts step through the options (walls +1, roofs +2): huts opposite each
       // other and side by side in a row never share wall or roof.
-      wall: style.walls[(wall0 + i) % style.walls.length]!,
-      roof: style.roofs[(roof0 + 2 * i) % style.roofs.length]!,
+      wall: wishedWall ?? style.walls[(wall0 + i) % style.walls.length]!,
+      roof: wishedRoof ?? style.roofs[(roof0 + 2 * i) % style.roofs.length]!,
       wares: isBig ? big : themes[i % themes.length]!,
       big: isBig,
       shutter: !isBig && input.detailLevel >= 2 && hr.chance(0.3),
@@ -189,7 +217,7 @@ function buildHut(ctx: Ctx, h: HutPlan, rng: SeededRandom): RoofResult {
   const xc = h.x0 + (W - 1) / 2;
   const zBack = hutZ(h, -(D - 1));
   const wall = wallState(h.wall);
-  const post = blockState(style.post, { axis: 'y' });
+  const post = ctx.post;
   const S = Priority.STRUCTURE;
 
   // Floor, corner posts, side and back walls.
@@ -270,7 +298,7 @@ function buildHut(ctx: Ctx, h: HutPlan, rng: SeededRandom): RoofResult {
     if (r.chance(0.7)) set(b, x, 3, z, wareState(r.pick(h.wares.shelf)), Priority.DECOR);
     if (r.chance(0.45)) set(b, x, 1, z, wareState(r.pick(h.wares.storage)), Priority.DECOR);
   }
-  for (const x of h.big ? [h.x0 + 2, x1 - 2] : [xc]) hangLantern(ctx, roof, x, hutZ(h, -1), H - 1);
+  if (ctx.density !== 'none') for (const x of h.big ? [h.x0 + 2, x1 - 2] : [xc]) hangLantern(ctx, roof, x, hutZ(h, -1), H - 1);
 
   // Counter and display: wares smaller than half a block (B3), denser with more detail.
   const fill = input.detailLevel === 1 ? 0.5 : input.detailLevel === 2 ? 0.7 : 0.85;
@@ -280,7 +308,7 @@ function buildHut(ctx: Ctx, h: HutPlan, rng: SeededRandom): RoofResult {
 
   // Mulled wine hut: two hanging lanterns over the counter and barrel tables in front.
   if (h.big) {
-    for (const x of [h.x0 + 1, x1 - 1]) hangLantern(ctx, roof, x, hutZ(h, 1), H);
+    if (ctx.density === 'normal' || ctx.density === 'many') for (const x of [h.x0 + 1, x1 - 1]) hangLantern(ctx, roof, x, hutZ(h, 1), H);
     for (const u of [1, W - 2]) {
       const x = h.x0 + u;
       const z = hutZ(h, 3);
@@ -381,6 +409,8 @@ export function buildMarket(input: StallInput, rng: SeededRandom): { builder: Vo
     input,
     chain: blockState(profileBlockId('iron_chain', input.minecraftVersion), { axis: 'y' }),
     light: blockState(input.detailLevel >= 3 ? 'ochre_froglight' : 'glowstone', input.detailLevel >= 3 ? { axis: 'y' } : {}),
+    post: postState(style, input.materialWishes?.frame),
+    density: input.lanternDensity ?? 'normal',
   };
 
   const huts: HutPlan[] = looks.map((l) => {
@@ -435,15 +465,18 @@ export function buildMarket(input: StallInput, rng: SeededRandom): { builder: Vo
   if (input.theme === 'christmas' && input.garland) huts.forEach((h, i) => dressHut(ctx, h, roofs[i]!));
 
   // Multi-arm lamp post at the open end of the lane (18, rec. 13); a single hut gets a
-  // two-armed post beside its forecourt.
+  // two-armed post beside its forecourt. Lantern density: none = no post, few = two arms
+  // (one at a single hut), many = a second post at the other end of the lane.
   const postZ = laneCz + zShift;
-  if (twoRows) {
-    lampPost(ctx, marginW - 3, postZ, ['north', 'south', 'east', 'west']);
-    layout.lampPosts.push({ x: marginW - 3, z: postZ, arms: 4 });
-  } else {
-    const px = huts[0]!.x0 - 3;
-    lampPost(ctx, px, postZ, ['east', 'west']);
-    layout.lampPosts.push({ x: px, z: postZ, arms: 2 });
+  if (ctx.density !== 'none') {
+    const full: HorizontalDirection[] = twoRows ? ['north', 'south', 'east', 'west'] : ['east', 'west'];
+    const arms = ctx.density === 'few' ? full.slice(twoRows ? 2 : 1) : full;
+    const spots = [twoRows ? marginW - 3 : huts[0]!.x0 - 3];
+    if (ctx.density === 'many') spots.push(twoRows ? marketX1 + 2 : huts[0]!.x0 + huts[0]!.width + 1);
+    for (const x of spots) {
+      lampPost(ctx, x, postZ, arms);
+      layout.lampPosts.push({ x, z: postZ, arms: arms.length });
+    }
   }
 
   // The square: a tree in the middle, a ring of light stone, benches facing the tree, presents
@@ -513,4 +546,13 @@ export function buildMarket(input: StallInput, rng: SeededRandom): { builder: Vo
     }
   }
   return { builder: b, stalls: huts, layout };
+}
+
+/** Corner posts: the frame wish (its log, else its block) or the style's post. */
+function postState(style: StallStyle, frame: string | undefined): string {
+  if (frame && hasMaterial(frame)) {
+    const id = formOf(frame, 'pillar') ?? formOf(frame, 'block');
+    if (id) return uprightState(id);
+  }
+  return blockState(style.post, { axis: 'y' });
 }

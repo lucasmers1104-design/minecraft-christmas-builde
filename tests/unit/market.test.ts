@@ -16,7 +16,9 @@ const spec = (over: Partial<BuildSpec> = {}): BuildSpec => ({ ...DEFAULT_HOUSE_S
 /** The market exactly as generateBuilding builds it, plus its layout. */
 function market(s: BuildSpec): { model: VoxelModel; layout: MarketLayout } {
   const rng = createSeededRandom(s.seed);
-  const input = resolveHouseInput(s.style, s.theme, s.size, s.detailLevel, s.seed, s.targetMinecraftVersion, {}, rng);
+  const { materials: _m, ...wishes } = s.options;
+  void _m;
+  const input = resolveHouseInput(s.style, s.theme, s.size, s.detailLevel, s.seed, s.targetMinecraftVersion, wishes, rng);
   const { builder, layout } = buildMarket(
     {
       style: s.style,
@@ -27,8 +29,10 @@ function market(s: BuildSpec): { model: VoxelModel; layout: MarketLayout } {
       minecraftVersion: s.targetMinecraftVersion,
       detailLevel: s.detailLevel,
       lantern: input.lantern,
-      garland: s.theme === 'christmas',
-      presents: s.theme === 'christmas',
+      garland: s.options.garland ?? s.theme === 'christmas',
+      presents: s.options.presents ?? s.theme === 'christmas',
+      materialWishes: s.options.materials ?? {},
+      lanternDensity: input.lanternDensity,
     },
     rng.fork('market'),
   );
@@ -274,5 +278,41 @@ describe('Budengasse (Bericht 17, Empfehlung 13; Bericht 18, Empfehlung 13)', ()
       expect(count, size).toBeGreaterThanOrEqual(budget[size][0]);
       expect(count, size).toBeLessThanOrEqual(budget[size][1]);
     }
+  });
+});
+
+describe('Weihnachtsmarkt: Wünsche', () => {
+  it('die Testhilfe baut genau das Modell von generateBuilding', () => {
+    for (const s of [spec({ size: 'large' }), spec({ size: 'medium', theme: 'none', style: 'modern' }), { ...spec({ size: 'huge' }), options: { lanternDensity: 'many' as const, materials: { roof: 'spruce_planks' } } }])
+      expect(market(s).model.hash).toBe(generateBuilding(s).hash);
+  });
+
+  it('ausdrückliche Materialien (Wand, Dach, Rahmen) gelten für alle Buden', () => {
+    const s = { ...spec({ size: 'large', style: 'nordic' }), options: { materials: { wall: 'spruce_planks', roof: 'dark_oak_planks', frame: 'oak_log' } } };
+    const { model, layout } = market(s);
+    expect(generateBuildingWithReport(s).repairs).toEqual([]);
+    for (const h of layout.huts) {
+      expect(h.wall.block, `Bude ${h.index}`).toBe('spruce_planks');
+      expect(h.roof, `Bude ${h.index}`).toBe('dark_oak_planks');
+      expect(blockIdOf(blockAt(model, h.x0, 1, h.zFront)), `Bude ${h.index}`).toBe('minecraft:oak_log');
+    }
+  });
+
+  it('Laternendichte: keine – keine Laternen, viele – ein zweiter Mehrarm-Pfahl', () => {
+    const hanging = (m: VoxelModel) => m.palette.filter((st) => blockIdOf(st).endsWith('lantern') && propsOf(st).hanging === 'true');
+    const none = generateBuildingWithReport({ ...spec({ size: 'large' }), options: { lanternDensity: 'none' } });
+    expect(none.repairs).toEqual([]);
+    expect(hanging(none.model)).toEqual([]);
+    const many = market({ ...spec({ size: 'large' }), options: { lanternDensity: 'many' } });
+    expect(many.layout.lampPosts.filter((p) => p.arms === 4)).toHaveLength(2);
+    const few = market({ ...spec({ size: 'medium' }), options: { lanternDensity: 'few' } });
+    expect(few.layout.lampPosts.map((p) => p.arms)).toEqual([2]);
+    for (const density of ['none', 'few', 'many'] as const)
+      for (const size of SIZES) expect(generateBuildingWithReport({ ...spec({ size }), options: { lanternDensity: density } }).repairs, `${density} ${size}`).toEqual([]);
+  });
+
+  it('eine Palette hat beim Markt keine Wirkung und wird als Hinweis gemeldet', () => {
+    const r = generateBuildingWithReport({ ...spec(), options: { palette: 'rustic_cabin' } });
+    expect(r.notes.some((n) => n.includes('ohne Wirkung') && n.includes('Palette'))).toBe(true);
   });
 });
