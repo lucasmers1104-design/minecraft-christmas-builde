@@ -4,7 +4,7 @@ Lokale Web-App (Next.js 16, React 19, TypeScript strict, three.js). Ein deutsche
 
 **Lies zuerst `AGENTS.md`:** Next.js 16 weicht von deinem Trainingswissen ab, die Doku liegt in `node_modules/next/dist/docs/`.
 
-**Aktueller Großauftrag:** [`docs/AUFTRAG_PHASEN_1-8.md`](docs/AUFTRAG_PHASEN_1-8.md).
+**Aktueller Großauftrag:** [`docs/AUFTRAG_PROFI_BUILDS.md`](docs/AUFTRAG_PROFI_BUILDS.md) (Profi-Builds: Archetypen, Wandtiefe, Umgebung, Variantenauswahl, Detail-Kits). Abgeschlossen: [`docs/AUFTRAG_PHASEN_1-8.md`](docs/AUFTRAG_PHASEN_1-8.md).
 
 ## Befehle
 
