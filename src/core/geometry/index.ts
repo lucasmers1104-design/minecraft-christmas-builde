@@ -18,13 +18,20 @@ export {
   type VolumeMode,
 } from './solids';
 export {
+  battlementLayout,
   battlementPattern,
+  battlementRuns,
   battlementSymmetric,
   dihedralImages,
   facingRing,
+  notchCells,
   ringFacing,
+  sectorBattlements,
+  spireDiameters,
   taperDiameters,
+  witchHatLayers,
   type Facing,
+  type HelmLayer,
 } from './towers';
 export {
   pointedArch,
