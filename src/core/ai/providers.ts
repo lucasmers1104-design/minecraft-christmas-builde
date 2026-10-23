@@ -165,6 +165,37 @@ export function looksLikeOpenRouterKey(key: string): boolean {
   return /^sk-or-[A-Za-z0-9_-]{16,}$/.test(key.trim());
 }
 
+/** Longest API key the app accepts (real keys are ~73 characters). */
+export const MAX_API_KEY_LENGTH = 300;
+
+/**
+ * German problem with a pasted OpenRouter key, or null if it looks fine. Same rules as the
+ * server's check in PUT /api/ai/settings (the server is authoritative).
+ */
+export function openRouterKeyProblem(raw: string): string | null {
+  const key = raw.trim();
+  if (key === '') return 'Der API-Schlüssel ist leer. Kopiere ihn vollständig aus deinem OpenRouter-Konto (er beginnt mit „sk-or-“).';
+  if (/\s/.test(key)) return 'Der API-Schlüssel enthält Leerzeichen oder Zeilenumbrüche. Kopiere ihn bitte noch einmal ohne zusätzliche Zeichen.';
+  if (key.length > MAX_API_KEY_LENGTH) return `Der API-Schlüssel ist zu lang (höchstens ${MAX_API_KEY_LENGTH} Zeichen). Wurde mehr als der Schlüssel kopiert?`;
+  if (!key.startsWith('sk-or-')) return 'Das ist kein OpenRouter-Schlüssel: Er beginnt immer mit „sk-or-“. Du findest ihn unter openrouter.ai/settings/keys.';
+  if (!looksLikeOpenRouterKey(key)) return 'Der API-Schlüssel ist unvollständig oder enthält unerlaubte Zeichen. Kopiere ihn bitte noch einmal vollständig.';
+  return null;
+}
+
+/** OpenRouter model id, e.g. "openai/gpt-6-luna" or "meta-llama/llama-4-scout:free". */
+export const OPENROUTER_MODEL_ID_PATTERN = /^~?[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+export const MAX_MODEL_ID_LENGTH = 120;
+
+export function isOpenRouterModelId(id: string): boolean {
+  return id.length <= MAX_MODEL_ID_LENGTH && OPENROUTER_MODEL_ID_PATTERN.test(id);
+}
+
+/** Status text when no AI provider is selected (the E2E tests look for "nicht aktiviert"). */
+export const AI_OFF_MESSAGE = 'KI-Planung ist nicht aktiviert. Unter „KI einrichten“ kannst du OpenRouter oder Ollama verbinden.';
+
+/** Status text for OpenRouter without an API key. */
+export const AI_NO_KEY_MESSAGE = 'Kein API-Schlüssel hinterlegt. Trage unter „KI einrichten“ deinen OpenRouter-Schlüssel ein.';
+
 /** Masked key for display, e.g. "sk-or-v1-…a1b2". Never send the full key to the browser. */
 export function maskKey(key: string): string {
   const k = key.trim();
@@ -200,6 +231,8 @@ export interface AiSettingsView {
   ollama: { baseUrl: string; model: string };
   /** Where the app stores the settings (shown to the user), e.g. ".mcb-local/ai-settings.json". */
   storedIn: string;
+  /** Set if the settings file exists but cannot be used (it is ignored until saved again). */
+  fileProblem?: string | null;
 }
 
 /** PUT body. Omitted fields keep their value. `apiKey: null` removes the stored key. */
@@ -209,11 +242,22 @@ export interface AiSettingsUpdate {
   ollama?: { baseUrl?: string; model?: string };
 }
 
+/**
+ * What blocks (or limits) the AI, for targeted help in the UI:
+ * off = no provider chosen, no_key = OpenRouter without key, key = key rejected,
+ * credits = no credit left, model = model missing/unsuitable/unchecked,
+ * unreachable = OpenRouter or Ollama not reachable.
+ */
+export type AiStatusProblem = 'off' | 'no_key' | 'key' | 'credits' | 'model' | 'unreachable';
+
 export interface AiStatus {
   enabled: boolean;
   provider: AiProvider;
   model: string;
-  /** Ollama: server answers. OpenRouter: API reachable AND key accepted. */
+  /**
+   * Ollama: server answers. OpenRouter: API reachable AND key accepted (and, if the key
+   * reports its credit, credit left).
+   */
   reachable: boolean;
   /** Ollama: model pulled. OpenRouter: model exists and offers structured output. */
   modelInstalled: boolean;
@@ -225,8 +269,10 @@ export interface AiStatus {
   label?: string;
   /** OpenRouter: remaining credit in US dollars if the key reports one, else null. */
   creditUsd?: number | null;
-  /** OpenRouter: live price of the active model. */
+  /** OpenRouter: live price of the active model (snapshot price if the list is unreachable). */
   price?: ModelPrice | null;
+  /** Main problem, null/absent when ready. Ready = reachable && modelInstalled. */
+  problem?: AiStatusProblem | null;
 }
 
 export interface ModelInfo {
@@ -236,6 +282,8 @@ export interface ModelInfo {
   contextLength: number | null;
   /** At least one provider offers strict JSON schema output. */
   structuredOutputs: boolean;
+  /** False = not in OpenRouter's current model list; absent = not checked (snapshot). */
+  available?: boolean;
 }
 
 export interface ModelCatalogResponse {

@@ -1,6 +1,6 @@
 # Minecraft Christmas Builder – Hinweise für Claude Code
 
-Lokale Web-App (Next.js 16, React 19, TypeScript strict, three.js). Ein deutscher Freitext, optional über eine lokale KI (Ollama), wird zu einem **echten Minecraft-Java-Bauwerk (1.21.11)**. Die App zeigt es in 3D mit echten Texturen aus der Minecraft-Installation des Nutzers, macht es bearbeitbar und exportiert es als `.schem` (Sponge v3) für WorldEdit.
+Lokale Web-App (Next.js 16, React 19, TypeScript strict, three.js). Ein deutscher Freitext, optional über eine KI (OpenRouter in der Cloud oder Ollama lokal), wird zu einem **echten Minecraft-Java-Bauwerk (1.21.11)**. Die App zeigt es in 3D mit echten Texturen aus der Minecraft-Installation des Nutzers, macht es bearbeitbar und exportiert es als `.schem` (Sponge v3) für WorldEdit.
 
 **Lies zuerst `AGENTS.md`:** Next.js 16 weicht von deinem Trainingswissen ab, die Doku liegt in `node_modules/next/dist/docs/`.
 
@@ -30,7 +30,8 @@ Test gegen die echte Minecraft-Client-Datei: Umgebungsvariable `MCB_MINECRAFT_JA
 | `reports/Minecraft Bautechniken für Generator.md` | Recherchebericht und Umsetzungsplan (Phasen 1–8) |
 | `research_notes/Minecraft Bautechniken für Generator/` | Quellennotizen mit Paletten, Dach-, Fenster-, Kreis- und Winterdetails, Helligkeitstabelle (`helligkeit_texturen.tsv`) und Rechenskripten (`skripte/`) |
 | `src/core/` | reine Logik: Schema, Registry, Generatoren, Editor, Export, Texturen/Modell-Backen |
-| `src/lib/` | Server- und Browser-Hilfen: KI-Client, Texturen-Import, Transport, IndexedDB |
+| `src/lib/` | Server- und Browser-Hilfen: KI (`src/lib/ai/`: OpenRouter, Ollama, gemeinsame Planprüfung, Einstellungsspeicher), Texturen-Import, Transport, IndexedDB |
+| `src/core/ai/providers.ts` | KI-Vertrag für Server und Browser: Anbieter, Modellempfehlungen mit Preis-Schnappschuss, Kostenschätzung, Status-/Einstellungs-Typen |
 | `src/components/` | UI (builder, editor, preview) |
 | `tests/` | unit, integration, e2e, helpers, worldedit (Java-Harness) |
 
@@ -47,4 +48,4 @@ Test gegen die echte Minecraft-Client-Datei: Umgebungsvariable `MCB_MINECRAFT_JA
 - **PC:** Windows, RTX 5060 Ti (16 GB), 32 GB RAM, Node.js 24.
 - **Minecraft:** Java 1.21.11 über **CurseForge**. Die Client-Datei liegt meist unter `C:\Users\Luca\curseforge\minecraft\Install\versions\1.21.11\1.21.11.jar`. WorldEdit 7.3.18+ oder 7.4.x.
 - **Virenschutz:** **Avast**. Er hat schon `start-windows.cmd` in Quarantäne geschoben und eine native `.node`-Datei (lightningcss) blockiert. Bei rätselhaften `Cannot find module …*.node`-Fehlern zuerst an Avast denken; der Projektordner sollte dort als Ausnahme eingetragen sein.
-- **Optional:** Ollama mit `qwen3:14b` für die lokale KI (`.env.local`, siehe `docs/LOCAL_AI.md`).
+- **Optional:** KI-Planung über OpenRouter (API-Schlüssel des Nutzers) oder Ollama mit `qwen3:14b`, eingerichtet in der App unter „KI einrichten“ (gespeichert in `.mcb-local/ai-settings.json`, gitignored) oder über `.env.local`; siehe `docs/KI.md`. Der OpenRouter-Schlüssel darf nie geloggt, in Fehlermeldungen übernommen oder an den Browser geschickt werden. Echte OpenRouter-Aufrufe nur auf dem Haupt-PC (Testset: `MCB_AI_TESTSET=1`).

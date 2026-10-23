@@ -176,7 +176,7 @@ Screenshots mit echten Texturen (`docs/screenshots/`, erzeugt mit `scripts/scree
 ## Nicht getestet bzw. offen
 
 - **In-Game-Import noch nicht verifiziert.** Auf diesem PC lief keine Minecraft-Welt mit WorldEdit; Schritte und Checkliste stehen in `docs/WORLD_EDIT_IMPORT.md`. Das Release-Gate „In Minecraft mit WorldEdit getestet“ ist **nicht erfüllt**.
-- **Lauf mit einem echten Sprachmodell:** Ollama ist nicht installiert; es gibt keine echten Messwerte (Befehl in `docs/LOCAL_AI.md`).
+- **Lauf mit einem echten Sprachmodell:** Ollama ist nicht installiert, und die OpenRouter-Anbindung ist nur gegen einen simulierten Server getestet (kein Schlüssel auf dem Arbeitsrechner); es gibt keine echten Messwerte (Befehle in `docs/KI.md`).
 - **WorldEdit-Varianten:** andere Versionen als 7.4.2, FastAsyncWorldEdit, DataFixer, gedrehtes Einfügen nicht getestet.
 - **Browser:** nur Chromium; die E2E-Tests laufen mit Software-WebGL.
 - **Registries des WorldEdit-Readers** sind selbst erzeugt (Vorbehalt in `docs/COMPATIBILITY.md`).
