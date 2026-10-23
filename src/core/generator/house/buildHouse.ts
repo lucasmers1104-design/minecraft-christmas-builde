@@ -1,5 +1,6 @@
 import { GeometryError, VoxelBuilder } from '@/core/generator/geometry';
-import { buildRoofs, planRoofs, type RoofResult, type RoofSectionSpec } from '@/core/generator/roof/roofEngine';
+import { buildRoofs, housePitch, planRoofs, slopeColumns, type RoofResult, type RoofSectionSpec } from '@/core/generator/roof/roofEngine';
+import { ladderRise } from '@/core/generator/roof/profiles';
 import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRandom';
 import { Blocks } from '@/core/generator/house/materials';
 import { nearRoundTower, planHouse, roofSection, storeyRect, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
@@ -96,6 +97,16 @@ export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRand
     (d) => ![d.section.x0, d.section.x1].some((x) => [d.section.z0, d.section.z1].some((z) => nearRoundTower(plan, x, z, 2))),
   );
   const porch = input.porch ? porchSection(probe, main, plan.door.x) : null;
+  // One pitch for the whole house: wings, cross gable and annex follow the main roof. Where the
+  // style's minimum pitch needs more height than the cap, the cap grows (taller, not flatter).
+  const minPitch = input.style.proportions.roofRise.minPitch;
+  const pitch = housePitch(sections[0]!, minPitch);
+  if (pitch)
+    for (const s of sections) {
+      if (s.type === 'shed' || s.type === 'flat') continue;
+      s.pitch = pitch;
+      s.maxRise = Math.max(s.maxRise ?? 7, ladderRise(pitch, slopeColumns(s)));
+    }
   sections.push(...dormers.map((d) => d.section), ...(porch ? [porch] : []));
   return { sections, dormers, porch };
 }

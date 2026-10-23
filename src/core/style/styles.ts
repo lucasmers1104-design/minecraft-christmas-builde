@@ -9,6 +9,8 @@
  * the docs ("abgeleitet, im Spiel ungetestet").
  */
 
+import type { PitchId } from '@/core/generator/roof/profiles';
+
 export const STYLE_IDS = ['medieval', 'fantasy', 'rustic', 'nordic', 'japanese', 'cherry', 'modern', 'mediterranean'] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 
@@ -37,6 +39,13 @@ export interface StyleDef {
     floorHeight: readonly [number, number];
     overhang: readonly [number, number];
     plinth: readonly [number, number];
+    /**
+     * Roof rise cap in blocks: round(factor × wall top above ground), clamped to [min, max]
+     * ("a roof between one and two storeys tall", research 05/19; values are estimates). The
+     * pitch never drops below `minPitch`: a wide single-storey house then gets a taller roof
+     * rather than a flat one.
+     */
+    roofRise: { factor: number; min: number; max: number; minPitch: PitchId };
     /** Default footprint (odd width × odd depth) and storeys per size class. */
     size: Readonly<Record<SizeClass, { width: number; depth: number; floors: number }>>;
   };
@@ -74,6 +83,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       floorHeight: [4, 5],
       overhang: [1, 1],
       plinth: [1, 2],
+      roofRise: { factor: 1.25, min: 7, max: 13, minPitch: 'P45' },
       size: { small: W(7, 7, 1), medium: W(9, 9, 2), large: W(11, 11, 2), huge: W(15, 13, 3) },
     },
     symmetric: false,
@@ -101,6 +111,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       floorHeight: [4, 5],
       overhang: [1, 2],
       plinth: [1, 2],
+      roofRise: { factor: 1.3, min: 8, max: 14, minPitch: 'P45' },
       size: { small: W(7, 7, 1), medium: W(9, 9, 2), large: W(11, 11, 2), huge: W(13, 13, 3) },
     },
     symmetric: false,
@@ -129,6 +140,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       floorHeight: [4, 5],
       overhang: [1, 2],
       plinth: [1, 2],
+      roofRise: { factor: 0.7, min: 6, max: 9, minPitch: 'P37' },
       size: { small: W(7, 7, 1), medium: W(9, 9, 1), large: W(11, 9, 2), huge: W(15, 11, 2) },
     },
     symmetric: false,
@@ -156,6 +168,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       floorHeight: [4, 5],
       overhang: [2, 3],
       plinth: [2, 3],
+      roofRise: { factor: 1.15, min: 7, max: 12, minPitch: 'P45' },
       size: { small: W(7, 9, 1), medium: W(9, 15, 1), large: W(11, 19, 1), huge: W(13, 25, 2) },
     },
     symmetric: true,
@@ -185,6 +198,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       floorHeight: [4, 5],
       overhang: [2, 3],
       plinth: [1, 2],
+      roofRise: { factor: 0.8, min: 5, max: 9, minPitch: 'P34' },
       size: { small: W(9, 7, 1), medium: W(13, 9, 1), large: W(15, 11, 2), huge: W(19, 15, 3) },
     },
     symmetric: true,
@@ -212,6 +226,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       floorHeight: [4, 5],
       overhang: [1, 2],
       plinth: [1, 2],
+      roofRise: { factor: 0.8, min: 5, max: 9, minPitch: 'P34' },
       size: { small: W(9, 7, 1), medium: W(11, 9, 1), large: W(13, 11, 2), huge: W(17, 13, 2) },
     },
     symmetric: true,
@@ -239,6 +254,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       floorHeight: [4, 5],
       overhang: [0, 1],
       plinth: [1, 1],
+      roofRise: { factor: 0.3, min: 3, max: 5, minPitch: 'P27' },
       size: { small: W(9, 7, 1), medium: W(11, 9, 2), large: W(15, 11, 2), huge: W(19, 15, 3) },
     },
     symmetric: true,
@@ -266,6 +282,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       floorHeight: [4, 5],
       overhang: [1, 1],
       plinth: [1, 1],
+      roofRise: { factor: 0.4, min: 3, max: 5, minPitch: 'P27' },
       size: { small: W(7, 7, 1), medium: W(11, 9, 2), large: W(13, 11, 2), huge: W(17, 13, 3) },
     },
     symmetric: true,

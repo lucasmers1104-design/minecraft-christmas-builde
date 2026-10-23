@@ -423,6 +423,12 @@ export function roofSection(plan: HousePlan, mass: Mass, materials: RoleMaterial
     gableRecess: false,
     soffit: true,
     ...(mass.shedHigh ? { shedHigh: mass.shedHigh } : {}),
-    maxRise: mass.maxRise ?? (mass.kind === 'tower' ? 12 : 7),
+    maxRise: mass.maxRise ?? (mass.kind === 'tower' ? 12 : roofRiseCap(plan, mass)),
   };
+}
+
+/** Style rise cap for a mass: about one to two storeys of roof, relative to its wall height. */
+export function roofRiseCap(plan: HousePlan, mass: Pick<Mass, 'floors'>): number {
+  const { factor, min, max } = plan.input.style.proportions.roofRise;
+  return Math.max(min, Math.min(max, Math.round(factor * wallTopOf(plan, mass))));
 }

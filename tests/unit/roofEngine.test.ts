@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIR, blockIdOf, propsOf } from '@/core/blocks/registry';
 import { VoxelBuilder } from '@/core/generator/geometry';
-import { capRise, columnPieces, normalizeDeltas, profileDeltas, rawDeltas, tops } from '@/core/generator/roof/profiles';
+import { capRise, columnPieces, ladderDeltas, normalizeDeltas, pickPitch, profileDeltas, rawDeltas, tops } from '@/core/generator/roof/profiles';
 import { buildRoofs, planRoofs, type RoofSectionSpec } from '@/core/generator/roof/roofEngine';
 import { DEFAULT_HOUSE_SPEC } from '@/core/schema/buildSpec';
 import { blockAt, type VoxelModel } from '@/core/schema/voxelModel';
@@ -48,7 +48,8 @@ describe('Dachprofile (Δ-Folgen)', () => {
 
   it('Profile haben die dokumentierte Form und gerade Treppen-Oberkanten', () => {
     expect(rawDeltas('flared', 5)).toEqual([1, 1, 2, 2, 2]);
-    expect(rawDeltas('bell', 7)).toEqual([1, 1, 2, 2, 2, 4, 4]);
+    expect(rawDeltas('bell', 7)).toEqual([1, 1, 2, 2, 2, 2, 4]);
+    expect(rawDeltas('bell', 9)).toEqual([1, 1, 1, 1, 2, 2, 2, 4, 4]); // monotone (was 1,1,1,3,… before)
     expect(rawDeltas('convex', 6)).toEqual([4, 4, 2, 2, 1, 1]);
     for (const profile of ['standard', 'steep', 'shallow', 'flared', 'bell', 'convex', 'ogee', 'mansard'] as const) {
       for (let n = 1; n < 14; n++) {
@@ -63,6 +64,30 @@ describe('Dachprofile (Δ-Folgen)', () => {
     }
     expect(normalizeDeltas([1, 2, 2])).toEqual([1, 3, 2]);
     expect(capRise([4, 4, 4, 4], 10).reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(10);
+  });
+
+  it('Neigungsleiter: Steil- und Normaldächer werden nicht oben abgeflacht, sondern nehmen eine flachere Stufe', () => {
+    for (let n = 3; n <= 14; n++)
+      for (const cap of [5, 7, 9, 11]) {
+        for (const profile of ['steep', 'standard'] as const) {
+          const d = profileDeltas(profile, n, cap);
+          const step = pickPitch(profile, n, cap)!;
+          const sum = d.reduce((a, b) => a + b, 0);
+          if (step !== 'P27') {
+            expect(d, `${profile} n=${n} cap=${cap}`).toEqual(ladderDeltas(step, n));
+            expect(sum).toBeLessThanOrEqual(cap * 2);
+          }
+          // A periodic ladder pattern: never a run of Δ1 after a Δ4 (the old barn profile).
+          expect(d.join(',').includes('4,1'), `${profile} n=${n} cap=${cap}: ${d.join(',')}`).toBe(false);
+        }
+      }
+    // n = 7 under a cap of 10: 53° instead of the flattened 4,4,2,1,1,1,1.
+    expect(profileDeltas('steep', 7, 10)).toEqual([4, 2, 2, 4, 2, 2, 4]);
+    // Bell profiles never fall towards the ridge.
+    for (let n = 4; n <= 14; n++) {
+      const d = rawDeltas('bell', n);
+      d.forEach((v, i) => i > 0 && expect(v, `bell n=${n}`).toBeGreaterThanOrEqual(d[i - 1]!));
+    }
   });
 });
 

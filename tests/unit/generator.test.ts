@@ -155,6 +155,18 @@ describe('Haus: Bauteile und Feinparameter wirken', () => {
     const t = generateBuilding(spec({ style: 'medieval', size: 'large', seed: 1 }, { wings: 'T' }));
     expect(t.palette.some((s) => s.includes('_stairs[') && propsOf(s).half === 'bottom' && /inner_/.test(propsOf(s).shape ?? ''))).toBe(true);
   });
+
+  it('eine Dachneigung je Haus: Flügel und Quergiebel folgen dem Hauptdach, nie flacher als die Mindestneigung des Stils', () => {
+    for (const style of ['medieval', 'nordic', 'rustic'] as const)
+      for (const wings of ['L', 'T'] as const) {
+        const r = generateBuildingWithReport(spec({ style, size: 'large', seed: 2 }, { wings, roofType: 'gable', roofProfile: 'steep' }));
+        const massIds = new Set(r.house!.plan.masses.map((m) => m.id));
+        const pitches = new Set(r.house!.sections.filter((s) => massIds.has(s.id) && s.type !== 'shed').map((s) => s.pitch));
+        expect(pitches.size, `${style} ${wings}`).toBe(1);
+        // Never flatter than the style's minimum pitch (45° for the steep styles).
+        expect(style === 'rustic' ? ['P37', 'P45', 'P53', 'P56', 'P63'] : ['P45', 'P53', 'P56', 'P63'], `${style} ${wings}`).toContain([...pitches][0]);
+      }
+  });
 });
 
 describe('Thema: Weihnachten und Winter', () => {

@@ -136,10 +136,12 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
     if (!main) continue;
     // Overhang ≥ 1 (modern flat roofs may sit flush with a parapet).
     if (s.overhang < 1 && s.type !== 'flat') issues.push({ rule: 'ueberstand', message: `${s.id}: Dachüberstand ${s.overhang}` });
-    // Rise per section ≤ 7 (towers and A-frames excluded by design).
+    // Rise per section ≤ the style's cap (+1 for the ridge piece); towers and A-frames excluded.
+    // Shed roofs of annexes need their minimum slope and are only held to the general 7.
     if (main.kind !== 'tower' && s.type !== 'a_frame' && s.type !== 'flat') {
       const rise = planRoofs([s]).topY - s.wallTop;
-      if (rise > 8) issues.push({ rule: 'anstieg', message: `${s.id}: Dachanstieg ${rise} Blöcke` });
+      const cap = s.type === 'shed' ? 7 : (s.maxRise ?? 7);
+      if (rise > cap + 1) issues.push({ rule: 'anstieg', message: `${s.id}: Dachanstieg ${rise} Blöcke` });
     }
     // Closed roof: every column of the footprint (incl. overhang) carries roof blocks.
     for (let x = s.x0 - s.overhang; x <= s.x1 + s.overhang; x++)

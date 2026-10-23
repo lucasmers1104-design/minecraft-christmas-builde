@@ -1,7 +1,7 @@
 import type { HorizontalDirection } from '@/core/blocks/directions';
 import { AIR, blockState } from '@/core/blocks/registry';
 import { Priority, type PriorityValue, type VoxelBuilder } from '@/core/generator/geometry';
-import { columnPieces, profileDeltas, tops, type Piece, type ProfileName } from '@/core/generator/roof/profiles';
+import { columnPieces, pickPitch, profileDeltas, tops, type Piece, type PitchId, type ProfileName } from '@/core/generator/roof/profiles';
 import { formOf, requireForm } from '@/core/style/materials';
 import type { RoofType } from '@/core/style/styles';
 
@@ -57,6 +57,8 @@ export interface RoofSectionSpec {
   rings?: number;
   /** Max rise in blocks (default 7). */
   maxRise?: number;
+  /** Pitch ladder step shared by the whole house (planar profiles; see `housePitch`). */
+  pitch?: PitchId;
   /** Fill the gable triangles (default true for gable-like types). */
   gables?: boolean;
   priority?: PriorityValue;
@@ -215,13 +217,30 @@ function sectionTops(s: RoofSectionSpec, n: number): number[] {
   // The rise limit counts from the wall top: profiles with a flat eave (bell, flared) lift the
   // base above the wall, so their cap shrinks by that lift.
   const maxRise = s.maxRise ?? 7;
-  let t = tops(profileDeltas(profile, n, maxRise));
+  let t = tops(profileDeltas(profile, n, maxRise, s.pitch));
   for (let cap = maxRise - 1; cap >= 3; cap--) {
     const lift = baseY(s, t) - s.wallTop;
     if (Math.ceil(Math.max(0, ...t) / 2) + lift <= maxRise) break;
-    t = tops(profileDeltas(profile, n, cap));
+    t = tops(profileDeltas(profile, n, cap, s.pitch));
   }
   return t;
+}
+
+/** Number of slope columns (eave to ridge) of a section. */
+export function slopeColumns(s: RoofSectionSpec): number {
+  const { X0, Z0 } = outer(s);
+  return layoutAt(s, X0, Z0)?.n ?? 0;
+}
+
+/**
+ * Ladder step for a whole house, taken from its main section (research 05: one pitch per
+ * building; wings, cross gables and annexes follow it instead of picking their own), never
+ * below the style's minimum pitch. Undefined for curved profiles and flat roofs.
+ */
+export function housePitch(main: RoofSectionSpec, floor: PitchId = 'P27'): PitchId | undefined {
+  if (main.type === 'flat' || main.type === 'shed' || main.type === 'a_frame' || main.type === 'skirt') return undefined;
+  const profile = main.type === 'saltbox' ? 'standard' : profileFor(main);
+  return pickPitch(profile, Math.max(1, slopeColumns(main)), main.maxRise ?? 7, undefined, floor);
 }
 
 /** Roof base y: the column above the wall line rests on the wall top. */
