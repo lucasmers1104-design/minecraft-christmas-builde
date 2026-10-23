@@ -11,6 +11,7 @@ import type { ChunkPart, PartBucket } from '@/components/preview/meshChunks';
 import { useChunkedMesh, type MeshSnapshot } from '@/components/preview/useChunkedMesh';
 import type { ClientTexturePack } from '@/components/preview/textures/textureAtlas';
 import type { EditMode } from '@/components/editor/EditorPanel';
+import { Spinner } from '@/components/ui/Icon';
 
 type OrbitControlsImpl = ComponentRef<typeof OrbitControls>;
 
@@ -286,7 +287,8 @@ function VoxelMeshes({
       ) : null}
       {editing && hover ? (
         <lineSegments geometry={edges} position={[hover.x + 0.5, hover.y + 0.5, hover.z + 0.5]}>
-          <lineBasicMaterial color={mode === 'remove' ? '#f09a92' : '#f2cf86'} />
+          {/* danger-text for removing, accent-text for every other tool (design tokens). */}
+          <lineBasicMaterial color={mode === 'remove' ? '#f3a29c' : '#8edbb4'} />
         </lineSegments>
       ) : null}
       <axesHelper args={[3]} position={[0, 0.02, 0]} />
@@ -393,7 +395,10 @@ function CameraRig({
 function MeshingIndicator({ progress, error }: { progress: number | null; error: string | null }) {
   if (error) {
     return (
-      <div role="alert" className="absolute inset-x-4 top-3 rounded-lg border border-holly-500/40 bg-holly-600/20 px-3 py-2 text-xs text-holly-300">
+      <div
+        role="alert"
+        className="absolute top-3 left-3 right-16 z-10 rounded-lg border border-danger/45 bg-surface px-3 py-2 text-[13px] leading-snug text-danger-text shadow-(--shadow-panel)"
+      >
         Vorschau konnte nicht berechnet werden: {error}
       </div>
     );
@@ -402,8 +407,9 @@ function MeshingIndicator({ progress, error }: { progress: number | null; error:
     <div
       role="status"
       data-testid="mesh-progress"
-      className="pointer-events-none absolute left-1/2 top-3 -translate-x-1/2 rounded-full border border-white/10 bg-night-900/85 px-3 py-1 text-xs text-mist-300 shadow-lg backdrop-blur transition-opacity delay-150 duration-200 starting:opacity-0"
+      className="pointer-events-none absolute top-3 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-line bg-surface/95 px-3 py-1.5 text-[13px] whitespace-nowrap text-fg-muted shadow-(--shadow-panel) transition-opacity delay-150 duration-200 starting:opacity-0"
     >
+      <Spinner className="size-3.5 text-accent-text" />
       Vorschau wird berechnet …{progress !== null ? ` ${Math.round(progress * 100)} %` : ''}
     </div>
   );
@@ -448,7 +454,8 @@ export function VoxelScene({
         role="img"
         style={{ cursor: mode === 'view' ? 'grab' : 'crosshair' }}
       >
-        <color attach="background" args={['#0b1526']} />
+        {/* Matches the `canvas` design token (src/app/globals.css). */}
+        <color attach="background" args={['#0c1016']} />
         <hemisphereLight args={['#dfeefe', '#2a3b52', 0.9]} />
         <ambientLight intensity={0.35} />
         <directionalLight position={[d, d * 1.6, -d * 0.6]} intensity={1.6} />
@@ -467,8 +474,8 @@ export function VoxelScene({
             args={[d * 3, d * 3]}
             cellSize={1}
             sectionSize={8}
-            cellColor="#203556"
-            sectionColor="#35557f"
+            cellColor="#1d2631"
+            sectionColor="#2f3b4a"
             fadeDistance={d * 4}
             infiniteGrid
           />
