@@ -47,7 +47,7 @@ Stil „Rustikal“, Thema „Weihnachten“, Seed 1, keine Feinparameter (Breit
 | Bauwerk | Klein | Mittel | Groß | Riesig |
 |---|---|---|---|---|
 | Haus | 25 × 15 × 24 | 27 × 16 × 26 | 29 × 20 × 26 | 33 × 21 × 35 |
-| Weihnachtsbaum | 17 × 15 × 17 | 23 × 21 × 23 | 29 × 29 × 29 | 39 × 43 × 39 |
+| Weihnachtsbaum | 17 × 15 × 17 | 21 × 21 × 21 | 23 × 29 × 23 | 33 × 43 × 33 |
 | Marktstand | 13 × 14 × 14 | 13 × 14 × 21 | 21 × 20 × 30 | 29 × 20 × 30 |
 | Bahnhof | 33 × 22 × 28 | 35 × 23 × 30 | 39 × 23 × 32 | 43 × 23 × 34 |
 | Turm | 17 × 27 × 20 | 19 × 33 × 22 | 21 × 43 × 24 | 25 × 64 × 28 |
