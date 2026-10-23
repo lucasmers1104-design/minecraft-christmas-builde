@@ -18,6 +18,7 @@ export const ROOF_TYPE_LABELS: Record<RoofType, string> = {
   gable: "Satteldach",
   hip: "Walmdach",
   half_hip: "Krüppelwalm",
+  irimoya: "Irimoya (Walm unten, Giebel oben)",
   pyramid: "Pyramide",
   mansard: "Mansarddach",
   gambrel: "Gambrel (Scheune)",

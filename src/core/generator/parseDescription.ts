@@ -751,6 +751,7 @@ const ROOF_RULES: Rule[] = [
   },
   // Roof types (compounds first).
   roofType(`krüppelwalm${TAIL}|halbwalm${TAIL}|teilwalm${TAIL}`, 'half_hip'),
+  roofType(`irimoya${TAIL}|walmgiebel${TAIL}`, 'irimoya', (ctx, m) => ctx.vote('japanese', 1, m, `Stil-Hinweis: ${STYLE_LABELS.japanese}`)),
   roofType(`walm${TAIL}`, 'hip'),
   roofType(`mansard${TAIL}`, 'mansard'),
   roofType(`gambrel${TAIL}|scheunendach${TAIL}|holländische[nmrs]?\\s+${DACH}`, 'gambrel'),

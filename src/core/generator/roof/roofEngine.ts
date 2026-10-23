@@ -301,6 +301,30 @@ export function housePitch(main: RoofSectionSpec, floor: PitchId = 'P27'): Pitch
   return pickPitch(profile, Math.max(1, slopeColumns(main)), main.maxRise ?? 7, undefined, floor);
 }
 
+/**
+ * Irimoya (research 05 T-irimoya, 11 Empf. 1): a hip roof over the whole footprint and a
+ * gable roof of the same pitch, shortened at both ridge ends by about a third of the slope.
+ * The column union keeps the higher surface, so the hip runs round below and the gable
+ * triangle stands on it at the ends, its verge overhanging the hip slope. Too short a house
+ * keeps the plain hip.
+ */
+export function irimoyaSections(s: RoofSectionSpec): RoofSectionSpec[] {
+  const hip: RoofSectionSpec = { ...s, type: 'hip' };
+  const n = slopeColumns({ ...s, type: 'gable' });
+  const k = Math.max(2, Math.min(n - 2, Math.round(0.35 * n)));
+  const alongX = s.ridgeAxis === 'x';
+  const length = alongX ? s.x1 - s.x0 + 1 : s.z1 - s.z0 + 1;
+  if (n < 4 || length - 2 * k < 3) return [hip];
+  const gable: RoofSectionSpec = {
+    ...s,
+    id: `${s.id}-gable`,
+    type: 'gable',
+    gableRecess: false,
+    ...(alongX ? { x0: s.x0 + k, x1: s.x1 - k } : { z0: s.z0 + k, z1: s.z1 - k }),
+  };
+  return [hip, gable];
+}
+
 /** Roof base y: the column above the wall line rests on the wall top. */
 function baseY(s: RoofSectionSpec, t: readonly number[]): number {
   const oh = Math.min(s.overhang, Math.max(0, t.length - 1));
@@ -432,6 +456,23 @@ export function buildRoofs(builder: VoxelBuilder, sections: readonly RoofSection
     result.surface.set(k, top);
     result.topY = Math.max(result.topY, top);
     result.ridgeY[s.id] = Math.max(result.ridgeY[s.id] ?? -Infinity, top);
+  }
+
+  // Under the verge of an irimoya gable the hip slope still has to be there, or the overhang
+  // leaves a hole into the attic.
+  for (const [k, w] of winners) {
+    if (!w.verge || !sections[w.section]!.id.endsWith('-gable')) continue;
+    const hipId = sections[w.section]!.id.replace(/-gable$/, '');
+    let under: Column | undefined;
+    for (const { columns } of all) {
+      const c = columns.get(k);
+      if (!c || c === w || sections[c.section]!.id !== hipId || Math.max(...c.pieces.map((p) => p.y)) >= w.lowest) continue;
+      if (!under || c.top > under.top) under = c;
+    }
+    if (!under) continue;
+    const [x, z] = k.split(',').map(Number) as [number, number];
+    const priority = sections[under.section]!.priority ?? Priority.ROOF;
+    for (const p of under.pieces) if (builder.inside(x, p.y, z)) builder.setBlock(x, p.y, z, p.state, priority);
   }
 
   // Soffits: cornice under the eaves, boards under the verges.

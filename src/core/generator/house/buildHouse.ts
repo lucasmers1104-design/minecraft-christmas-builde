@@ -1,5 +1,5 @@
 import { GeometryError, VoxelBuilder } from '@/core/generator/geometry';
-import { buildRoofs, housePitch, planRoofs, slopeColumns, type RoofResult, type RoofSectionSpec } from '@/core/generator/roof/roofEngine';
+import { buildRoofs, housePitch, irimoyaSections, planRoofs, slopeColumns, type RoofResult, type RoofSectionSpec } from '@/core/generator/roof/roofEngine';
 import { ladderRise } from '@/core/generator/roof/profiles';
 import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRandom';
 import { Blocks } from '@/core/generator/house/materials';
@@ -91,7 +91,11 @@ export function shiftPlan(plan: HousePlan, dx: number, dz: number): HousePlan {
 
 /** Roof sections of a placed plan, including dormers and porch. */
 export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRandom) {
-  const sections = squareMasses(plan).map((m) => roofSection(plan, m, input.materials));
+  // An irimoya roof is a hip section plus a shortened gable section (see irimoyaSections).
+  const sections = squareMasses(plan).flatMap((m) => {
+    const s = roofSection(plan, m, input.materials);
+    return s.type === 'irimoya' ? irimoyaSections(s) : [s];
+  });
   const main = plan.masses[0]!;
   const probe = { builder: null as never, plan, blocks: null as never, rng };
   // Dormers keep clear of a round tower.
@@ -142,7 +146,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
     const side = main.ridgeAxis === 'x' ? (free.length === 1 ? free[0]! : rng.fork('chimney').chance(0.5) ? 'east' : 'west') : 'south';
     // Without a gable on that side an outside stack would stand free beside the hip: through the
     // roof instead. Nordic houses never have an outside stack (research 10 E8).
-    const throughRoof = ['hip', 'pyramid', 'mansard', 'half_hip'].includes(main.roofType) || input.styleId === 'nordic';
+    const throughRoof = ['hip', 'pyramid', 'mansard', 'half_hip', 'irimoya'].includes(main.roofType) || input.styleId === 'nordic';
     if (throughRoof) chimney = buildRoofChimney(ctx, main, roof.surface, side === 'south' ? 'east' : side);
     else buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
   }

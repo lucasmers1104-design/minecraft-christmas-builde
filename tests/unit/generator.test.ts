@@ -300,3 +300,23 @@ describe('Blockhauswand', () => {
     expect(lintHouse(m, r.house!)).toEqual([]);
   });
 });
+
+describe('Irimoya', () => {
+  it('japanisches Dach: Walm unten rundum, eingerückter Giebel oben, ohne Lücken und Reparaturen', () => {
+    const r = generateBuildingWithReport(spec({ style: 'japanese', size: 'large', seed: 1 }, { roofType: 'irimoya' }));
+    const ids = r.house!.sections.map((s) => `${s.id}:${s.type}`);
+    expect(ids).toContain('main:hip');
+    expect(ids).toContain('main-gable:gable');
+    // The gable triangle stands on the hip: gable cells of the inner section exist.
+    expect(r.house!.roof.gableCells.some((c) => c.section === 'main-gable')).toBe(true);
+    expect(r.repairs).toEqual([]);
+    expect(lintHouse(r.model, r.house!)).toEqual([]);
+    expect(floatingBlocks(r.model)).toBe(0);
+  });
+
+  it('der Stil japanisch wählt Irimoya statt Krüppelwalm; „Irimoya“ im Text wird erkannt', () => {
+    const types = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => generateBuildingWithReport(spec({ style: 'japanese', seed })).house!.plan.masses[0]!.roofType);
+    expect(types).not.toContain('half_hip');
+    expect(types).toContain('irimoya');
+  });
+});

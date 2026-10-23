@@ -133,6 +133,8 @@ describe('parseDescription (BuildSpec v2)', () => {
     ['Walmdach', 'hip'],
     ['Krüppelwalmdach', 'half_hip'],
     ['Krueppelwalmdach', 'half_hip'],
+    ['Irimoya-Dach', 'irimoya'],
+    ['Walmgiebeldach', 'irimoya'],
     ['Mansarddach', 'mansard'],
     ['Gambrel-Dach', 'gambrel'],
     ['Scheunendach', 'gambrel'],

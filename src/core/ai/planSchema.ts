@@ -503,6 +503,7 @@ export const PLAN_VALUE_LABELS: Readonly<Partial<Record<PlanField, Readonly<Reco
     gable: 'Satteldach',
     hip: 'Walmdach',
     half_hip: 'Krüppelwalmdach',
+    irimoya: 'Irimoya-Dach (unten Walm, oben Giebel)',
     pyramid: 'Pyramidendach',
     mansard: 'Mansarddach',
     gambrel: 'Scheunendach (Gambrel)',

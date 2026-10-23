@@ -17,7 +17,7 @@ export type StyleId = (typeof STYLE_IDS)[number];
 export const THEMES = ['none', 'winter', 'christmas'] as const;
 export type Theme = (typeof THEMES)[number];
 
-export const ROOF_TYPES = ['gable', 'hip', 'half_hip', 'pyramid', 'mansard', 'gambrel', 'saltbox', 'a_frame', 'flat', 'pagoda'] as const;
+export const ROOF_TYPES = ['gable', 'hip', 'half_hip', 'irimoya', 'pyramid', 'mansard', 'gambrel', 'saltbox', 'a_frame', 'flat', 'pagoda'] as const;
 export type RoofType = (typeof ROOF_TYPES)[number];
 
 export const ROOF_PROFILES = ['standard', 'steep', 'shallow', 'flared', 'bell', 'convex', 'ogee'] as const;
@@ -192,7 +192,8 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
     palettes: ['japanese_classic', 'japanese_temple'],
     // Irimoya-like half-hip first: on a wider-than-deep plan it keeps a ridge (a hip on a
     // near-square plan reads as a stepped pyramid).
-    roofTypes: { half_hip: 0.4, hip: 0.3, pagoda: 0.2, gable: 0.1 },
+    // Irimoya (hip below, gable above) is the Japanese form; half_hip is its inverse (research 05/11).
+    roofTypes: { irimoya: 0.45, hip: 0.3, pagoda: 0.15, gable: 0.1 },
     roofProfiles: { flared: 0.55, bell: 0.45 },
     proportions: {
       floorHeight: [4, 5],
@@ -220,7 +221,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
       keywords: ['kirsch', 'kirschblüte', 'kirschbluete', 'sakura', 'rosa', 'pink', 'blüten', 'blueten', 'frühling', 'fruehling'],
     },
     palettes: ['cherry_slate', 'cherry_white'],
-    roofTypes: { half_hip: 0.35, gable: 0.35, hip: 0.3 },
+    roofTypes: { irimoya: 0.35, gable: 0.35, hip: 0.3 },
     roofProfiles: { flared: 0.5, bell: 0.3, standard: 0.2 },
     proportions: {
       floorHeight: [4, 5],

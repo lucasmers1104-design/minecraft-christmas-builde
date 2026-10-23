@@ -133,7 +133,7 @@ function placeFinials(ctx: Ctx, roof: RoofResult, sections: readonly RoofSection
   const rod = 'waxed_lightning_rod';
   const massIds = new Set(plan.masses.map((m) => m.id));
   for (const s of sections) {
-    if (!massIds.has(s.id) || !GABLE_LIKE.has(s.type)) continue;
+    if (!massIds.has(s.id.replace(/-gable$/, '')) || !GABLE_LIKE.has(s.type)) continue;
     const ridgeY = roof.ridgeY[s.id];
     if (ridgeY === undefined) continue;
     const alongX = s.ridgeAxis === 'x';
