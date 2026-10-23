@@ -76,7 +76,7 @@ test.describe('Phase 3: Projekte (IndexedDB)', () => {
     await page.getByTestId('variant-2').click();
     await expect(page.getByTestId('project-heading-header')).toContainText('Ungespeicherte Änderungen');
     await page.getByTestId('open-library').click();
-    const other = page.getByTestId('project-row').filter({ hasNotText: '(geöffnet)' }).first();
+    const other = page.getByTestId('project-row').filter({ hasNot: page.getByTestId('project-current') }).first();
     await other.getByTestId('project-open').click();
     await expect(other).toContainText('Ungespeicherte Änderungen');
     await other.getByTestId('project-open').click();

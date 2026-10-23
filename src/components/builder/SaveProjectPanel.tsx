@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import { MAX_PROJECT_NAME_LENGTH } from '@/lib/persistence/projects';
+import { StatusDot, type Tone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { Field, TextInput } from '@/components/ui/Field';
+import { Icon } from '@/components/ui/Icon';
 import { Panel } from '@/components/ui/Panel';
 
+/** Save the current work as a project in this browser (IndexedDB). */
 export function SaveProjectPanel({
   canSave,
   currentName,
@@ -29,56 +33,79 @@ export function SaveProjectPanel({
   // The parent re-mounts this panel (key) when another project is opened.
   const [name, setName] = useState(currentName ?? defaultName);
   const trimmed = name.trim();
+  const state: { tone: Tone; text: string } = currentName
+    ? dirty
+      ? { tone: 'gold', text: 'Ungespeicherte Änderungen' }
+      : { tone: 'accent', text: `Gespeichert${lastSavedAt ? ` um ${new Date(lastSavedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr` : ''}` }
+    : canSave
+      ? { tone: 'gold', text: 'Noch nicht gespeichert' }
+      : { tone: 'neutral', text: 'Noch nichts zu speichern' };
   return (
     <Panel
-      title="Projekt"
+      title="Projekt speichern"
       headingId="project-heading"
       description={
-        currentName
-          ? dirty
-            ? 'Ungespeicherte Änderungen'
-            : `Gespeichert${lastSavedAt ? ` um ${new Date(lastSavedAt).toLocaleTimeString('de-DE')}` : ''}`
-          : 'Noch nicht gespeichert'
+        <span className="inline-flex items-center gap-2">
+          <StatusDot tone={state.tone} />
+          {state.text}
+        </span>
       }
       actions={
-        <Button variant="ghost" className="min-h-8 px-3 py-1 text-xs" onClick={onOpenLibrary} data-testid="open-library-panel">
-          Projekte …
+        <Button variant="ghost" size="sm" icon={<Icon name="folder" />} onClick={onOpenLibrary} data-testid="open-library-panel">
+          Alle Projekte
         </Button>
       }
     >
       <form
-        className="flex flex-col gap-2"
+        className="flex flex-col gap-3"
         onSubmit={(e) => {
           e.preventDefault();
           if (canSave && trimmed) onSave(trimmed);
         }}
       >
-        <label htmlFor="project-name" className="text-[11px] font-medium text-mist-300">
-          Projektname
-        </label>
-        <input
-          id="project-name"
-          data-testid="project-name-input"
-          value={name}
-          maxLength={MAX_PROJECT_NAME_LENGTH}
-          onChange={(e) => setName(e.target.value)}
-          className="rounded-lg border border-white/10 bg-night-950/70 px-3 py-2 text-sm text-snow-50 focus:border-gold-400/60 focus:outline-none"
-        />
-        <Button type="submit" variant="secondary" disabled={!canSave || !trimmed || busy} data-testid="save-button">
-          {busy ? 'Speichert …' : currentName ? 'Projekt speichern' : 'Als neues Projekt speichern'}
-        </Button>
-        {currentName ? (
+        <Field label="Projektname" htmlFor="project-name">
+          <TextInput
+            id="project-name"
+            data-testid="project-name-input"
+            value={name}
+            maxLength={MAX_PROJECT_NAME_LENGTH}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
+        <div className="flex flex-wrap gap-2">
           <Button
-            variant="ghost"
-            disabled={!canSave || !trimmed || busy}
-            onClick={() => onSaveAsNew(trimmed)}
-            data-testid="save-as-new-button"
+            type="submit"
+            variant="primary"
+            className="flex-1"
+            icon={<Icon name="save" />}
+            loading={busy}
+            disabled={!canSave || !trimmed}
+            data-testid="save-button"
           >
-            Als Kopie speichern
+            {busy ? 'Speichert …' : 'Speichern'}
           </Button>
-        ) : null}
-        {!canSave ? <p className="text-[11px] text-mist-400">Zuerst ein Bauwerk generieren.</p> : null}
-        <p className="text-[11px] text-mist-400">Gespeichert wird lokal in diesem Browser – Text, Einstellungen, Seed und alle Varianten inkl. Bearbeitungen.</p>
+          {currentName ? (
+            <Button
+              variant="secondary"
+              className="flex-1"
+              icon={<Icon name="copy" />}
+              disabled={!canSave || !trimmed || busy}
+              onClick={() => onSaveAsNew(trimmed)}
+              data-testid="save-as-new-button"
+              title="Speichert eine Kopie unter diesem Namen; das geöffnete Projekt bleibt unverändert."
+            >
+              Als neues Projekt
+            </Button>
+          ) : null}
+        </div>
+        <p className="flex items-start gap-1.5 text-xs leading-snug text-fg-subtle">
+          <Icon name="info" className="mt-px size-3.5" />
+          <span>
+            {canSave
+              ? 'Nur in diesem Browser gespeichert: Text, Einstellungen, Seed und alle Varianten samt Bearbeitungen.'
+              : 'Zuerst ein Bauwerk generieren. Gespeichert wird nur in diesem Browser.'}
+          </span>
+        </p>
       </form>
     </Panel>
   );
