@@ -207,6 +207,36 @@ describe('Rundturm im Modell', () => {
     }
   });
 
+  it('Zwiebelhelm (Fantasy, frei stehend ab D 9): Kupfer, breiter als der Tambour, Bauch aus Kopfüber-Treppen', () => {
+    let onions = 0;
+    for (const seed of range(1, 12))
+      for (const size of ['medium', 'large'] as const) {
+        const { r, cx, cz, design } = tower('fantasy', size, { seed });
+        if (design.helm.kind !== 'onion') continue;
+        onions++;
+        expect(design.drumD).toBe(design.d - 2);
+        const widths = design.helm.layers.map((l) => l.mask.width);
+        expect(widths[0]).toBe(design.drumD);
+        expect(Math.max(...widths)).toBeGreaterThanOrEqual(design.drumD + 4);
+        expect(widths.length).toBeGreaterThan(Math.max(...widths));
+        expect(widths.filter((w) => w === 1).length).toBeLessThanOrEqual(2);
+        // Every cell of a widening layer that overhangs the layer below is an upside-down stair.
+        design.helm.layers.forEach((layer, i) => {
+          if (i === 0 || layer.mask.width <= widths[i - 1]!) return;
+          const below = design.helm.layers[i - 1]!.mask;
+          const ob = (below.width - 1) / 2;
+          for (const [x, z] of cellsAround(circle(layer.mask.width, 'thin'), cx, cz)) {
+            if (below.has(x - cx + ob, z - cz + ob)) continue;
+            const s = blockAt(r.model, x, design.helm.y0 + i, z);
+            expect(id(s), `${seed} ${size} layer ${i}`).toBe('waxed_oxidized_cut_copper_stairs');
+            expect(propsOf(s).half).toBe('top');
+          }
+        });
+        expect(id(blockAt(r.model, cx, design.topY, cz))).toBe('waxed_lightning_rod');
+      }
+    expect(onions).toBeGreaterThan(0);
+  });
+
   it('Kuppel mit dem Durchmesser des Turms auf einem Tambour, Laterne ab D 9', () => {
     for (const size of SIZES) {
       const { r, plan, cx, cz, design } = tower('mediterranean', size);

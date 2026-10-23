@@ -6,6 +6,7 @@ import {
   circle,
   dome,
   notchCells,
+  onionProfile,
   ring,
   ringFacing,
   sectorBattlements,
@@ -96,7 +97,9 @@ const CONE_EXPONENT: Readonly<Record<RoundSpec['coneProfile'], number>> = { line
 type FinialPart = 'post' | 'rod' | 'end_rod' | 'lantern' | 'cupola';
 
 export interface HelmPlan {
-  kind: 'none' | 'kick' | 'witch' | 'spire' | 'dome';
+  kind: 'none' | 'kick' | 'witch' | 'spire' | 'dome' | 'onion';
+  /** Waxed verdigris copper instead of the roof material (a deliberate accent). */
+  copper: boolean;
   /** y of the first helm layer. */
   y0: number;
   /** Layers bottom → top, each mask centred on its own grid, shifted along `bend`. */
@@ -123,8 +126,9 @@ export interface TowerDesign {
   machicolation: boolean;
   /** Projecting bands on the ring just outside the wall (never the same profile twice in a row). */
   bands: { y: number; kind: 'cornice' | 'shadow' }[];
-  /** Drum rows above the deck (domes). */
+  /** Drum rows above the deck (dome, onion) and the drum's diameter. */
   drum: number;
+  drumD: number;
   helm: HelmPlan;
   /** Highest y the tower builds. */
   topY: number;
@@ -180,12 +184,20 @@ export function designRoundTower(plan: Pick<HousePlan, 'plinth' | 'floorHeight' 
   }
 
   const bend = rng.fork('bend').pick(HORIZONTAL);
-  const none: HelmPlan = { kind: 'none', y0: top + 1, layers: [], brim: -1, band: -1, bend, finial: [] };
+  const none: HelmPlan = { kind: 'none', copper: false, y0: top + 1, layers: [], brim: -1, band: -1, bend, finial: [] };
   const tip = (f: Finial): FinialPart[] => (f === 'fence' ? ['post'] : ['post', f]);
   const rings = (widths: number[]) => widths.map((w) => ({ mask: circle(w), shift: 0 }));
   let helm = none;
   let drum = 0;
-  if (spec.roof === 'cone' && look.cone === 'witch') {
+  let drumD = d;
+  if (spec.roof === 'cone' && look.cone === 'witch' && alone && d >= 9 && rng.fork('onion').chance(0.3)) {
+    // Onion dome of verdigris copper on a narrower drum (report 16 T11): wider than its drum,
+    // taller than wide, tip of at most two single blocks and a copper rod.
+    drum = 2;
+    drumD = d - 2;
+    const widths = onionProfile(drumD);
+    helm = { ...none, kind: 'onion', copper: true, y0: top + drum + 1, layers: rings(widths.slice(0, widths.indexOf(1) + 2)), finial: ['rod'] };
+  } else if (spec.roof === 'cone' && look.cone === 'witch') {
     // Witch hat (report 09 T7): slab brim, hat band, concave cone, usually a bent tip.
     const layers = witchHatLayers(d, rng.fork('witch').chance(0.8));
     helm = { ...none, kind: 'witch', layers: layers.map((l) => ({ mask: circle(l.d), shift: l.shift })), brim: 0, band: 1, finial: [look.finial === 'end_rod' ? 'end_rod' : 'rod'] };
@@ -216,6 +228,7 @@ export function designRoundTower(plan: Pick<HousePlan, 'plinth' | 'floorHeight' 
     machicolation: crown === 'battlement' && d >= 11,
     bands,
     drum,
+    drumD,
     helm,
     topY: Math.max(helmTop, crownTop),
   };
@@ -466,14 +479,16 @@ export function buildRoundTower(
     const merlons = sectorBattlements(k1, layout.merlons, layout.share);
     const corbelStairs = roleWith('stairs', 'wall', 'plinth', 'roofTrim');
     const period = (2 * Math.PI) / layout.merlons;
-    const every = plan.input.lanternDensity === 'many' ? 1 : plan.input.lanternDensity === 'normal' ? 2 : 4;
+    // A few warm points, not a lit ring ("too much light", report 16): every 4th hole, every 2nd with "many".
+    const density = plan.input.lanternDensity;
+    const every = density === 'many' ? 2 : density === 'normal' ? 4 : 0;
     const lit = new Set<number>();
     for (const { mx, mz, x, z } of cellsOf(k1)) {
       if (inHouse(x, corbelY, z)) continue;
       const merlon = merlons.has(mx, mz);
       let lantern = false;
       if ((!design.machicolation || merlon) && free(x, corbelY, z)) set(x, corbelY, z, blocks.stairs(corbelStairs, facingIn(x, z), 'top'), Priority.STRUCTURE);
-      else if (design.machicolation && plan.input.lanternDensity !== 'none' && free(x, corbelY, z) && N4.some(([a, b]) => !has(outerDisk, x + a, z + b))) {
+      else if (design.machicolation && every > 0 && free(x, corbelY, z) && N4.some(([a, b]) => !has(outerDisk, x + a, z + b))) {
         const gap = Math.floor(Math.atan2(z - cz, x - cx) / period + 100 * layout.merlons);
         if (gap % every === 0 && !lit.has(gap)) {
           lit.add(gap);
@@ -496,12 +511,14 @@ export function buildRoundTower(
     if (design.crown === 'flat') for (const { x, z } of cellsOf(wall)) if (free(x, top + 1, z)) set(x, top + 1, z, crownWall);
   }
 
-  // Drum under a dome: the wall ring continues above the cornice, with a pane on every axis.
+  // Drum under a dome (the wall ring continues above the cornice) or an onion (narrower, set
+  // back on the deck), with a pane on every axis.
   if (design.drum > 0) {
-    for (const { x, z } of cellsOf(wall)) for (let y = top + 1; y <= top + design.drum; y++) set(x, y, z, crownWall);
+    const dr = (design.drumD - 1) / 2;
+    for (const { x, z } of cellsOf(circle(design.drumD, 'thick'))) for (let y = top + 1; y <= top + design.drum; y++) set(x, y, z, crownWall);
     for (const s of HORIZONTAL) {
       const [vx, , vz] = VECTOR[s];
-      for (let y = top + 1; y < top + design.drum; y++) set(cx + vx * r, y, cz + vz * r, blocks.pane());
+      for (let y = top + 1; y < top + design.drum; y++) set(cx + vx * dr, y, cz + vz * dr, blocks.pane());
     }
   }
 
@@ -514,14 +531,19 @@ export function buildRoundTower(
 
 /**
  * Builds a helm from its layers, only the visible hull (hollow inside). A cell covered by the layer
- * above is a full block (the hat band in the trim material); an uncovered one a stair facing the
- * next layer (convex corners of a step too – the state resolver turns them into outer corners), a
- * bottom slab where a step is two wide or on the brim, the top single a full block.
+ * above is a full block (the hat band in the trim material), or an upside-down stair where it
+ * overhangs the layer below (the belly of an onion, the bend of a witch hat); an uncovered one a
+ * stair facing the next layer (convex corners of a step too – the state resolver turns them into
+ * outer corners), a bottom slab where a step is two wide or on the brim, the top single a full block.
  */
 function buildHelm(ctx: Ctx, helm: HelmPlan, cx: number, cz: number, set: (x: number, y: number, z: number, state: string) => void): void {
   const { blocks, plan } = ctx;
   const L = helm.layers;
   if (L.length === 0) return;
+  const copper = 'waxed_oxidized_cut_copper';
+  const roof = helm.copper ? blocks.fixed(copper) : blocks.block('roof');
+  const stairs = (facing: HorizontalDirection, half: 'top' | 'bottom') => (helm.copper ? blocks.fixed(`${copper}_stairs`, { facing, half }) : blocks.stairs('roof', facing, half));
+  const slab = () => (helm.copper ? blocks.fixed(`${copper}_slab`, { type: 'bottom' }) : blocks.slab('roof', 'bottom'));
   const [bx, , bz] = VECTOR[helm.bend];
   const centreOf = (i: number) => ({ x: cx + bx * L[i]!.shift, z: cz + bz * L[i]!.shift });
   const inLayer = (i: number, x: number, z: number) => {
@@ -545,10 +567,12 @@ function buildHelm(ctx: Ctx, helm: HelmPlan, cx: number, cz: number, set: (x: nu
       const edge = N4.some(([dx, dz]) => !inLayer(i, x + dx, z + dz) || brimCell(i, x + dx, z + dz));
       const covered = inLayer(i + 1, x, z);
       if (!edge && covered) continue;
+      const overhang = i > 0 && !inLayer(i - 1, x, z);
       let state: string;
-      if (covered) state = i === helm.band ? band : blocks.block('roof');
-      else if (i === helm.brim) state = blocks.slab('roof', 'bottom');
-      else if (i + 1 >= L.length) state = blocks.block('roof');
+      if (covered && overhang) state = stairs(ringFacing(x, z, c) as HorizontalDirection, 'top');
+      else if (covered) state = i === helm.band ? band : roof;
+      else if (i === helm.brim) state = slab();
+      else if (i + 1 >= L.length) state = roof;
       else {
         const next = centreOf(i + 1);
         const f0 = ringFacing(x, z, next) as HorizontalDirection;
@@ -556,7 +580,7 @@ function buildHelm(ctx: Ctx, helm: HelmPlan, cx: number, cz: number, set: (x: nu
         const sx = Math.sign(next.x - x);
         const sz = Math.sign(next.z - z);
         const corner = sx !== 0 && sz !== 0 && inLayer(i + 1, x + sx, z + sz) && inLayer(i, x + sx, z) && inLayer(i, x, z + sz);
-        state = f ? blocks.stairs('roof', f, 'bottom') : corner ? blocks.stairs('roof', f0, 'bottom') : blocks.slab('roof', 'bottom');
+        state = f ? stairs(f, 'bottom') : corner ? stairs(f0, 'bottom') : slab();
       }
       set(x, y, z, state);
     }
