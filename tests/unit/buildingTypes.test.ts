@@ -56,19 +56,24 @@ describe('Weihnachtsbaum', () => {
 });
 
 describe('Marktstand', () => {
-  it('Buden mit rot-weißer Treppenmarkise, Theke, Waren und Laternen über der Theke', () => {
+  it('Holzhütten mit Satteldach, Auslage-Falltür, Waren, Innenlaternen, Tannengrün und Lichterketten', () => {
     const set = ids(spec('market_stall', { size: 'large' }));
-    for (const id of ['minecraft:red_nether_brick_stairs', 'minecraft:smooth_quartz_stairs', 'minecraft:lantern', 'minecraft:barrel']) expect(set, id).toContain(id);
+    for (const id of ['minecraft:lantern', 'minecraft:barrel', 'minecraft:spruce_leaves', 'minecraft:iron_chain', 'minecraft:spruce_log']) expect(set, id).toContain(id);
+    expect([...set].some((id) => id.endsWith('_trapdoor')), 'Auslage').toBe(true);
+    expect([...set].some((id) => id.endsWith('_door')), 'Tür').toBe(true);
+    expect([...set].some((id) => id.includes('red_nether_brick')), 'kein Steindach').toBe(false);
   });
 });
 
 describe('Bahnhof', () => {
-  it('Gleis auf festem Grund, Bahnsteigkante, Bahnsteigdach mit Laternen, Uhr, Abschnittsdächer', () => {
+  it('Gleis auf Schwellen und Schotter, Bahnsteigkante mit Sicherheitslinie, Bahnsteigdach mit Laternen, Uhr mit Kettenzeigern, Abschnittsdächer', () => {
     const r = generateBuildingWithReport(spec('station', { size: 'large', style: 'medieval' }));
     const m = r.model;
     expect(m.palette.filter((s) => blockIdOf(s) === 'minecraft:rail')).toEqual(['minecraft:rail[shape=east_west,waterlogged=false]']);
     const set = new Set(m.palette.map(blockIdOf));
-    for (const id of ['minecraft:yellow_concrete', 'minecraft:lantern', 'minecraft:black_concrete', 'minecraft:white_concrete']) expect(set, id).toContain(id);
+    for (const id of ['minecraft:lantern', 'minecraft:white_concrete', 'minecraft:iron_chain', 'minecraft:stripped_spruce_log', 'minecraft:stone_brick_stairs', 'minecraft:andesite']) expect(set, id).toContain(id);
+    // No garish edge line and no solid clock hands any more (research 17, S3 and S6).
+    for (const id of ['minecraft:yellow_concrete', 'minecraft:black_concrete']) expect(set, id).not.toContain(id);
     // Section roofs: a hall and two lower wings instead of one giant roof.
     expect(r.house!.sections.filter((s) => ['main', 'wing_left', 'wing_right'].includes(s.id))).toHaveLength(3);
     expect(r.house!.roof.ridgeY.main!).toBeGreaterThan(r.house!.roof.ridgeY.wing_left!);

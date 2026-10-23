@@ -112,13 +112,20 @@ export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRand
       if (s.type === 'shed' || s.type === 'flat') continue;
       s.pitch = pitch;
       s.maxRise = Math.max(s.maxRise ?? 7, ladderRise(pitch, slopeColumns(s)));
+      // The planned rise incl. ridge piece and eave lift is the real height; keep the cap honest.
+      const rise = planRoofs([s]).topY - s.wallTop;
+      if (rise > s.maxRise + 1) s.maxRise = rise - 1;
     }
   sections.push(...dormers.map((d) => d.section), ...(porch ? [porch] : []));
   return { sections, dormers, porch };
 }
 
 /** Builds a placed plan into an existing builder (used by the house and the station). */
-export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: HouseInput, rng: SeededRandom): HouseResult {
+/**
+ * `plainGables` ("sectionId:side") keeps gable fields free of windows and timber, e.g. for the
+ * station clock in the hall gable.
+ */
+export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: HouseInput, rng: SeededRandom, opts: { plainGables?: readonly string[] } = {}): HouseResult {
   const { sections, dormers, porch } = planSections(plan, input, rng);
   const blocks = new Blocks(input.materials, input.minecraftVersion, input.seed);
   const ctx: Ctx = { builder, plan, blocks, rng };
@@ -153,7 +160,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
   const openings = buildOpenings(ctx, panels);
   buildStringCourses(ctx, squareMasses(plan));
   // Gable fields (timber, windows) and ridge finials, after the chimney so nothing hides behind it.
-  openings.windows += buildGables(ctx, roof, sections).windows;
+  openings.windows += buildGables(ctx, roof, sections, opts.plainGables ?? []).windows;
   const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;
   buildStairs(ctx, main, (x, z) => nearChimney(x, z) || nearRoundTower(plan, x, z, 1) || [...openings.reserved].some((k) => k.startsWith(`${x},`) && k.endsWith(`,${z}`)));
   // Pendant lanterns in every storey and a lantern in the attic (after the stairs).

@@ -68,7 +68,7 @@ function gablesOf(roof: RoofResult, sections: readonly RoofSectionSpec[]): Gable
   return [...groups.values()];
 }
 
-export function buildGables(ctx: Ctx, roof: RoofResult, sections: readonly RoofSectionSpec[]): { windows: number } {
+export function buildGables(ctx: Ctx, roof: RoofResult, sections: readonly RoofSectionSpec[], plain: readonly string[] = []): { windows: number } {
   const { builder, blocks, plan } = ctx;
   const style = plan.input.styleId;
   let windows = 0;
@@ -88,7 +88,7 @@ export function buildGables(ctx: Ctx, roof: RoofResult, sections: readonly RoofS
   };
 
   for (const g of gablesOf(roof, sections)) {
-    if (!GABLE_LIKE.has(g.section.type)) continue;
+    if (!GABLE_LIKE.has(g.section.type) || plain.includes(`${g.section.id}:${g.side}`)) continue;
     const s = g.section;
     const c = Math.round(along(g.side) === 'z' ? (s.z0 + s.z1) / 2 : (s.x0 + s.x1) / 2);
     const top = s.wallTop;

@@ -69,7 +69,8 @@ const HOUSE_OPTIONS: readonly (keyof BuildOptions)[] = [
 export const APPLICABLE_OPTIONS: Record<BuildingType, readonly (keyof BuildOptions)[]> = {
   house: HOUSE_OPTIONS,
   tree: ['presents', 'lanternDensity', 'soulLanterns', 'garden', 'snow'],
-  market_stall: ['palette', 'materials', 'garland', 'presents', 'lanternDensity', 'soulLanterns', 'snow'],
+  // The market's huts use their own style tables (templates/stalls.ts); explicit materials apply.
+  market_stall: ['materials', 'garland', 'presents', 'lanternDensity', 'soulLanterns', 'snow'],
   station: ['width', 'depth', 'floors', 'floorHeight', 'roofProfile', 'overhang', 'windows', 'windowFamily', 'doorFamily', 'chimney', 'garland', 'lanternDensity', 'soulLanterns', 'palette', 'materials', 'snow'],
   tower: ['floors', 'floorHeight', 'roofType', 'roofProfile', 'windows', 'doorFamily', 'garland', 'christmasTree', 'presents', 'lanternDensity', 'soulLanterns', 'palette', 'materials', 'garden', 'snow'],
 };
@@ -187,6 +188,8 @@ function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult
             lantern: input.lantern,
             garland: spec.options.garland ?? spec.theme === 'christmas',
             presents: spec.options.presents ?? spec.theme === 'christmas',
+            materialWishes: spec.options.materials ?? {},
+            lanternDensity: input.lanternDensity,
           },
           rng.fork('market'),
         );
@@ -196,7 +199,11 @@ function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult
         // The hall grows with the size; the wings follow the hall.
         const width = spec.options.width ?? { small: 9, medium: 11, large: 15, huge: 19 }[spec.size];
         const depth = spec.options.depth ?? { small: 7, medium: 9, large: 11, huge: 13 }[spec.size];
-        const input = houseInput(spec, rng, { width, depth, wings: 'none', annex: 'none', porch: false, dormers: 0 });
+        // Tall storeys (6) unless wished otherwise: the platform roof fits under the wings' eaves.
+        // No chimney unless wished: the hall's outside stack would stand on the platform.
+        const floorHeight = spec.options.floorHeight ?? 6;
+        const chimney = spec.options.chimney ?? false;
+        const input = houseInput(spec, rng, { width, depth, floorHeight, chimney, wings: 'none', annex: 'none', porch: false, dormers: 0 });
         const { builder, layout } = buildStation(input, rng.fork('station'));
         return { builder, house: layout.house };
       }
