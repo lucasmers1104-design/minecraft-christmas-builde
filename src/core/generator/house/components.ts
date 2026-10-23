@@ -120,9 +120,16 @@ export function buildPorch(ctx: Ctx, section: RoofSectionSpec): void {
   for (const x of [section.x0, section.x1]) {
     for (let y = yFloor + 1; y <= section.wallTop; y++) builder.setBlock(x, y, section.z0, blocks.fence('frame'), Priority.STRUCTURE);
   }
-  // Step down to the path in front of the porch.
-  for (let x = section.x0 + 1; x <= section.x1 - 1; x++) {
-    if (yFloor >= 1) builder.setBlock(x, yFloor, section.z0 - 1, blocks.stairs('plinth', 'south', 'bottom'), Priority.STRUCTURE);
+  // Steps down to the path in front of the porch: one stair per plinth row, half a block rise
+  // each, filled underneath, so a high plinth is walked up instead of jumped (research 04 R1).
+  for (let k = 0; k < yFloor; k++) {
+    const z = section.z0 - 1 - k;
+    const y = yFloor - k;
+    for (let x = section.x0 + 1; x <= section.x1 - 1; x++) {
+      if (!builder.inside(x, y, z)) continue;
+      builder.setBlock(x, y, z, blocks.stairs('plinth', 'south', 'bottom'), Priority.STRUCTURE);
+      for (let yy = 1; yy < y; yy++) builder.setBlock(x, yy, z, blocks.block('plinth'), Priority.STRUCTURE);
+    }
   }
 }
 

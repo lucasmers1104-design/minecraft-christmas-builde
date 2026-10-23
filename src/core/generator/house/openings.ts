@@ -133,6 +133,38 @@ function addDoorLanterns(ctx: Ctx, f: Facade, startU: number, width: number, y: 
   }
 }
 
+/**
+ * Stoop for a raised entrance (research 04 E06): with a plinth of two or more rows the door's
+ * own step is no longer enough – players would have to jump. A landing in front of the door at
+ * floor level, one stair per plinth row (half a block rise each) running out from the wall, one
+ * column wider than the door on each side, filled underneath, and low cheek walls beside it.
+ */
+function buildStoop(ctx: Ctx, f: Facade, startU: number, width: number, doorY: number): void {
+  const { builder, blocks } = ctx;
+  const P = doorY - 1;
+  if (P < 2) return;
+  const toWall = OPP[f.side];
+  const put = (u: number, d: number, y: number, state: string) => {
+    const p = facadePos(f, u, d);
+    if (builder.inside(p.x, y, p.z)) builder.setBlock(p.x, y, p.z, state, Priority.OPENING);
+  };
+  for (let u = startU - 1; u <= startU + width; u++) {
+    put(u, 1, P, blocks.block('plinth'));
+    for (let k = 1; k <= P; k++) {
+      const y = P + 1 - k;
+      put(u, 1 + k, y, blocks.stairs('plinth', toWall, 'bottom'));
+      for (let yy = 1; yy < y; yy++) put(u, 1 + k, yy, blocks.block('plinth'));
+    }
+  }
+  const cheek = blocks.wallForm('plinth');
+  for (const u of [startU - 2, startU + width + 1])
+    for (let k = 1; k <= P; k++) {
+      const y = P + 1 - k;
+      for (let yy = 1; yy <= y; yy++) put(u, 1 + k, yy, blocks.block('plinth'));
+      if (cheek) put(u, 1 + k, y + 1, cheek);
+    }
+}
+
 /** Axes (leftmost column) of evenly spaced openings inside [from, to) with margins at both ends. */
 function axesIn(from: number, to: number, width: number, gap: number, density: HousePlan['input']['windows'], marginLeft: number, marginRight: number): number[] {
   const start0 = from + marginLeft;
@@ -200,6 +232,7 @@ export function placeDoor(ctx: Ctx, f: Facade, uDoor: number, y: number, doors: 
         const q = facadePos(f, startU + w, d);
         for (const dy of [0, 1]) result.reserved.add(key(q.x, y + dy, q.z));
       }
+    if (!ctx.plan.input.porch) buildStoop(ctx, f, startU, t.width, y);
     if (ctx.plan.input.lanternDensity !== 'none') addDoorLanterns(ctx, f, startU, t.width, y, result.reserved);
     // Door leaf plus jambs; parts in front of the wall are checked by placeIfFits.
     return [startU - 1, startU + t.width];
