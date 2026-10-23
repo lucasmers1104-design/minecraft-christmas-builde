@@ -151,8 +151,9 @@ describe('Haus: Bauteile und Feinparameter wirken', () => {
     const shapes = new Set(m.palette.filter((s) => s.includes('_stairs[')).map((s) => propsOf(s).shape));
     expect(shapes).toContain('outer_left');
     expect(shapes).toContain('straight');
-    const l = generateBuilding(spec({ style: 'rustic', size: 'large', seed: 1 }, { wings: 'L' }));
-    expect(l.palette.some((s) => s.includes('_stairs[') && /inner_/.test(propsOf(s).shape ?? ''))).toBe(true);
+    // Valleys of a T plan: roof stairs (bottom half) turn into inner corners.
+    const t = generateBuilding(spec({ style: 'medieval', size: 'large', seed: 1 }, { wings: 'T' }));
+    expect(t.palette.some((s) => s.includes('_stairs[') && propsOf(s).half === 'bottom' && /inner_/.test(propsOf(s).shape ?? ''))).toBe(true);
   });
 });
 

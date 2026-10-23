@@ -110,11 +110,16 @@ export function buildPlinth(ctx: Ctx, mass: Mass): void {
       }
       if (!edge) set(ctx, x, P, z, blocks.block('floor'));
     }
-  // Apron of stairs on the ground row, full side against the plinth.
+  // Apron of stairs on the ground row, full side against the plinth – only at the corners and
+  // around the entrance; a skirt all round makes small houses look heavy (research 15/20).
+  const doorMass = plan.masses.find((m) => m.kind === 'cross') ?? plan.masses[0]!;
   for (const side of SIDES) {
     if (mass.joins[side]) continue;
     const f = facadeOf(r, side);
+    const doorU = mass === doorMass && side === plan.door.side ? f.origin.x - plan.door.x : null;
     for (let u = -2; u <= f.length + 1; u++) {
+      const corner = u <= 0 || u >= f.length - 1;
+      if (!corner && (doorU === null || Math.abs(u - doorU) > 2)) continue;
       const p = facadePos(f, u, 2);
       if (!builder.inside(p.x, 1, p.z) || !builder.isAir(p.x, 1, p.z)) continue;
       set(ctx, p.x, 1, p.z, blocks.stairs('plinth', OPPOSITE[side] as HorizontalDirection, 'bottom'), Priority.DECOR);
@@ -158,12 +163,14 @@ export function buildStorey(ctx: Ctx, mass: Mass, storey: number): { panels: Map
       panelsBySide.set(side, []);
       continue;
     }
-    const { posts, panels } = facadePanels(f, framed && (timber || storey === 0 || mass.kind !== 'main' || true));
+    // The stud grid belongs to timber-framed masses only; plank, log and stone walls get corner
+    // posts and plain window axes (research 13/10: a post grid on a plank wall reads as fake
+    // framing). A stone ground floor under timber storeys keeps the grid for aligned axes.
+    const { posts, panels } = facadePanels(f, framed && mass.timber);
     panelsBySide.set(side, panels);
     if (!framed) continue;
     const axis: 'x' | 'z' = side === 'north' || side === 'south' ? 'x' : 'z';
-    // Medieval stone ground floor: only corner posts; framed storeys: the full stud grid.
-    const postSet = timber || plan.input.timber === 'none' ? posts : [posts[0]!, posts.at(-1)!];
+    const postSet = framePosts(posts, timber);
     for (const u of postSet) {
       const p = facadePos(f, u, 1);
       for (let y = y0 + 1; y < y1; y++) set(ctx, p.x, y, p.z, blocks.log('frame', 'y'), Priority.STRUCTURE + 1);
@@ -177,20 +184,24 @@ export function buildStorey(ctx: Ctx, mass: Mass, storey: number): { panels: Map
     }
   }
 
-  // Jetty: the floor of an upper storey sticks out; consoles under it.
+  // Jetty: the floor of an upper storey sticks out; a console (Knagge) sits under every post of
+  // the storey above, so the load visibly runs down the frame (research 01/02/08).
   if (storey > 0) {
-    const below = storeyRect(mass, storey - 1);
     for (const side of SIDES) {
       if (!mass.jetty[side] || mass.joins[side]) continue;
-      const f = facadeOf(below, side);
-      for (let u = -1; u <= f.length; u++) {
-        if ((u + 1) % 2 !== 0) continue;
-        const p = facadePos(f, u, framed ? 2 : 1);
+      const f = facadeOf(rect, side);
+      for (const u of framePosts(facadePanels(f, framed && mass.timber).posts, timber)) {
+        const p = facadePos(f, u, framed ? 1 : 0);
         set(ctx, p.x, y0 - 1, p.z, blocks.stairs('beam', OPPOSITE[side] as HorizontalDirection, 'top'), Priority.STRUCTURE);
       }
     }
   }
   return { panels: panelsBySide };
+}
+
+/** Posts that are actually built: the full stud grid on timber storeys, else the corners. */
+function framePosts(posts: number[], timber: boolean): number[] {
+  return timber ? posts : [posts[0]!, posts.at(-1)!];
 }
 
 /**

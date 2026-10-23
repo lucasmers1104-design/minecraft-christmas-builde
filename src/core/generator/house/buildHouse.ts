@@ -127,9 +127,11 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
     const towerSide = tower ? (tower.rect.x0 + tower.rect.x1 > main.rect.x0 + main.rect.x1 ? 'east' : 'west') : null;
     const free = (['east', 'west'] as const).filter((s) => s !== towerSide);
     const side = main.ridgeAxis === 'x' ? (free.length === 1 ? free[0]! : rng.fork('chimney').chance(0.5) ? 'east' : 'west') : 'south';
-    // Without a gable on that side an outside stack would stand free beside the hip: through the roof instead.
-    if (['hip', 'pyramid', 'mansard', 'half_hip'].includes(main.roofType)) chimney = buildRoofChimney(ctx, main, roof.surface, side === 'south' ? 'east' : side);
-    else buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side);
+    // Without a gable on that side an outside stack would stand free beside the hip: through the
+    // roof instead. Nordic houses never have an outside stack (research 10 E8).
+    const throughRoof = ['hip', 'pyramid', 'mansard', 'half_hip'].includes(main.roofType) || input.styleId === 'nordic';
+    if (throughRoof) chimney = buildRoofChimney(ctx, main, roof.surface, side === 'south' ? 'east' : side);
+    else buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
   }
   const openings = buildOpenings(ctx, panels);
   const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;

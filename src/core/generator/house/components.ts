@@ -141,24 +141,74 @@ export function buildRoofChimney(ctx: Ctx, mass: Mass, surface: ReadonlyMap<stri
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) roofTop = Math.max(roofTop, surface.get(`${x + dx},${z + dz}`) ?? 0);
   const yTop = Math.min(builder.dimensions.height - 4, roofTop + 2);
   for (let y = 1; y < yTop; y++) builder.setBlock(x, y, z, blocks.weathered('chimney', x, y, z, { height: y - 1 }), Priority.CHIMNEY);
-  builder.setBlock(x, yTop, z, blockState('campfire', { facing: 'north', lit: 'true' }), Priority.CHIMNEY);
-  for (let y = yTop + 1; y < Math.min(builder.dimensions.height, yTop + 4); y++) builder.clear(x, y, z, Priority.CHIMNEY);
+  chimneyHead(ctx, [{ x, z }], yTop);
   return { x, z };
 }
 
-export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: HorizontalDirection): void {
+/**
+ * Chimney head (research 06 R20–R22, 08/13): a corbel course of upside-down stairs one row below
+ * the top, then a ring around the flue at fire level, so the campfire sits sunk into a crown
+ * that is wider than the shaft and is not seen from the side; the smoke rises freely above.
+ */
+function chimneyHead(ctx: Ctx, flue: readonly { x: number; z: number }[], yTop: number): void {
+  const { builder, blocks } = ctx;
+  const inFlue = (x: number, z: number) => flue.some((c) => c.x === x && c.z === z);
+  const ring = new Map<string, { x: number; z: number; toward: HorizontalDirection | null }>();
+  for (const c of flue)
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dz = -1; dz <= 1; dz++) {
+        const x = c.x + dx;
+        const z = c.z + dz;
+        if (inFlue(x, z)) continue;
+        // Edge cells lean on the flue with the stair's full side; corners stay crown-only.
+        const toward: HorizontalDirection | null = dx === 0 ? (dz > 0 ? 'north' : 'south') : dz === 0 ? (dx > 0 ? 'west' : 'east') : null;
+        const k = `${x},${z}`;
+        if (!ring.has(k) || toward) ring.set(k, { x, z, toward: ring.get(k)?.toward ?? toward });
+      }
+  const crown = blocks.wallForm('chimney') ?? blocks.block('chimney');
+  for (const { x, z, toward } of ring.values()) {
+    if (!builder.inside(x, yTop, z)) continue;
+    if (toward && blocks.has('chimney', 'stairs')) builder.setBlock(x, yTop - 1, z, blocks.stairs('chimney', toward, 'top'), Priority.CHIMNEY);
+    else builder.setBlock(x, yTop - 1, z, blocks.block('chimney'), Priority.CHIMNEY);
+    builder.setBlock(x, yTop, z, crown, Priority.CHIMNEY);
+  }
+  for (const { x, z } of flue) {
+    builder.setBlock(x, yTop, z, blockState('campfire', { facing: 'north', lit: 'true' }), Priority.CHIMNEY);
+    for (let y = yTop + 1; y < Math.min(builder.dimensions.height, yTop + 4); y++) builder.clear(x, y, z, Priority.CHIMNEY);
+  }
+}
+
+/**
+ * Exterior chimney on a gable wall: a two-wide shaft on larger houses, a stepped three-wide
+ * base up to the first floor line with stair shoulders, and a corbelled head with the fire
+ * sunk into the crown. Rustic cottages keep the classic centred stack; the other styles move
+ * it off the gable axis so the centre stays free for gable windows and ornament (research 20).
+ */
+export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: HorizontalDirection, surface?: ReadonlyMap<string, number>): void {
   const { builder, blocks, plan } = ctx;
   const top = storeyRect(mass, mass.floors - 1);
   const f = facadeOf(side === 'east' || side === 'west' ? mass.rect : top, side);
-  const u = Math.floor(f.length / 2) + (f.length > 7 ? 1 : 0);
-  const p = facadePos(f, u, mass.frames ? 2 : 1);
-  const yTop = Math.max(ridgeY + 2, wallTopOf(plan, mass) + 3);
-  for (let y = 1; y < yTop; y++) builder.setBlock(p.x, y, p.z, blocks.weathered('chimney', p.x, y, p.z, { height: y - 1 }), Priority.CHIMNEY);
-  // Wider base (two blocks along the wall) up to the first floor line.
-  const q = facadePos(f, u + 1, mass.frames ? 2 : 1);
-  for (let y = 1; y <= floorY(plan, 1) - 1; y++) builder.setBlock(q.x, y, q.z, blocks.weathered('chimney', q.x, y, q.z, { height: y - 1 }), Priority.CHIMNEY);
-  // Shoulder: the stair's full side leans against the flue.
-  builder.setBlock(q.x, floorY(plan, 1), q.z, blocks.stairs('chimney', OPPOSITE[rightOf(f.side)] as HorizontalDirection, 'bottom'), Priority.CHIMNEY);
-  builder.setBlock(p.x, yTop, p.z, blockState('campfire', { facing: 'north', lit: 'true' }), Priority.CHIMNEY);
-  for (let y = yTop + 1; y < Math.min(builder.dimensions.height, yTop + 4); y++) builder.clear(p.x, y, p.z, Priority.CHIMNEY);
+  const d = mass.frames ? 2 : 1;
+  const wide = f.length >= 9;
+  const centre = Math.floor(f.length / 2) - (wide ? 1 : 0);
+  const offset = plan.input.styleId !== 'rustic' && f.length >= 9 ? 2 : 0;
+  const u = centre + offset;
+  const shaft = (wide ? [u, u + 1] : [u]).map((uu) => facadePos(f, uu, d));
+  // Height: two above the roof right next to the stack, never below the ridge when centred.
+  let local = ridgeY;
+  if (surface && offset > 0) local = Math.max(...shaft.map((p) => surface.get(`${p.x},${p.z}`) ?? ridgeY));
+  const yTop = Math.min(builder.dimensions.height - 4, Math.max(offset > 0 ? Math.max(local + 2, ridgeY) : ridgeY + 2, wallTopOf(plan, mass) + 3));
+  for (const p of shaft) for (let y = 1; y < yTop; y++) builder.setBlock(p.x, y, p.z, blocks.weathered('chimney', p.x, y, p.z, { height: y - 1 }), Priority.CHIMNEY);
+  // Base one wider on each side up to the first floor line, closed by stair shoulders.
+  const baseTop = floorY(plan, 1) - 1;
+  const leftward = OPPOSITE[rightOf(f.side)] as HorizontalDirection;
+  for (const [uu, toward] of [
+    [u - 1, rightOf(f.side)],
+    [u + shaft.length, leftward],
+  ] as const) {
+    const q = facadePos(f, uu, d);
+    for (let y = 1; y <= baseTop; y++) builder.setBlock(q.x, y, q.z, blocks.weathered('chimney', q.x, y, q.z, { height: y - 1 }), Priority.CHIMNEY);
+    builder.setBlock(q.x, baseTop + 1, q.z, blocks.stairs('chimney', toward, 'bottom'), Priority.CHIMNEY);
+  }
+  chimneyHead(ctx, shaft, yTop);
 }

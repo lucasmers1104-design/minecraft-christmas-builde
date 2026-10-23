@@ -241,11 +241,13 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
         // Windows: in stud-grid panels, or on symmetric axes for plain walls.
         const density = plan.input.windows;
         const candidates = windows.filter((t) => t.height <= rows - 1 || (rows <= 3 && t.height <= rows));
-        const tryWindow = (u0: number, maxWidth: number): boolean => {
+        // Centred in the panel by the template's own width (research 03: centring by the panel
+        // width left narrower windows hugging the left post).
+        const tryWindow = (panelU0: number, panelWidth: number, maxWidth: number): boolean => {
           for (const t of candidates) {
             if (t.width > maxWidth) continue;
             const yBottom = rows >= t.height + 2 ? y0 + 2 : y0 + 1;
-            const frame = frameAt(f, u0, yBottom);
+            const frame = frameAt(f, panelU0 + Math.floor((panelWidth - t.width) / 2), yBottom);
             const cells = placeIfFits(ctx, t, frame);
             if (!cells) continue;
             if (cells.some((c) => result.reserved.has(key(c.x, c.y, c.z)))) continue;
@@ -267,9 +269,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
             if (doorSpan && panel.u1 >= doorSpan[0] && panel.u0 <= doorSpan[1]) return;
             if (density === 'few' && i % 2 === 1 && facadePanels.length > 2) return brace();
             if (density !== 'many' && width < 2 && facadePanels.length > 3) return brace();
-            const w = Math.min(width, width >= 4 ? 2 : width);
-            const u0 = panel.u0 + Math.floor((width - w) / 2);
-            if (!tryWindow(u0, w)) {
+            if (!tryWindow(panel.u0, width, Math.min(width, width >= 4 ? 2 : width))) {
               const yBottom = rows >= 4 ? y0 + 2 : y0 + 1;
               plainWindow(ctx, f, panel.u0 + Math.floor((width - 1) / 2), yBottom, Math.min(2, rows - 1), result.sills);
               result.windows++;

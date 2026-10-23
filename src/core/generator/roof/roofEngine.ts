@@ -245,7 +245,9 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
       const l = layoutAt(s, x, z);
       if (!l) continue;
       const outside = x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1;
-      const trim = l.d === 0 || l.verge;
+      // Contrast only as a thin barge board on the outermost verge column; the eaves stay in
+      // the roof material (research 06: a full contrast ring covered 36–43 % of the roof).
+      const trim = l.verge && (s.ridgeAxis === 'x' || s.type === 'shed' ? x === X0 || x === X1 : z === Z0 || z === Z1);
       const material = trim ? m.trim : m.roof;
       const pieces: { y: number; state: string }[] = [];
       let topHalf: number;
@@ -359,14 +361,20 @@ export function buildRoofs(builder: VoxelBuilder, sections: readonly RoofSection
   sections.forEach((s, i) => {
     if (!s.soffit || s.type === 'flat' || s.type === 'skirt') return;
     for (const [k, c] of all[i]!.columns) {
-      if (winners.get(k) !== c || !c.facing) continue;
+      if (winners.get(k) !== c) continue;
       const [x, z] = k.split(',').map(Number) as [number, number];
       const below = c.lowest - 1;
       if (!builder.inside(x, below, z) || !builder.isAir(x, below, z)) continue;
+      // The barge board meets itself under the ridge: close the notch with a full block.
+      if (!c.facing) {
+        if (c.ridge && c.trim) builder.setBlock(x, below, z, full(s.materials.trim), s.priority ?? Priority.ROOF);
+        continue;
+      }
       if (c.verge && c.d > 0) {
-        // Board under the verge: upside-down stair facing away from the ridge.
+        // Board under the verge: upside-down stair facing away from the ridge; the outermost
+        // column is the barge board itself (one material with the verge, research 06 R01).
         const away = ({ north: 'south', south: 'north', east: 'west', west: 'east' } as const)[c.facing];
-        builder.setBlock(x, below, z, stairs(s.materials.soffit, away, 'top'), s.priority ?? Priority.ROOF);
+        builder.setBlock(x, below, z, stairs(c.trim ? s.materials.trim : s.materials.soffit, away, 'top'), s.priority ?? Priority.ROOF);
       } else if (c.eave && !c.verge && c.d === s.overhang - 1) {
         // Cornice right outside the wall: the full side of the upside-down stair against the wall.
         builder.setBlock(x, below, z, stairs(s.materials.soffit, c.facing, 'top'), s.priority ?? Priority.ROOF);

@@ -70,8 +70,12 @@ describe('Dach-Engine', () => {
   it('Satteldach 9 × 7 mit Überstand 1: Traufe neben der Wandkrone, First aus Stufe, Kontrastkante, Untersicht', () => {
     const { model } = build([section({})]);
     // Cross-section at x = 6: walls z = 2..8, overhang to z = 1 and 9, ridge at z = 5.
-    expect(at(model, 6, 4, 1)).toContain('dark_oak_stairs'); // eave row (trim) beside the wall top
+    // The eave row stays in the roof material; contrast only on the outermost verge column.
+    expect(at(model, 6, 4, 1)).toContain('spruce_stairs');
     expect(propsOf(at(model, 6, 4, 1))).toMatchObject({ facing: 'south', half: 'bottom' });
+    for (let z = 1; z <= 9; z++) if (z !== 5) expect(blockIdOf(at(model, 1, 4 + Math.min(z - 1, 9 - z), z)), `Ortgang z=${z}`).toBe('minecraft:dark_oak_stairs');
+    // The barge board closes under the ridge (no notch).
+    expect(blockIdOf(at(model, 1, 7, 5))).toBe('minecraft:dark_oak_planks');
     expect(at(model, 6, 5, 2)).toContain('spruce_stairs');
     expect(at(model, 6, 8, 5)).toBe('minecraft:dark_oak_slab[type=bottom,waterlogged=false]'); // ridge cap
     expect(propsOf(at(model, 6, 4, 9))).toMatchObject({ facing: 'north' });
