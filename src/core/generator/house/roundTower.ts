@@ -11,6 +11,7 @@ import {
   ringFacing,
   sectorBattlements,
   spireDiameters,
+  straightRun,
   witchHatLayers,
   type Mask2D,
 } from '@/core/geometry';
@@ -73,17 +74,19 @@ interface TowerLook {
   posts: boolean;
   /** Merlons wider than crenels ("two up, one down") or 1:1. */
   merlons: 'wide' | 'even';
+  /** Round stone pilasters in the diagonal notches from D 13 (stone walls, report 16 T5). */
+  pilasters: boolean;
 }
 
 const LOOK: Readonly<Record<StyleId, TowerLook>> = {
-  medieval: { cone: 'kick', finial: 'rod', posts: false, merlons: 'wide' },
-  fantasy: { cone: 'witch', finial: 'end_rod', posts: true, merlons: 'wide' },
-  rustic: { cone: 'kick', finial: 'fence', posts: true, merlons: 'even' },
-  nordic: { cone: 'kick', finial: 'rod', posts: true, merlons: 'even' },
-  japanese: { cone: 'kick', finial: 'rod', posts: true, merlons: 'even' },
-  cherry: { cone: 'kick', finial: 'rod', posts: true, merlons: 'even' },
-  modern: { cone: 'kick', finial: 'rod', posts: false, merlons: 'even' },
-  mediterranean: { cone: 'kick', finial: 'rod', posts: false, merlons: 'even' },
+  medieval: { cone: 'kick', finial: 'rod', posts: false, merlons: 'wide', pilasters: true },
+  fantasy: { cone: 'witch', finial: 'end_rod', posts: true, merlons: 'wide', pilasters: false },
+  rustic: { cone: 'kick', finial: 'fence', posts: true, merlons: 'even', pilasters: false },
+  nordic: { cone: 'kick', finial: 'rod', posts: true, merlons: 'even', pilasters: false },
+  japanese: { cone: 'kick', finial: 'rod', posts: true, merlons: 'even', pilasters: false },
+  cherry: { cone: 'kick', finial: 'rod', posts: true, merlons: 'even', pilasters: false },
+  modern: { cone: 'kick', finial: 'rod', posts: false, merlons: 'even', pilasters: false },
+  mediterranean: { cone: 'kick', finial: 'rod', posts: false, merlons: 'even', pilasters: false },
 };
 
 /** Exponent of the spire profile per cone outline (1 straight, > 1 concave needle, < 1 bell). */
@@ -281,7 +284,7 @@ export function towerWeather(design: Pick<TowerDesign, 'plinthTop' | 'corbelY'>,
   if (y >= corbelY) return { amount: 0.06, heavy: 0 };
   const h = (y - plinthTop) / Math.max(1, corbelY - plinthTop);
   // Two rows under the corbel ring: weathered about 1.5–2 × as much as the shaft (drip under the crown).
-  return { amount: 0.26 - 0.12 * h + (y >= corbelY - 2 ? 0.2 : 0), heavy: h < 0.3 ? 0.3 : 0 };
+  return { amount: 0.26 - 0.12 * h + (y >= corbelY - 2 ? 0.25 : 0), heavy: h < 0.3 ? 0.3 : 0 };
 }
 
 const N4: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -344,8 +347,10 @@ export function buildRoundTower(
   const isLadder = (x: number, y: number, z: number) => x === ladder.x && z === ladder.z && y > plan.plinth && y <= ladderTop;
 
   // Windows (planned first: drip streaks below them weather the wall). Slits on the ground floor
-  // of a free tower, set-back windows with sill and hood above.
-  const windows: { side: HorizontalDirection; yb: number; h: number; hood: boolean }[] = [];
+  // of a free tower, set-back windows with sill and hood above; from D 13 the top storey gets
+  // arched three-light windows on every free axis (window hierarchy, report 16 T7).
+  const windows: { side: HorizontalDirection; yb: number; h: number; hood: boolean; lights: 1 | 3 }[] = [];
+  const archedTop = d >= 13 && straightRun(d) >= 5;
   const rows = plan.floorHeight - 1;
   for (let k = 0; k < mass.floors; k++) {
     const y0 = floorY(plan, k);
@@ -360,13 +365,19 @@ export function buildRoundTower(
       return [0, 1, -1].every((dd) => [yb - 1, yb, yb + h].every((y) => !inHouse(ax + vx * dd, y, az + vz * dd)));
     });
     const density = plan.input.windows;
-    const chosen = density === 'many' ? outside : outside.filter((_, i) => (density === 'few' ? i === k % outside.length : (i + k) % 2 === 0 || outside.length <= 2));
-    for (const side of chosen) windows.push({ side, yb, h, hood: !slit });
+    const arched = archedTop && !slit && k === mass.floors - 1;
+    const chosen = density === 'many' || arched ? outside : outside.filter((_, i) => (density === 'few' ? i === k % outside.length : (i + k) % 2 === 0 || outside.length <= 2));
+    // The ladder leans on the wall beside the axis on its side: a single light there.
+    for (const side of chosen) {
+      const three = arched && side !== spec.ladder;
+      windows.push({ side, yb, h, hood: !slit && !three, lights: three ? 3 : 1 });
+    }
   }
   const drip = new Set<string>();
   for (const w of windows) {
     const [vx, , vz] = VECTOR[w.side];
-    for (const y of [w.yb - 2, w.yb - 3]) drip.add(`${cx + vx * r},${y},${cz + vz * r}`);
+    const [wx, , wz] = VECTOR[clockwise(w.side, 1)];
+    for (const s of w.lights === 3 ? [-1, 0, 1] : [0]) for (const y of [w.yb - 2, w.yb - 3]) drip.add(`${cx + vx * r + wx * s},${y},${cz + vz * r + wz * s}`);
   }
 
   // Wall material per zone (plinth role only in the plinth zone), weathered over the full height.
@@ -419,10 +430,12 @@ export function buildRoundTower(
       }
   });
 
-  // Posts in the diagonal notches (timber styles), from the plinth zone up to the corbel ring.
-  if (look.posts)
+  // Posts in the diagonal notches (timber styles) or round stone pilasters (stone towers from
+  // D 13), from the plinth zone up to the corbel ring: they cover the pixel steps of the circle.
+  const pilaster = look.pilasters && d >= 13 ? blocks.wallForm('wall') : null;
+  if (look.posts || pilaster)
     for (const { x, z } of cellsOf(notchCells(d)))
-      for (let y = plinthTop + 1; y < corbelY; y++) if (freeOut(x, y, z)) set(x, y, z, blocks.log('frame', 'y'), Priority.STRUCTURE);
+      for (let y = plinthTop + 1; y < corbelY; y++) if (freeOut(x, y, z)) set(x, y, z, pilaster ?? blocks.log('frame', 'y'), Priority.STRUCTURE);
 
   // Bands: cornice (upside-down stairs) or shadow joint (top slabs), never across the entrance
   // portal. Timber styles take the beam wood (the bands tie the posts), stone towers their wall.
@@ -439,21 +452,41 @@ export function buildRoundTower(
   // and hood in front of the wall.
   const interiorAir = (x: number, y: number, z: number) => has(disk, x, z) && !has(wall, x, z) && !isLadder(x, y, z) && free(x, y, z);
   const reveal = blocks.block('wall');
+  const archStairs = roleWith('stairs', 'wall', 'plinth', 'roofTrim');
+  const archSlab = roleWith('slab', 'wall', 'plinth', 'roofTrim');
   for (const w of windows) {
     const [vx, , vz] = VECTOR[w.side];
-    const [wx, , wz] = VECTOR[clockwise(w.side, 1)];
+    const tangent = clockwise(w.side, 1);
+    const [wx, , wz] = VECTOR[tangent];
     const ax = cx + vx * r;
     const az = cz + vz * r;
     const ix = ax - vx;
     const iz = az - vz;
-    for (let y = w.yb; y < w.yb + w.h; y++) {
-      builder.clear(ax, y, az, P);
-      set(ix, y, iz, blocks.pane());
-      for (const s of [-1, 1]) if (interiorAir(ix + wx * s, y, iz + wz * s)) set(ix + wx * s, y, iz + wz * s, reveal);
+    const half = (w.lights - 1) / 2;
+    for (let s = -half; s <= half; s++)
+      for (let y = w.yb; y < w.yb + w.h; y++) {
+        builder.clear(ax + wx * s, y, az + wz * s, P);
+        set(ix + wx * s, y, iz + wz * s, blocks.pane());
+      }
+    // Reveal: closes the niche inside (beside, above and below the panes).
+    for (let s = -half - 1; s <= half + 1; s++) {
+      const rows = Math.abs(s) > half ? [w.yb - 1, ...Array.from({ length: w.h }, (_, i) => w.yb + i), w.yb + w.h] : [w.yb - 1, w.yb + w.h];
+      for (const y of rows) if (interiorAir(ix + wx * s, y, iz + wz * s)) set(ix + wx * s, y, iz + wz * s, reveal);
     }
-    for (const s of [-1, 0, 1])
-      for (const y of [w.yb - 1, w.yb + w.h]) if (interiorAir(ix + wx * s, y, iz + wz * s)) set(ix + wx * s, y, iz + wz * s, reveal);
     const facing = OPPOSITE[w.side] as HorizontalDirection;
+    if (w.lights === 3) {
+      // Arched head in the wall plane: upside-down stairs at the springers, a top slab as crown,
+      // sills in front of all three lights (report 16 T7b).
+      for (const s of [-1, 0, 1]) {
+        const x = ax + wx * s;
+        const z = az + wz * s;
+        set(x, w.yb + w.h, z, s === 0 ? blocks.slab(archSlab, 'top') : blocks.stairs(archStairs, s < 0 ? (OPPOSITE[tangent] as HorizontalDirection) : tangent, 'top'));
+        if (freeOut(x + vx, w.yb - 1, z + vz)) {
+          set(x + vx, w.yb - 1, z + vz, blocks.stairs(trimStairs, facing, 'top'), Priority.OPENING);
+          result.sills.push({ x: x + vx, y: w.yb - 1, z: z + vz });
+        }
+      }
+    }
     if (w.hood) {
       if (freeOut(ax + vx, w.yb - 1, az + vz)) {
         set(ax + vx, w.yb - 1, az + vz, blocks.stairs(trimStairs, facing, 'top'), Priority.OPENING);

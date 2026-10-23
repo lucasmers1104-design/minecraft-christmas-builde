@@ -282,6 +282,48 @@ describe('Rundturm im Modell', () => {
       }
   });
 
+  it('Fensterhierarchie: ab D 13 Bogenfenster mit drei Öffnungen im obersten Geschoss', () => {
+    for (const style of ['medieval', 'mediterranean', 'nordic'] as const)
+      for (const size of ['large', 'huge'] as const) {
+        const { r, plan, mass, cx, cz, design } = tower(style, size);
+        expect(design.d).toBeGreaterThanOrEqual(13);
+        const rr = (design.d - 1) / 2;
+        const yb = plan.plinth + (mass.floors - 1) * plan.floorHeight + (plan.floorHeight - 1 >= 4 ? 2 : 1);
+        let arched = 0;
+        for (const side of ['north', 'east', 'south', 'west'] as const) {
+          if (side === mass.round!.ladder) continue;
+          const [vx, vz] = ({ north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] } as const)[side];
+          const [wx, wz] = [-vz, vx];
+          const at = (s: number, dd: number, y: number) => blockAt(r.model, cx + vx * (rr + dd) + wx * s, y, cz + vz * (rr + dd) + wz * s);
+          if (!at(0, -1, yb).includes('pane')) continue;
+          arched++;
+          for (const s of [-1, 0, 1]) {
+            expect(at(s, 0, yb), `${style} ${size} ${side}`).toBe(AIR);
+            expect(at(s, -1, yb + 1), `${style} ${size} ${side}`).toContain('pane');
+          }
+          const springer = at(-1, 0, yb + 2);
+          expect(definitionOf(springer).shape).toBe('stairs');
+          expect(propsOf(springer).half).toBe('top');
+          expect(propsOf(at(0, 0, yb + 2)).type).toBe('top');
+        }
+        expect(arched, `${style} ${size}`).toBeGreaterThanOrEqual(2);
+      }
+  });
+
+  it('Steintürme ab D 13: Rundstäbe aus der Wandmauer in den Diagonalkerben', () => {
+    for (const size of ['large', 'huge'] as const) {
+      const { r, cx, cz, design } = tower('medieval', size);
+      for (const [x, z] of cellsAround(notchCells(design.d), cx, cz))
+        for (let y = design.plinthTop + 3; y < design.corbelY; y++) {
+          const s = blockAt(r.model, x, y, z);
+          if (s !== AIR) expect(definitionOf(s).shape, `${size} ${x},${y},${z}`).toBe('wall');
+        }
+    }
+    // Small towers stay plain (the notch would fill the step of a small circle).
+    const small = tower('medieval', 'medium');
+    for (const [x, z] of cellsAround(notchCells(small.design.d), small.cx, small.cz)) expect(blockAt(small.r.model, x, small.design.plinthTop + 3, z)).toBe(AIR);
+  });
+
   it('eine Laterne hängt in jedem Geschoss, sonst bleiben die Räume leer', () => {
     for (const style of ['medieval', 'fantasy', 'nordic'] as const) {
       const { r, plan, mass, cx, cz, design } = tower(style, 'large');
