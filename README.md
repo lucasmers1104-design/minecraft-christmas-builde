@@ -7,13 +7,20 @@ Zielversion ist **Minecraft Java 1.21.11** (DataVersion 4671); 1.21.1 ist als zw
 ## Was die App kann
 
 - **Fünf Bauwerkstypen:** Haus, Weihnachtsbaum, Marktstand, Bahnhof und Turm (Rundturm mit Kegel, Kuppel oder Zinnen).
-- **Acht Baustile als Daten:** Mittelalter, Fantasy/Märchen, Rustikal, Nordisch, Japanisch, Kirschblüte, Modern, Mediterran – mit 18 Paletten, Materialrollen (Wand, Rahmen, Dach, Sockel …), Proportionen, Dachvorlieben und Fenster- und Türvorlagen. Dazu das **Thema** unabhängig vom Stil: kein Thema, Winter oder Weihnachten.
+- **Acht Baustile als Daten:** Mittelalter, Fantasy/Märchen, Rustikal, Nordisch, Japanisch, Kirschblüte, Modern, Mediterran – mit 36 Paletten, Materialrollen (Wand, Rahmen, Dach, Sockel …), Proportionen, Dachvorlieben und Fenster- und Türvorlagen. Dazu das **Thema** unabhängig vom Stil: kein Thema, Winter oder Weihnachten.
 - **Häuser mit echter Bautechnik:**
-  - Sockel mit Treppenschürze, Rahmen und Ständer eine Ebene vor der Wand, Fachwerk mit Streben, Geschossbänder, Auskragung (Jetty) auf Konsolen – keine flache Wand breiter als 5 Blöcke.
-  - Echte Geschosse mit Böden und Treppe oder Leiter; Innenräume bleiben frei.
-  - Dächer aus Treppen und Stufen: Sattel, Walm, Krüppelwalm, Pyramide, Mansard, Gambrel, Saltbox, A-Frame, Flach, Pult, Pagode; Profile gerade, steil, flach, ausgestellt, Glocke, konvex; Überstand mit Untersicht, Kontrastkante, First-Varianten, Gauben, Kehlen bei Flügeln.
+  - Sockel mit Treppenschürze an Ecken und Eingang, Rahmen und Ständer eine Ebene vor der Wand, Fachwerk mit Streben und geschlossenen Eckfeldern (Fassadenrhythmus), Geschossbänder, Auskragung (Jetty) mit einer Knagge unter jedem Ständer – keine flache Wand breiter als 5 Blöcke. Holzhäuser ohne Fachwerk nur mit Eckpfosten, Blockhäuser aus liegenden Stämmen mit Kreuzecken, mediterrane Häuser mit Gurtgesims; Verwitterung in unregelmäßigen Flecken statt als Band.
+  - Echte Geschosse mit Böden und Treppe oder Leiter; in jedem Raum eine Laterne an der Kette, im Dachboden eine stehende Laterne (kein dunkler Raum, Fenster leuchten nachts). Sonst bleiben die Innenräume frei.
+  - Begehbarer Eingang auch bei hohem Sockel: Podest und je Sockelreihe eine Stufe (höchstens ½ Block), mit Wangen.
+  - Dächer aus Treppen und Stufen: Sattel, Walm, Krüppelwalm, Irimoya (unten Walm, oben Giebel – für Japanisch und Kirschblüte), Pyramide, Mansard, Gambrel, Saltbox, A-Frame, Flach, Pult, Pagode; Profile gerade, steil, flach, ausgestellt, Glocke, konvex.
+  - Eine Neigung je Haus aus einer Neigungsleiter (27°–63°) statt oben abgeflachter Steildächer; die Dachhöhe folgt Stil und Wandhöhe. Kontrast nur als schmales Ortgangbrett, Traufe im Dachmaterial; Dachfläche mit dunkleren Streifen von der Traufe und Bleiche am First; Untersicht, First-Varianten, Firstzier je Stil (Blitzableiter, Endstab, gekreuzte Windbretter, aufgebogene Firstenden), Gauben auf beiden Dachseiten, Kehlen bei Flügeln.
+  - Giebelfelder: Fachwerkgiebel eine Ebene zurück mit Firstständer und Kehlbalken, sonst Giebelfenster auf der Firstachse.
+  - Kamine mit zweibreitem Schaft, Fuß, auskragendem Kopf und versenktem Feuer.
   - Fenster W01–W18 und Türen T01–T10 als Vorlagen (Simse, Läden, Blumenkästen, Bögen, Rundfenster, Shoji, Bandfenster, Bleiglas, Doppeltür, Portal …), Laternen an jedem Eingang.
-  - Flügel (L/T/U), Zwerchgiebel, Anbau, eckiger oder runder Turm, Erker, Balkon, Veranda, Kamin mit Rauch.
+  - Flügel (L/T/U), Zwerchgiebel, Anbau, eckiger oder runder Turm, Erker, Balkon, Veranda, Kamin mit Rauch; Grundrisse länglich je Stil (Mittelalter und Fantasy mit dem Giebel zur Straße), Modern aus zwei versetzten Kuben mit dünner Dachplatte.
+- **Türme:** Zinnenkrone auf einem tragenden Konsolenkranz, wenige Bänder, Kegel mit Traufknick und schlanker Spitze, Hexenhut, Kuppel mit Tambour, Zwiebelhelm, Bogenfenster.
+- **Landschaft je Stil:** geschwungene Wege aus der Palettenrolle Weg, Grenzen (Hecke, Zaun, Feldmauer, Bambuszaun …) mit Tor, 14 Laternenpfahl-Designs im Rhythmus, Beete, Büsche, Bäume, Felsen, Holzstapel; im Winter keine Blumen. Das Grundstück wächst mit dem Haus.
+- **Weihnachtsmarkt und Bahnhof:** Markthütten mit Klappladen, Gasse mit Lichterketten; Bahnhof mit Hausbahnsteig unter Pultdach, Gleisbett mit Schwellen, runder Uhr, Signalen und Güterschuppen.
 - **Festschicht:** Weihnachtsbaum mit Etagen, Schmuck in Stilfarben und mitwachsendem Stern; Geschenkgruppen unter dem Baum oder neben dem Eingang; Girlanden mit Durchhang, Schleifen an Ankerpunkten und verstecktem Licht; Kränze als Ring; Kerzen je Fassade einheitlich; Laternen an Ketten. Jeder Stil hat ein eigenes Fest-Kit (z. B. Japanisch mit Kadomatsu statt Baum, Nordisch mit Julbock, Modern mit Lichtband). Schnee nur auf ausdrücklichen Wunsch, und nur dort, wo er im Spiel liegen bleibt; keine Eiszapfen.
 - **Geformte Blöcke wie im Spiel:** Treppen, Stufen, Zäune, Mauern, Scheiben, Türen, Falltüren, Laternen, Ketten, Kerzen, Leitern … Ein Zustandsauflöser berechnet Treppenecken und Verbindungen so, wie Minecraft es beim Setzen täte; ein Validator verhindert Blöcke, die im Spiel abfallen würden.
 - **Freitext auf Deutsch**, z. B. „mittelalterliches Fachwerkhaus mit zwei Geschossen, Erker und rundem Turm vorne links“:
@@ -106,7 +113,7 @@ docs/                    Architektur, Kompatibilität, Import, lokale KI, Textur
 
 - Nur Minecraft **Java** und Vanilla-Blöcke; Block-Entities (Truhen-Inhalte, Schilder-Texte, Banner) werden nicht geschrieben.
 - Maximales Volumen 192 × 384 × 192 Blöcke, 4096 verschiedene Blockzustände.
-- Innenräume bleiben bewusst leer (keine Möbel).
+- Innenräume bleiben bewusst leer (keine Möbel); nur Licht (Laternen) wird innen gesetzt.
 - Die Vorschau zeigt Original-Texturen nur, wenn eine Minecraft-Installation gefunden oder ausgewählt wurde. Animationen, Licht und Schatten des Spiels gibt es in der Vorschau nicht.
 - Projekte liegen nur in diesem Browser auf diesem Gerät.
 - Die lokale KI kann nur kombinieren, was der Generator kennt. Ein Lauf mit einem echten Modell wurde hier nicht durchgeführt, weil Ollama nicht installiert ist (siehe `docs/LOCAL_AI.md`).
@@ -121,5 +128,6 @@ docs/                    Architektur, Kompatibilität, Import, lokale KI, Textur
 - [`docs/AUFTRAG_PHASEN_1-8.md`](docs/AUFTRAG_PHASEN_1-8.md) und [`docs/PLAN_PHASEN_1-8.md`](docs/PLAN_PHASEN_1-8.md): Auftrag und Umsetzungsplan der Ausbaustufe (Phasen 1–8)
 - [`docs/screenshots/`](docs/screenshots/): Bilder aller Stile und Bauwerkstypen mit echten Texturen
 - [`reports/Minecraft Bautechniken für Generator.md`](<reports/Minecraft Bautechniken für Generator.md>): Recherche zu Minecraft-Bautechniken und Umsetzungsplan für den nächsten Generator (Quellennotizen in `research_notes/`)
+- [`research_notes/Bauqualitaet 2026-10/`](<research_notes/Bauqualitaet 2026-10/>): 20 Rechercheberichte zur Bauqualität (Wandtiefe, Fassadendetails, Fenster, Türen, Dächer, Paletten, sechs Stilbibeln, Winter/Weihnachten, Gelände, Türme, Sonderbauten, Licht, Proportionen, prozedurale Generatoren), Grundlage der Ausbaustufe „Bauqualität“
 - [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md): ausgeführte Prüfungen mit Ergebnissen
 - [`tests/worldedit/README.md`](tests/worldedit/README.md): Aufbau des WorldEdit-Readers

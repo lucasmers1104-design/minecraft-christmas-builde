@@ -1,7 +1,8 @@
 import { buildSpecSchema, isImplementedBuildingType, MAX_SEED, type BuildingType, type BuildSpec } from '@/core/schema/buildSpec';
 import type { BuildOptions } from '@/core/schema/buildOptions';
 import type { VoxelModel } from '@/core/schema/voxelModel';
-import { blockState } from '@/core/blocks/registry';
+import { isFaceFull } from '@/core/blocks/faces';
+import { AIR, blockState, definitionOf } from '@/core/blocks/registry';
 import type { Repair } from '@/core/blocks/validator';
 import { GeometryError, Priority, VoxelBuilder } from '@/core/generator/geometry';
 import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRandom';
@@ -152,7 +153,21 @@ function finishHouse(spec: BuildSpec, input: HouseInput, house: HouseResult, rng
     treeHeight: footprint.height,
   });
   decorateHouseFestive(builder, rng, spec, input, house, yard, report.anchor);
+  hardenCoveredPaths(builder);
   return builder;
+}
+
+/**
+ * A trodden path under a block (a present, a woodpile placed later) would turn into dirt in the
+ * game; store it as coarse dirt right away instead of leaving it to the validator.
+ */
+function hardenCoveredPaths(b: VoxelBuilder): void {
+  const path = blockState('dirt_path');
+  // Same rule as the validator: a block whose bottom face is full and solid.
+  const covers = (s: string) => s !== AIR && definitionOf(s).shape !== 'fence_gate' && isFaceFull(s, 'down', 'collision');
+  for (let z = 0; z < b.dimensions.length; z++)
+    for (let x = 0; x < b.dimensions.width; x++)
+      if (b.dimensions.height > 1 && b.getBlock(x, 0, z) === path && covers(b.getBlock(x, 1, z))) b.setBlock(x, 0, z, blockState('coarse_dirt'), Priority.CLEARANCE);
 }
 
 function buildTreePlot(spec: BuildSpec, rng: SeededRandom): VoxelBuilder {

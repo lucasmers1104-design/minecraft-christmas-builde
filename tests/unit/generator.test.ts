@@ -335,3 +335,17 @@ describe('Modern: versetzte Baukörper', () => {
       }
   });
 });
+
+describe('Regressionen aus dem Breitendurchlauf', () => {
+  it('tiefe Traufe über dem Eingang: der Türfreiraum bleibt frei (rustikal, eingeschossig, Gambrel)', () => {
+    for (const detailLevel of [1, 2] as const) {
+      const r = generateBuildingWithReport(spec({ style: 'rustic', size: 'medium', theme: 'none', detailLevel, seed: 4 }));
+      expect(lintHouse(r.model, r.house!), `Detailgrad ${detailLevel}`).toEqual([]);
+    }
+  });
+
+  it('Trampelpfad unter später gesetzter Deko wird gleich als grobe Erde gespeichert (keine Reparatur)', () => {
+    const r = generateBuildingWithReport(spec({ style: 'rustic', size: 'medium', theme: 'christmas', detailLevel: 2, seed: 2 }));
+    expect(r.repairs).toEqual([]);
+  });
+});

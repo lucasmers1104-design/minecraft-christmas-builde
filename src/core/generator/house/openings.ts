@@ -226,11 +226,16 @@ export function placeDoor(ctx: Ctx, f: Facade, uDoor: number, y: number, doors: 
     result.templates.push(t.id);
     const p = facadePos(f, startU, 0);
     result.doors.push({ x: p.x, y, z: p.z, outward: f.side, width: t.width });
-    // Keep the way in free: two cells in front, one behind.
+    // Keep the way in free: two cells in front, one behind. Roofs are built before the
+    // openings, so a low eave cornice may already hang there (one-storey houses with a steep
+    // eave): the clearance wins and takes it out.
     for (let w = 0; w < t.width; w++)
       for (const d of [-1, 1, 2]) {
         const q = facadePos(f, startU + w, d);
-        for (const dy of [0, 1]) result.reserved.add(key(q.x, y + dy, q.z));
+        for (const dy of [0, 1]) {
+          result.reserved.add(key(q.x, y + dy, q.z));
+          if (d > 0 && ctx.builder.inside(q.x, y + dy, q.z)) ctx.builder.clear(q.x, y + dy, q.z, Priority.CLEARANCE);
+        }
       }
     if (!ctx.plan.input.porch) buildStoop(ctx, f, startU, t.width, y);
     if (ctx.plan.input.lanternDensity !== 'none') addDoorLanterns(ctx, f, startU, t.width, y, result.reserved);

@@ -387,7 +387,8 @@ export function planHouse(input: HouseInput, rng: SeededRandom): HousePlan {
   // of the main body, so the circle takes in the corner and opens into the house. Positions that collide with the door, the cross
   // gable, wings or the annex move to the next free corner.
   if (input.tower === 'round') {
-    const d = W >= 17 && D >= 13 ? 9 : 7;
+    // D 9 and 11 read as octagons; houses get D 7, very large ones D 13 (research 16, diameter ladder).
+    const d = Math.min(W, D) >= 21 ? 13 : 7;
     const rr = (d - 1) / 2;
     const order: TowerPosition[] = [input.towerPosition, ...(['front_right', 'front_left', 'back_right', 'back_left'] as const).filter((p) => p !== input.towerPosition)];
     const centreOf = (pos: TowerPosition) => ({ cx: pos.endsWith('left') ? -1 : W, cz: pos.startsWith('front') ? -1 : D });
@@ -402,7 +403,7 @@ export function planHouse(input: HouseInput, rng: SeededRandom): HousePlan {
       if (pos !== input.towerPosition) notes.push(`Rundturm an eine freie Ecke verschoben (${POSITION_LABELS[pos]}).`);
       const { cx, cz } = centreOf(pos);
       const front = pos.startsWith('front');
-      const roofSpec = roundRoofFor(input, d === 7 || d === 9);
+      const roofSpec = roundRoofFor(input, true);
       masses.push({
         id: 'tower',
         kind: 'tower',
