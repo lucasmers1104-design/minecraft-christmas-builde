@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useMemo, useState, type KeyboardEvent } from 'react';
+import { useId, useMemo, useState, type KeyboardEvent, type SelectHTMLAttributes } from 'react';
 import {
   blockIdOf,
   blockState,
@@ -13,11 +13,17 @@ import {
 } from '@/core/blocks/registry';
 import type { ShapeClass } from '@/core/blocks/shapes';
 import { BlockSwatch } from '@/components/preview/textures/BlockSwatch';
+import { Button } from '@/components/ui/Button';
+import { inputClass } from '@/components/ui/Field';
+import { Icon } from '@/components/ui/Icon';
 
 /**
- * Block selection for the editor: category chips, a search over German label and id, a
- * keyboard-navigable list (only a page of rows is rendered at a time) and one select per block
- * state property. Properties the app computes itself (from neighbours, like the game) are hidden.
+ * Block selection for the editor.
+ *
+ * - `BlockPicker`: search over German label and id, category chips and a keyboard-navigable
+ *   list (only a page of rows is rendered at a time).
+ * - `BlockProperties`: one select per block state property of the chosen block. Properties
+ *   the app computes itself (from neighbours, like the game) are hidden and explained instead.
  */
 
 type CategoryFilter = BlockCategory | 'all';
@@ -167,6 +173,81 @@ function visibleProperties(def: BlockDefinition): { shown: [string, readonly str
 
 const optionId = (base: string, short: string) => `${base}-${short}`;
 
+/** A 36 px high select for the compact editor forms (the shared `Select` is 40 px). */
+export function CompactSelect({ children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <div className="relative">
+      <select className={`${inputClass} h-9 appearance-none pr-8 pl-2.5`} {...rest}>
+        {children}
+      </select>
+      <Icon name="chevron-down" className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-fg-subtle" />
+    </div>
+  );
+}
+
+/** Selects for the editable properties of the chosen block, plus notes on automatic ones. */
+export function BlockProperties({ value, onChange }: { value: string; onChange: (state: string) => void }) {
+  const baseId = useId();
+  const currentId = blockIdOf(value);
+  const def = getBlockDefinition(currentId);
+  if (!def) return null;
+  const props = parseBlockState(value)?.properties ?? {};
+  const properties = visibleProperties(def);
+  const oriented = ORIENTED.has(def.shape);
+  if (properties.shown.length === 0 && properties.computed.length === 0 && !oriented) return null;
+
+  return (
+    <div className="flex flex-col gap-3">
+      {properties.shown.length > 0 ? (
+        <div className="grid grid-cols-2 gap-x-2 gap-y-3">
+          {properties.shown.map(([name, values]) => {
+            const id = `${baseId}-${name}`;
+            return (
+              <div key={name} className="min-w-0">
+                <label htmlFor={id} className="mb-1 block truncate text-xs font-medium text-fg-muted" title={`Eigenschaft „${name}“`}>
+                  {PROPERTY_LABELS[name] ?? name}
+                </label>
+                <CompactSelect
+                  id={id}
+                  value={props[name] ?? def.defaults[name]}
+                  data-testid={`block-prop-${name}`}
+                  onChange={(e) => onChange(blockState(currentId, { ...props, [name]: e.target.value }))}
+                >
+                  {values.map((v) => (
+                    <option key={v} value={v}>
+                      {VALUE_LABELS[v] ?? v}
+                    </option>
+                  ))}
+                </CompactSelect>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {properties.computed.length > 0 || oriented ? (
+        <ul className="flex flex-col gap-1.5 text-xs leading-snug text-fg-subtle" data-testid="block-prop-notes">
+          {properties.computed.length > 0 ? (
+            <li className="flex gap-1.5">
+              <Icon name="info" className="mt-px size-3.5" />
+              <span>
+                Automatisch wie im Spiel: {COMPUTED_LABELS[def.shape] ?? properties.computed.join(', ')}. Die App berechnet das aus den
+                Nachbarblöcken.
+              </span>
+            </li>
+          ) : null}
+          {oriented ? (
+            <li className="flex gap-1.5">
+              <Icon name="info" className="mt-px size-3.5" />
+              <span>Beim Setzen mit der Maus richtet sich der Block wie im Spiel nach Blickrichtung und angeklickter Fläche aus.</span>
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** Search, category chips and the block list. Choosing a block sets it with default properties. */
 export function BlockPicker({ value, onChange }: { value: string; onChange: (state: string) => void }) {
   const baseId = useId();
   const [query, setQuery] = useState('');
@@ -185,9 +266,6 @@ export function BlockPicker({ value, onChange }: { value: string; onChange: (sta
   const visible = filtered.slice(0, limit);
 
   const currentId = blockIdOf(value);
-  const def = getBlockDefinition(currentId);
-  const props = parseBlockState(value)?.properties ?? {};
-  const properties = def ? visibleProperties(def) : { shown: [], computed: [] };
   const activeShort = active && visible.some((e) => e.short === active) ? active : null;
 
   const select = (entry: PickerEntry) => {
@@ -245,33 +323,40 @@ export function BlockPicker({ value, onChange }: { value: string; onChange: (sta
     if (last && last.category === entry.def.category) last.entries.push(entry);
     else groups.push({ category: entry.def.category, entries: [entry] });
   }
+  const remaining = filtered.length - visible.length;
 
   return (
-    <div className="flex min-w-0 flex-col gap-2" data-testid="block-picker">
-      <label htmlFor={`${baseId}-search`} className="text-[11px] font-medium text-mist-300">
-        Block suchen
-      </label>
-      <input
-        id={`${baseId}-search`}
-        type="search"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          resetPaging();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown' && visible.length > 0) {
-            e.preventDefault();
-            document.getElementById(`${baseId}-list`)?.focus();
-            moveActive(visible[0]);
-          }
-        }}
-        placeholder="z. B. Treppe Fichte, Glas, lantern …"
-        data-testid="block-search"
-        aria-controls={`${baseId}-list`}
-        className="rounded-lg border border-white/10 bg-night-950/70 px-3 py-1.5 text-sm text-snow-50 focus:border-gold-400/60 focus:outline-none"
-      />
-      <div role="group" aria-label="Kategorien" className="flex flex-wrap gap-1" data-testid="block-categories">
+    <div className="flex min-w-0 flex-col gap-2.5" data-testid="block-picker">
+      <div>
+        <label htmlFor={`${baseId}-search`} className="mb-1.5 block text-[13px] font-medium text-fg-muted">
+          Anderen Block wählen
+        </label>
+        <div className="relative">
+          <Icon name="search" className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle" />
+          <input
+            id={`${baseId}-search`}
+            type="search"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              resetPaging();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' && visible.length > 0) {
+                e.preventDefault();
+                document.getElementById(`${baseId}-list`)?.focus();
+                moveActive(visible[0]);
+              }
+            }}
+            placeholder="Suchen, z. B. Fichte, Glas, lantern"
+            data-testid="block-search"
+            aria-controls={`${baseId}-list`}
+            className={`${inputClass} h-9 pr-3 pl-9`}
+          />
+        </div>
+      </div>
+
+      <div role="group" aria-label="Kategorien" className="flex flex-wrap gap-1.5" data-testid="block-categories">
         {(['all', ...CATEGORIES] as CategoryFilter[]).map((c) => {
           const count = counts.get(c) ?? 0;
           const selected = category === c;
@@ -285,20 +370,21 @@ export function BlockPicker({ value, onChange }: { value: string; onChange: (sta
                 resetPaging();
               }}
               data-testid={`block-category-${c}`}
-              className={`rounded-full border px-2 py-0.5 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gold-300 ${
+              className={`inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs transition-colors ${
                 selected
-                  ? 'border-gold-400/70 bg-gold-400/15 text-gold-300'
+                  ? 'border-accent/70 bg-accent/15 font-medium text-accent-text'
                   : count === 0
-                    ? 'border-white/5 text-mist-400/60'
-                    : 'border-white/10 text-mist-300 hover:border-white/25 hover:text-snow-50'
+                    ? 'border-line text-fg-subtle/70'
+                    : 'border-line bg-raised text-fg-muted hover:border-line-strong hover:text-fg'
               }`}
             >
               {c === 'all' ? 'Alle' : CATEGORY_LABELS[c]}
-              {words.length > 0 ? <span className="ml-1 tabular-nums text-mist-400">{count}</span> : null}
+              {words.length > 0 ? <span className={`tabular-nums ${selected ? 'text-accent-text/80' : 'text-fg-subtle'}`}>{count}</span> : null}
             </button>
           );
         })}
       </div>
+
       <div
         id={`${baseId}-list`}
         role="listbox"
@@ -306,7 +392,7 @@ export function BlockPicker({ value, onChange }: { value: string; onChange: (sta
         tabIndex={0}
         aria-activedescendant={activeShort ? optionId(baseId, activeShort) : undefined}
         onKeyDown={onListKeyDown}
-        className="max-h-52 overflow-y-auto rounded-lg border border-white/8 focus-visible:outline-2 focus-visible:outline-gold-300"
+        className="max-h-64 overflow-y-auto rounded-lg border border-line bg-canvas/40"
         data-testid="block-list"
       >
         {groups.map((group) => (
@@ -314,7 +400,7 @@ export function BlockPicker({ value, onChange }: { value: string; onChange: (sta
             <div
               id={`${baseId}-group-${group.category}`}
               role="presentation"
-              className="sticky top-0 z-10 bg-night-800/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-mist-400 backdrop-blur"
+              className="sticky top-0 z-10 border-y border-line bg-raised px-3 py-1 text-xs font-medium text-fg-subtle first:border-t-0"
             >
               {CATEGORY_LABELS[group.category]}
             </div>
@@ -329,81 +415,47 @@ export function BlockPicker({ value, onChange }: { value: string; onChange: (sta
                   aria-selected={selected}
                   onClick={() => select(entry)}
                   data-testid={`block-option-${entry.short}`}
-                  className={`flex w-full cursor-pointer items-center gap-2 px-2 py-1 text-left text-xs ${
-                    selected ? 'bg-gold-400/12 text-gold-300' : 'text-mist-300 hover:bg-white/5'
-                  } ${isActive ? 'outline-1 -outline-offset-1 outline-gold-300/70' : ''}`}
+                  className={`flex min-h-9 w-full cursor-pointer items-center gap-2.5 px-3 py-1 text-left text-[13px] ${
+                    selected ? 'bg-accent/12 text-accent-text' : 'text-fg hover:bg-hover'
+                  } ${isActive ? 'outline-2 -outline-offset-2 outline-accent-text' : ''}`}
                 >
-                  <BlockSwatch block={entry.def.id} className="size-4" />
-                  <span className="min-w-0 truncate">{entry.def.label}</span>
-                  <span className="ml-auto min-w-0 truncate font-mono text-[10px] text-mist-400">{entry.short}</span>
+                  <BlockSwatch block={entry.def.id} className="size-5" />
+                  <span className={`min-w-0 flex-1 truncate ${selected ? 'font-medium' : ''}`}>{entry.def.label}</span>
+                  <span className="max-w-[45%] min-w-0 truncate font-mono text-xs text-fg-subtle" title={entry.def.id}>
+                    {entry.short}
+                  </span>
+                  {selected ? <Icon name="check" className="size-4 text-accent-text" /> : null}
                 </div>
               );
             })}
           </div>
         ))}
         {filtered.length === 0 ? (
-          <p className="px-2 py-1 text-xs text-mist-400">
+          <div className="px-3 py-3 text-[13px] text-fg-muted">
             {matches.length > 0 && category !== 'all' ? (
               <>
                 Nichts in „{CATEGORY_LABELS[category]}“.{' '}
-                <button type="button" className="underline hover:text-snow-50" onClick={() => setCategory('all')}>
+                <button type="button" className="font-medium text-accent-text underline-offset-2 hover:underline" onClick={() => setCategory('all')}>
                   In allen Kategorien suchen ({matches.length})
                 </button>
               </>
             ) : (
-              'Kein Block gefunden.'
+              <>Kein Block gefunden. Versuche es mit einem anderen Wort, auf Deutsch oder mit der englischen ID.</>
             )}
-          </p>
+          </div>
         ) : null}
       </div>
-      <div className="flex items-center justify-between gap-2 text-[11px] text-mist-400">
-        <span data-testid="block-count">
-          {visible.length < filtered.length ? `${visible.length} von ${filtered.length} Blöcken` : `${filtered.length} Blöcke`}
+
+      <div className="flex min-h-8 items-center justify-between gap-2 text-xs text-fg-subtle">
+        <span data-testid="block-count" aria-live="polite">
+          {remaining > 0 ? `${visible.length} von ${filtered.length} Blöcken` : `${filtered.length} ${filtered.length === 1 ? 'Block' : 'Blöcke'}`}
         </span>
-        {visible.length < filtered.length ? (
-          <button
-            type="button"
-            onClick={() => setLimit((n) => n + PAGE)}
-            data-testid="block-list-more"
-            className="rounded-md border border-white/10 px-2 py-0.5 text-mist-300 hover:border-white/25 hover:text-snow-50"
-          >
-            Weitere {Math.min(PAGE, filtered.length - visible.length)} anzeigen
-          </button>
+        {remaining > 0 ? (
+          <Button variant="ghost" size="sm" onClick={() => setLimit((n) => n + PAGE)} data-testid="block-list-more" icon={<Icon name="chevron-down" />}>
+            Weitere {Math.min(PAGE, remaining)} anzeigen
+          </Button>
         ) : null}
       </div>
-      {def && properties.shown.length > 0 ? (
-        <div className="grid grid-cols-2 gap-2">
-          {properties.shown.map(([name, values]) => (
-            <label key={name} className="flex min-w-0 flex-col gap-1 text-[11px] text-mist-300">
-              <span className="truncate" title={name}>
-                {PROPERTY_LABELS[name] ?? name} <span className="font-mono text-[10px] text-mist-400">{name}</span>
-              </span>
-              <select
-                value={props[name] ?? def.defaults[name]}
-                data-testid={`block-prop-${name}`}
-                onChange={(e) => onChange(blockState(currentId, { ...props, [name]: e.target.value }))}
-                className="w-full min-w-0 rounded-md border border-white/10 bg-night-950/70 px-2 py-1 text-xs text-snow-50"
-              >
-                {values.map((v) => (
-                  <option key={v} value={v}>
-                    {VALUE_LABELS[v] ? `${VALUE_LABELS[v]} (${v})` : v}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ))}
-        </div>
-      ) : null}
-      {def && (properties.computed.length > 0 || ORIENTED.has(def.shape)) ? (
-        <ul className="flex flex-col gap-0.5 text-[11px] text-mist-400" data-testid="block-prop-notes">
-          {properties.computed.length > 0 ? (
-            <li>Automatisch wie im Spiel: {COMPUTED_LABELS[def.shape] ?? properties.computed.join(', ')} – die App berechnet das aus den Nachbarblöcken.</li>
-          ) : null}
-          {ORIENTED.has(def.shape) ? (
-            <li>Beim Setzen per Klick im 3D-Modell richtet sich der Block wie im Spiel nach Blickrichtung und angeklickter Fläche aus.</li>
-          ) : null}
-        </ul>
-      ) : null}
     </div>
   );
 }

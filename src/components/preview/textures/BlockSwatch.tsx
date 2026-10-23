@@ -12,8 +12,11 @@ function swatchColor(stateOrId: string): { color: string; opacity: number } {
   }
 }
 
-/** Small block icon: the real texture when available, else the preview colour. */
-export function BlockSwatch({ block, className = 'size-3' }: { block: string; className?: string }) {
+/**
+ * Small block icon: the real texture when a texture pack is active, else the preview colour.
+ * Decorative (aria-hidden) – the block name is always written next to it.
+ */
+export function BlockSwatch({ block, className = 'size-4' }: { block: string; className?: string }) {
   const pack = useActiveTexturePack();
   const icon = pack?.icon(block) ?? null;
   if (icon) {
@@ -21,11 +24,17 @@ export function BlockSwatch({ block, className = 'size-3' }: { block: string; cl
       <span
         aria-hidden="true"
         data-testid="block-swatch-texture"
-        className={`${className} shrink-0 rounded-[2px] bg-cover [image-rendering:pixelated]`}
+        className={`${className} inline-block shrink-0 rounded-[3px] bg-cover [image-rendering:pixelated]`}
         style={{ backgroundImage: `url(${icon})` }}
       />
     );
   }
   const { color, opacity } = swatchColor(block);
-  return <span aria-hidden="true" className={`${className} shrink-0 rounded-sm border border-white/20`} style={{ background: color, opacity }} />;
+  return (
+    <span
+      aria-hidden="true"
+      className={`${className} inline-block shrink-0 rounded-[3px] border border-line-strong`}
+      style={{ background: color, opacity }}
+    />
+  );
 }
