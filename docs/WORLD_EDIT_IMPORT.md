@@ -77,9 +77,9 @@ Am Beispiel Haus „Mittel“ mit den Standardwerten oben (27 × 16 × 26, Palet
 
 Zusätzlich:
 
-- **Bahnhof:** Die Schienen liegen auf festem Grund und bilden eine gerade Ost-West-Strecke; die Bahnsteigkante ist gelb.
+- **Bahnhof:** Die Schienen liegen auf Schwellen und Schotter und bilden eine gerade Ost-West-Strecke; die Bahnsteigkante (Kopfüber-Treppen) liegt direkt am Gleisbett, die weiße Sicherheitslinie einen Block dahinter; die Laternen unter dem Bahnsteigdach hängen an Ketten; die Uhrzeiger (Ketten) stehen vor dem Zifferblatt.
 - **Turm:** Die Leiter führt bis unter das Dach (bei Zinnen auf den Wehrgang); der Kegel oder die Kuppel ist geschlossen.
-- **Marktstand:** Die Markise ist rot-weiß gestreift, die Laternen hängen über der Theke.
+- **Marktstand:** Die Auslage-Falltüren vor der Theke halten frei, die Waren stehen darauf; die Laterne hängt an der Kette unter dem First; die Lichterketten über der Gasse bleiben waagerecht, nichts hängt darunter.
 
 Bitte das Ergebnis mit getesteter Minecraft- und WorldEdit-Version, Screenshots und etwaigen Meldungen in `docs/TEST_REPORT.md` unter „In-Game-Abnahme“ eintragen. Erst danach darf der Export als „In Minecraft mit WorldEdit getestet“ gelten.
 

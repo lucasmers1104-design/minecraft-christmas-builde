@@ -4,8 +4,8 @@ import { isFaceFull } from '@/core/blocks/faces';
 import { GeometryError, Priority, VoxelBuilder, type PriorityValue } from '@/core/generator/geometry';
 import { buildHouseInto, planSections, prepareHouse, shiftPlan, type HouseResult } from '@/core/generator/house/buildHouse';
 import { Blocks } from '@/core/generator/house/materials';
-import { floorY, wallTopOf, type HouseInput, type HousePlan, type Mass } from '@/core/generator/house/plan';
-import { planRoofs } from '@/core/generator/roof/roofEngine';
+import { floorY, roofMaterials, wallTopOf, type HouseInput, type HousePlan, type Mass } from '@/core/generator/house/plan';
+import { buildRoofs, planRoofs } from '@/core/generator/roof/roofEngine';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import { decorateFestive } from '@/core/generator/festive';
 import { requireForm } from '@/core/style/materials';
@@ -48,7 +48,7 @@ export interface StationLayout {
   /** Lamp posts: foot cell (y = first block of the post). */
   lampPosts: { x: number; y: number; z: number; kind: 'platform' | 'portal' }[];
   /** Railway furniture by size (C7, C8): water crane and entry signals. */
-  extras: { kind: 'water_crane' | 'signal'; x: number; z: number }[];
+  extras: { kind: 'water_crane' | 'signal' | 'goods_shed'; x: number; z: number }[];
   /** Back door from the hall onto the platform (null if the hall had no free cell). */
   backDoor: { x: number; y: number; z: number } | null;
   house: HouseResult;
@@ -190,7 +190,15 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
   const edgeZ = main.rect.z1 + 1 + PLATFORM_DEPTH;
   const lineZ = edgeZ - 1;
   const trackZ = edgeZ + 2;
-  const width = b.maxX - b.minX + 1 + 2 * marginX;
+  // Platform 5 blocks beyond the building on each side; from a hall width of 11 a goods shed
+  // beyond the east end (C6), the east signal beyond the shed.
+  const bx0 = Math.min(...plan.masses.map((m) => m.rect.x0)) - f;
+  const bx1 = Math.max(...plan.masses.map((m) => m.rect.x1)) + f;
+  const px0 = bx0 - 5;
+  const px1 = bx1 + 5;
+  const shed = input.width >= 11 ? { x0: px1 + 5, length: input.width >= 15 ? 11 : 9, depth: input.width >= 15 ? 7 : 5 } : null;
+  const eastEnd = shed ? shed.x0 + shed.length : px1 + 1;
+  const width = eastEnd + (signals ? 8 : 0) + 3;
   const length = trackZ + 4;
   const height = planRoofs(planSections(plan, input, r.fork('probe')).sections).topY + 6;
   if (width > MAX_DIMENSIONS.width || length > MAX_DIMENSIONS.length) throw new GeometryError('Bahnhof passt nicht in die Grenzen');
@@ -206,10 +214,6 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
   const house = buildHouseInto(builder, plan, input, r);
 
   // --- House platform: directly at the building, edge and safety line (C2, rec. 7 and 10).
-  const bx0 = Math.min(...plan.masses.map((m) => m.rect.x0)) - f;
-  const bx1 = Math.max(...plan.masses.map((m) => m.rect.x1)) + f;
-  const px0 = bx0 - 5;
-  const px1 = bx1 + 5;
   const pz0 = main.rect.z1 + 1;
   const edgeStair = blockState(requireForm(st.edge, 'stairs'), { facing: 'north', half: 'top' });
   for (let x = px0; x <= px1; x++)
@@ -381,7 +385,7 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
   }
   if (signals) {
     const rod = isAvailableIn('minecraft:waxed_lightning_rod', input.minecraftVersion) ? 'waxed_lightning_rod' : 'lightning_rod';
-    for (const x of [px0 - 8, px1 + 8]) {
+    for (const x of [px0 - 8, eastEnd + 7]) {
       set(builder, x, 1, shoulderZ, blockState('stone_bricks'), Priority.STRUCTURE);
       for (let y = 2; y <= 6; y++) set(builder, x, y, shoulderZ, blockState('stripped_birch_log', { axis: 'y' }), Priority.STRUCTURE);
       for (let y = 2; y <= 4; y++) set(builder, x, y, shoulderZ + 1, blockState('ladder', { facing: 'south' }), Priority.DECOR);
@@ -391,6 +395,11 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
       set(builder, x, 7, shoulderZ, blockState(rod, { facing: 'up' }), Priority.DECOR);
       extras.push({ kind: 'signal', x, z: shoulderZ });
     }
+  }
+
+  if (shed) {
+    buildGoodsShed(builder, shed, edgeZ, input, blocks, r.fork('shed'), hanging);
+    extras.push({ kind: 'goods_shed', x: shed.x0, z: edgeZ - 2 });
   }
 
   // --- Festive layer: garlands and lanterns under the house eaves, wreaths above both doors,
@@ -524,4 +533,100 @@ function buildClock(builder: VoxelBuilder, house: HouseResult, plan: HousePlan, 
     return place(d, cy, z);
   }
   return null;
+}
+
+/** Styles that build in wood (vertical boards for the goods shed). */
+const WOOD_STYLES: ReadonlySet<StyleId> = new Set(['medieval', 'rustic', 'nordic', 'fantasy', 'japanese', 'cherry']);
+
+/**
+ * Goods shed (C6): one storey with its floor at wagon-floor height (like the platform), boarded
+ * walls between frame posts, a gate on the track side and one on the street side with the
+ * sliding panel pushed aside, loading ramps along both sides with steps at their ends, a
+ * gable roof from the roof engine, a loading roof one row deeper on consoles over the track
+ * ramp, a lantern at the gate and barrels and hay as goods on the ramp.
+ */
+function buildGoodsShed(builder: VoxelBuilder, s: { x0: number; length: number; depth: number }, edgeZ: number, input: HouseInput, blocks: Blocks, rng: SeededRandom, hanging: string): void {
+  const S = Priority.STRUCTURE;
+  const x0 = s.x0;
+  const x1 = s.x0 + s.length - 1;
+  const z1 = edgeZ - 2;
+  const z0 = z1 - (s.depth - 1);
+  const wallTop = 5;
+  const wood = WOOD_STYLES.has(input.styleId);
+  const flat = input.roofType === 'flat';
+  const boardMaterial = wood ? 'stripped_spruce_log' : input.materials.wall;
+  const board = wood ? blockState('stripped_spruce_log', { axis: 'y' }) : blocks.block('wall');
+  const post = blocks.log('frame', 'y');
+  // Plinth, floor and walls.
+  for (let x = x0; x <= x1; x++)
+    for (let z = z0; z <= z1; z++) {
+      const edge = x === x0 || x === x1 || z === z0 || z === z1;
+      set(builder, x, 0, z, blocks.block('plinth'), S);
+      set(builder, x, 1, z, edge ? blocks.block('plinth') : blocks.block('floor'), S);
+      if (!edge) continue;
+      const corner = (x === x0 || x === x1) && (z === z0 || z === z1);
+      const isPost = corner || ((z === z0 || z === z1) && (x - x0) % 4 === 0 && x1 - x >= 2) || ((x === x0 || x === x1) && (z - z0) % 4 === 0 && z1 - z >= 2);
+      for (let y = 2; y <= wallTop; y++) set(builder, x, y, z, isPost ? post : board, S);
+    }
+  // Loading ramps (track and street side) at floor height, edge of top slabs, steps at the ends.
+  const ramp = blockState('stone_bricks');
+  const rampEdge = blockState('stone_brick_slab', { type: 'top' });
+  for (const [inner, outer] of [
+    [z1 + 1, z1 + 2],
+    [z0 - 1, z0 - 2],
+  ] as const) {
+    for (let x = x0 - 1; x <= x1 + 1; x++) {
+      for (const z of [inner, outer]) set(builder, x, 0, z, blocks.block('plinth'), S);
+      set(builder, x, 1, inner, ramp, S);
+      set(builder, x, 1, outer, rampEdge, S);
+    }
+    for (const z of [inner, outer]) {
+      set(builder, x0 - 2, 1, z, blockState('stone_brick_stairs', { facing: 'east', half: 'bottom' }), S);
+      set(builder, x1 + 2, 1, z, blockState('stone_brick_stairs', { facing: 'west', half: 'bottom' }), S);
+    }
+  }
+  // Gates 2 × 3 in the middle of both long sides; the sliding panel stands beside the opening.
+  const gx = x0 + Math.floor(s.length / 2) - 1;
+  for (const [z, out] of [
+    [z1, 'south'],
+    [z0, 'north'],
+  ] as const) {
+    const front = z + (out === 'south' ? 1 : -1);
+    for (let y = 2; y <= 4; y++) {
+      for (const x of [gx, gx + 1]) builder.clear(x, y, z, Priority.OPENING);
+      for (const x of [gx + 2, gx + 3]) set(builder, x, y, front, blocks.trapdoor('shutter', out, 'bottom', true), Priority.DECOR);
+    }
+  }
+  // Roof (gable along the shed) and a loading roof one row deeper over the track ramp.
+  buildRoofs(builder, [
+    {
+      id: 'goods_shed',
+      x0,
+      x1,
+      z0,
+      z1,
+      wallTop,
+      // The shed follows the hall: a flat roof next to a flat-roofed hall, else a gable.
+      type: flat ? 'flat' : 'gable',
+      ridgeAxis: 'x',
+      profile: 'standard',
+      overhang: 1,
+      materials: { ...roofMaterials(input.materials), gable: boardMaterial },
+      ridgeStyle: 'slab',
+      soffit: true,
+      gables: true,
+    },
+  ]);
+  const roofSlab = blockState(requireForm(input.materials.roof, 'slab'), { type: 'bottom' });
+  const loadingY = flat ? wallTop + 1 : wallTop;
+  for (let x = x0 - 1; x <= x1 + 1; x++) set(builder, x, loadingY, z1 + 2, roofSlab, Priority.ROOF);
+  for (let x = x0; x <= x1; x += 4) set(builder, x, loadingY - 1, z1 + 2, blockState(requireForm(input.materials.frame, 'stairs'), { facing: 'north', half: 'top' }), S);
+  if (free(builder, gx, loadingY - 1, z1 + 2)) set(builder, gx, loadingY - 1, z1 + 2, hanging, Priority.DECOR);
+  // Goods on the track ramp, away from the gate: barrels in twos and threes, a hay bale.
+  for (const x of [x0, x0 + 1, x1 - 1, x1]) {
+    if (x >= gx - 1 && x <= gx + 3) continue;
+    if (!rng.chance(0.75) || !free(builder, x, 2, z1 + 1)) continue;
+    const hay = x === x1 && rng.chance(0.5);
+    set(builder, x, 2, z1 + 1, hay ? blockState('hay_block', { axis: 'x' }) : blockState('barrel', { facing: rng.chance(0.5) ? 'up' : 'south' }), Priority.DECOR);
+  }
 }

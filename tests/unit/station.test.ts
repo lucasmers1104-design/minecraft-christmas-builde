@@ -252,7 +252,7 @@ describe('Bahnsteigausstattung nach Größe (Bericht 17, C4, C7, C8)', () => {
         const { model, layout } = station(spec({ style, size }));
         expect(count(layout, 'water_crane'), `${style} ${size}`).toBe(1);
         expect(count(layout, 'signal'), `${style} ${size}`).toBe(2);
-        for (const e of layout.extras) {
+        for (const e of layout.extras.filter((x) => x.kind !== 'goods_shed')) {
           expect(e.z - layout.trackZ, `${style} ${size}`).toBe(2);
           if (e.kind === 'signal') {
             // Beyond the platform end, the arm across the track at the top of the mast.
@@ -274,5 +274,43 @@ describe('Bahnsteigausstattung nach Größe (Bericht 17, C4, C7, C8)', () => {
       for (const dz of [-1, 1]) expect(definitionOf(blockAt(model, c.x, c.y, c.z + dz)).shape, style).toBe('button');
     }
     expect(station(spec({ detailLevel: 1 })).layout.platformClock).toBeNull();
+  });
+});
+
+describe('Bahnhof mit gewünschter Geschosshöhe', () => {
+  it('Geschosshöhe 4 und 5: gültig, ohne Reparaturen und ohne Lint-Befund, Dach bleibt über dem Bahnsteig', () => {
+    for (const style of STYLE_IDS)
+      for (const floorHeight of [4, 5]) {
+        const r = generateBuildingWithReport({ ...spec({ style, size: 'medium' }), options: { floorHeight } });
+        expect(r.repairs, `${style} ${floorHeight}`).toEqual([]);
+        expect(lintHouse(r.model, r.house!), `${style} ${floorHeight}`).toEqual([]);
+      }
+  });
+});
+
+describe('Güterschuppen (Bericht 17, C6)', () => {
+  it('ab medium ein Schuppen mit Rampen auf Wagenbodenhöhe, Tor zur Gleisseite und Dach; Rampenkante 1,5 von der Gleismitte', () => {
+    expect(station(spec({ size: 'small' })).layout.extras.some((e) => e.kind === 'goods_shed')).toBe(false);
+    for (const style of STYLE_IDS)
+      for (const size of ['medium', 'large'] as const) {
+        const { model, layout } = station(spec({ style, size }));
+        const label = `${style} ${size}`;
+        const shed = layout.extras.find((e) => e.kind === 'goods_shed')!;
+        expect(shed, label).toBeDefined();
+        // Beyond the platform's east end, south wall two rows behind the edge line.
+        expect(shed.x, label).toBeGreaterThan(layout.platform.x1);
+        expect(shed.z, label).toBe(layout.edgeZ - 2);
+        // Ramp edge (top slab) in the edge row, ramp at platform height.
+        const s = blockAt(model, shed.x + 1, 1, layout.edgeZ);
+        expect(definitionOf(s).shape, label).toBe('slab');
+        expect(propsOf(s).type, label).toBe('top');
+        // A gate (air) in the track-side wall and a roof above the shed.
+        let gate = false;
+        for (let x = shed.x; x < shed.x + 11; x++) if (blockAt(model, x, 2, shed.z) === AIR && blockAt(model, x, 4, shed.z) === AIR) gate = true;
+        expect(gate, label).toBe(true);
+        let roof = false;
+        for (let y = 5; y < model.dimensions.height; y++) if (blockAt(model, shed.x + 2, y, shed.z - 2) !== AIR) roof = true;
+        expect(roof, label).toBe(true);
+      }
   });
 });
