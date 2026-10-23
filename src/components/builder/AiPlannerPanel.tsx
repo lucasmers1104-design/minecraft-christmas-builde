@@ -18,6 +18,7 @@ export function AiPlannerPanel({
   plan,
   planIsCurrent,
   notice,
+  onOpenSettings,
 }: {
   status: AiStatus | null;
   checking: boolean;
@@ -27,6 +28,8 @@ export function AiPlannerPanel({
   plan: AiPlanState | null;
   planIsCurrent: boolean;
   notice: string | null;
+  /** Opens the AI settings dialog (provider, key, model). */
+  onOpenSettings: () => void;
 }) {
   const ready = !!status?.enabled && status.reachable && status.modelInstalled;
   const tone = ready ? 'bg-fir-500' : status?.enabled ? 'bg-gold-400' : 'bg-mist-400';
@@ -36,15 +39,25 @@ export function AiPlannerPanel({
       headingId="ai-heading"
       description="Läuft auf deinem PC über Ollama – keine Cloud, keine Kosten."
       actions={
-        <button
-          type="button"
-          onClick={onRecheck}
-          disabled={checking}
-          data-testid="ai-recheck"
-          className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-mist-300 hover:text-snow-50 disabled:opacity-50"
-        >
-          {checking ? 'Prüft …' : 'Erneut prüfen'}
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onOpenSettings}
+            data-testid="ai-open-settings"
+            className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-mist-300 hover:text-snow-50"
+          >
+            Einrichten
+          </button>
+          <button
+            type="button"
+            onClick={onRecheck}
+            disabled={checking}
+            data-testid="ai-recheck"
+            className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-mist-300 hover:text-snow-50 disabled:opacity-50"
+          >
+            {checking ? 'Prüft …' : 'Erneut prüfen'}
+          </button>
+        </>
       }
     >
       <p className="flex items-start gap-2 text-xs text-mist-300" data-testid="ai-status" data-ready={ready}>

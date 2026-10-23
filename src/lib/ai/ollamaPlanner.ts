@@ -1,5 +1,6 @@
 import { normalizePlan, planJsonSchema, planSchema, type BuildPlan } from '@/core/ai/planSchema';
 import { plannerMessages, type ChatMessage } from '@/core/ai/prompt';
+import type { AiStatus } from '@/core/ai/providers';
 
 /**
  * Optional planning through a LOCAL language model served by Ollama (no API key, no cloud,
@@ -41,15 +42,7 @@ export function readAiConfig(env: Record<string, string | undefined> = process.e
   };
 }
 
-export interface AiStatus {
-  enabled: boolean;
-  provider: 'ollama' | 'off';
-  model: string;
-  reachable: boolean;
-  modelInstalled: boolean;
-  installedModels: string[];
-  message: string;
-}
+export type { AiStatus };
 
 export type AiErrorCode = 'disabled' | 'unreachable' | 'timeout' | 'invalid' | 'http';
 

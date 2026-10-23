@@ -31,3 +31,9 @@ npm-debug.log*
 
 # iso renders of the test tool (MCB_RENDER=1)
 render-out/
+
+# UI screenshots of scripts/ui-shots.mjs
+ui-shots/
+
+# local app settings (AI provider, OpenRouter key) written by the app
+.mcb-local/

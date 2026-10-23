@@ -1,6 +1,38 @@
 @import 'tailwindcss';
 
+/*
+ * Design tokens (docs/UI_DESIGN.md). Use the SEMANTIC tokens in new code:
+ *   canvas / surface / raised / hover        backgrounds, darkest to lightest
+ *   line / line-strong                       borders and dividers
+ *   fg / fg-muted / fg-subtle                text
+ *   accent (+ -hover, -text)                 primary action, selection, focus
+ *   gold                                     highlights ("manuell", current project)
+ *   info / warning / danger (+ -text)        callouts and status
+ * Tints come from opacity modifiers, e.g. bg-accent/12, border-warning/40.
+ */
 @theme {
+  --color-canvas: #0c1016;
+  --color-surface: #121820;
+  --color-raised: #182029;
+  --color-hover: #1f2934;
+  --color-line: #242e3a;
+  --color-line-strong: #33404f;
+  --color-fg: #e7ecf2;
+  --color-fg-muted: #a4afbd;
+  --color-fg-subtle: #768394;
+  --color-accent: #2e9166;
+  --color-accent-hover: #35a675;
+  --color-accent-text: #8edbb4;
+  --color-gold: #e3b65f;
+  --color-gold-text: #f1d08f;
+  --color-info: #5e9bd6;
+  --color-info-text: #a9cdf1;
+  --color-warning: #d9a03f;
+  --color-warning-text: #f0c97f;
+  --color-danger: #df5d55;
+  --color-danger-text: #f3a29c;
+
+  /* Legacy palette – still used by files that are not migrated yet. Do not use in new code. */
   --color-night-950: #070e1a;
   --color-night-900: #0b1526;
   --color-night-850: #0f1c31;
@@ -21,8 +53,12 @@
   --color-snow-50: #f4f8fc;
   --color-mist-300: #b7c6d9;
   --color-mist-400: #8ea2bb;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', ui-sans-serif, system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --shadow-panel: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 12px 32px -24px rgb(0 0 0 / 0.9);
+  --shadow-dialog: 0 24px 64px -16px rgb(0 0 0 / 0.75);
 }
 
 :root {
@@ -31,20 +67,33 @@
 
 html,
 body {
-  background: var(--color-night-950);
-  color: var(--color-snow-50);
+  background: var(--color-canvas);
+  color: var(--color-fg);
 }
 
 body {
-  background-image:
-    radial-gradient(1200px 600px at 15% -10%, rgb(42 106 79 / 0.18), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgb(169 216 242 / 0.1), transparent 55%);
-  background-attachment: fixed;
+  font-feature-settings: 'tnum' 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgb(46 145 102 / 0.45);
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-gold-300);
+  outline: 2px solid var(--color-accent-text);
   outline-offset: 2px;
+}
+
+/* Thin, unobtrusive scrollbars in the side columns. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+}
+
+dialog::backdrop {
+  background: rgb(5 8 12 / 0.72);
+  backdrop-filter: blur(2px);
 }
 
 @media (prefers-reduced-motion: reduce) {

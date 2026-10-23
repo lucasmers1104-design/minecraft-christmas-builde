@@ -42,6 +42,7 @@ import { VariantSelector } from '@/components/builder/VariantSelector';
 import { PreviewPanel } from '@/components/preview/PreviewPanel';
 import type { CellAction } from '@/components/preview/VoxelScene';
 import { EditorPanel, type EditMode } from '@/components/editor/EditorPanel';
+import { AiSettingsDialog } from '@/components/settings/AiSettingsDialog';
 
 type MobileTab = 'input' | 'preview' | 'details';
 
@@ -78,6 +79,7 @@ export function BuilderApp() {
   const [project, setProject] = useState<Pick<LoadedProject, 'id' | 'name' | 'updatedAt'> | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<EditMode>('view');
   const [brush, setBrush] = useState(() => blockState('spruce_planks'));
@@ -472,6 +474,8 @@ export function BuilderApp() {
         hasUnsavedChanges={dirty}
       />
 
+      <AiSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={() => void checkAi()} />
+
       <nav aria-label="Bereiche" className="border-b border-white/6 bg-night-950/60 px-4 py-2 lg:hidden">
         <div role="tablist" className="grid grid-cols-3 gap-1 rounded-xl bg-white/4 p-1">
           {MOBILE_TABS.map((tab) => (
@@ -517,6 +521,7 @@ export function BuilderApp() {
             plan={aiPlan}
             planIsCurrent={aiPlan !== null && aiPlan.description === description}
             notice={aiNotice}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
           <StyleControls
             binding={binding}
