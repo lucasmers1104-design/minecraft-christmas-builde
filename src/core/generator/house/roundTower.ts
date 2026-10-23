@@ -32,17 +32,20 @@ import type { StyleId } from '@/core/style/styles';
  *   the full height in clusters (mossy at the bottom, cracked in the shaft, more under the crown,
  *   clean crown). At most one projecting band per 8–10 blocks of shaft (alternating cornice and
  *   shadow joint); attached to a house only the band at its eave line. Timber styles get posts in
- *   the diagonal notches (they cover the pixel steps of the circle). Windows are set back one
- *   block (pane inside, reveal, sill and hood in front); a free tower has slits on the ground floor.
+ *   the diagonal notches (they cover the pixel steps of the circle), stone towers from D 13 round
+ *   pilasters. Windows are set back one block (pane inside, reveal, sill and hood in front); a free
+ *   tower has slits on the ground floor, from D 13 arched three-light windows in the top storey.
  * - **Crown and helm:** battlements stand on a corbel ring that carries the parapet (machicolations
  *   with lanterns from D 11), merlons by angular sectors (symmetric for every diameter), wide
  *   towers mostly with a spire behind the parapet; cones get a kicked eave of slabs and a slender
  *   tip of thin elements (post, lightning rod or end rod); fantasy gets a witch hat (slab brim, hat
- *   band, concave cone, bent tip); domes have the tower's diameter, on a drum, with a cupola from D 9.
+ *   band, concave cone, bent tip) or, on wide free towers, a copper onion on a drum; domes have
+ *   the tower's diameter, on a drum, with a cupola from D 9.
  *
  * Attached to a house, the ring is left out inside the house's rooms so tower and house form one
- * interior. One lantern hangs in every storey; rooms stay otherwise empty. All choices are
- * deterministic (seeded from the house seed and the mass id).
+ * interior. A free tower keeps a portal zone in front of its entrance for the door template. One
+ * lantern hangs in every storey; rooms stay otherwise empty. All choices are deterministic
+ * (forked from the building seed and the mass id).
  */
 
 export interface RoundTowerResult {
