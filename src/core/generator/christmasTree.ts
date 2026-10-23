@@ -423,10 +423,13 @@ export function buildChristmasTree(b: VoxelBuilder, rng: SeededRandom, cx: numbe
       for (const [dx, dz, facing] of rays) if (free(cx + dx, crownTop, cz + dz)) set(cx + dx, crownTop, cz + dz, blockState('end_rod', { facing }));
       top = crownTop + 1;
     } else if (shape.star === 'plus') {
-      set(cx, crownTop, cz, outline);
+      // Crossed 3×3 star resting on the top leaf: glowing core, gold arms, end-rod rays.
       set(cx, crownTop + 1, cz, core);
       set(cx, crownTop + 2, cz, outline);
-      for (const [dx, dz] of SIDES4) set(cx + dx, crownTop + 1, cz + dz, outline);
+      for (const [dx, dz, facing] of rays) {
+        set(cx + dx, crownTop + 1, cz + dz, outline);
+        if (free(cx + 2 * dx, crownTop + 1, cz + 2 * dz)) set(cx + 2 * dx, crownTop + 1, cz + 2 * dz, blockState('end_rod', { facing }));
+      }
       top = crownTop + 2;
     } else {
       const rows = shape.star === 'star5' ? STAR5 : STAR7;

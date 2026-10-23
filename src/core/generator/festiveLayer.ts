@@ -282,13 +282,30 @@ function placeParapetLights(b: VoxelBuilder, house: HouseResult, snow: boolean):
   return placed;
 }
 
+/** Free cells on snow ground inside the plot edge, one cell away from anything standing. */
+function snowYard(b: VoxelBuilder): Cell[] {
+  const { width: W, length: L } = b.dimensions;
+  const snow = blockState('snow_block');
+  const out: Cell[] = [];
+  for (let x = 2; x < W - 2; x++)
+    for (let z = 2; z < L - 2; z++) {
+      if (b.getBlock(x, 0, z) !== snow || !b.isAir(x, 1, z)) continue;
+      let clear = true;
+      for (let dx = -1; dx <= 1 && clear; dx++) for (let dz = -1; dz <= 1 && clear; dz++) if (!b.isAir(x + dx, 1, z + dz)) clear = false;
+      if (clear) out.push({ x, y: 1, z });
+    }
+  return out;
+}
+
 /**
  * Festive layer of a house or tower: garden tree with presents underneath, then garlands,
  * lanterns, wreaths, candles and entrance presents (`decorateFestive`), then the extras of the
  * style kit.
  */
-export function decorateHouseFestive(builder: VoxelBuilder, rng: SeededRandom, spec: BuildSpec, input: HouseInput, house: HouseResult, yard: readonly Cell[]): void {
+export function decorateHouseFestive(builder: VoxelBuilder, rng: SeededRandom, spec: BuildSpec, input: HouseInput, house: HouseResult, gardenYard: readonly Cell[]): void {
   if (spec.theme === 'none') return;
+  // On snow ground the landscape reports no yard (it looks for grass): use the free snow cells.
+  const yard = gardenYard.length > 0 || !input.garden || !input.festive.snow ? gardenYard : snowYard(builder);
   const kit = festiveKit(spec.style);
   const choice = festiveChoices(spec.style, spec.theme, spec.detailLevel, spec.options);
   const christmas = spec.theme === 'christmas';
