@@ -108,7 +108,8 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
     jetty: true,
     windows: ['W07', 'W05', 'W08', 'W13'],
     doors: ['T04', 'T02'],
-    lantern: 'soul_lantern',
+    // Warm light reads cosy; blue soul lanterns only on request (research 09/18).
+    lantern: 'lantern',
     details: { shutters: 0.4, flowerBoxes: 0.5, porch: 0.2, chimney: 0.7, dormers: 0.5, annex: 0.6 },
     forbidden: ['concrete', 'acacia'],
   },

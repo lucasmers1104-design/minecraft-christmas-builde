@@ -200,10 +200,11 @@ function stoneFamily(k: StoneKind): BlockSeed[] {
 // Copper (always waxed, so it never oxidises in the world).
 
 const COPPER_STAGES = [
-  { id: '', label: '', color: '#c06c50' },
-  { id: 'exposed_', label: 'angelaufen', color: '#a17e68' },
-  { id: 'weathered_', label: 'verwittert', color: '#6c9c6b' },
-  { id: 'oxidized_', label: 'oxidiert', color: '#53a387' },
+  // Copper bulbs dim with oxidation: 15 / 12 / 8 / 4 (minecraft.wiki, Copper Bulb).
+  { id: '', label: '', color: '#c06c50', bulb: 15 },
+  { id: 'exposed_', label: 'angelaufen', color: '#a17e68', bulb: 12 },
+  { id: 'weathered_', label: 'verwittert', color: '#6c9c6b', bulb: 8 },
+  { id: 'oxidized_', label: 'oxidiert', color: '#53a387', bulb: 4 },
 ] as const;
 
 function copperFamily(): BlockSeed[] {
@@ -226,7 +227,7 @@ function copperFamily(): BlockSeed[] {
       m(`waxed_${st.id}copper_door`, 'Kupfertür', 'door'),
       m(`waxed_${st.id}copper_trapdoor`, 'Kupferfalltür', 'trapdoor'),
       m(`waxed_${st.id}copper_grate`, 'Kupfergitter', 'grate', { kind: 'cutout' }),
-      m(`waxed_${st.id}copper_bulb`, 'Kupferleuchte', 'bulb', { category: 'light', light: 15 }),
+      m(`waxed_${st.id}copper_bulb`, 'Kupferleuchte', 'bulb', { category: 'light', light: st.bulb }),
     ];
   });
 }
