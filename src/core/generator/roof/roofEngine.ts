@@ -1,7 +1,7 @@
 import type { HorizontalDirection } from '@/core/blocks/directions';
-import { AIR, blockState } from '@/core/blocks/registry';
+import { AIR, blockState, propsOf } from '@/core/blocks/registry';
 import { Priority, type PriorityValue, type VoxelBuilder } from '@/core/generator/geometry';
-import { columnPieces, profileDeltas, tops, type Piece, type ProfileName } from '@/core/generator/roof/profiles';
+import { columnPieces, pickPitch, profileDeltas, tops, type Piece, type PitchId, type ProfileName } from '@/core/generator/roof/profiles';
 import { formOf, requireForm } from '@/core/style/materials';
 import type { RoofType } from '@/core/style/styles';
 
@@ -57,9 +57,25 @@ export interface RoofSectionSpec {
   rings?: number;
   /** Max rise in blocks (default 7). */
   maxRise?: number;
+  /** Pitch ladder step shared by the whole house (planar profiles; see `housePitch`). */
+  pitch?: PitchId;
+  /** Seed for the roof material blend (unset: one material only). */
+  blendSeed?: number;
   /** Fill the gable triangles (default true for gable-like types). */
   gables?: boolean;
   priority?: PriorityValue;
+  /** Columns inside this rect are left out (roof rings around a stepped-in upper storey, terraces). */
+  hole?: { x0: number; z0: number; x1: number; z1: number };
+  /**
+   * Build layer: where a section of a higher layer number loses a column to a higher roof of
+   * another layer, its pieces below that roof are built as well (a lean-to or porch roof runs on
+   * under the main eave instead of leaving a gap; pagoda rings under the tier above).
+   */
+  layer?: number;
+  /** Edge shaping: raised verge boards, kicked verge feet, Japanese corner upturns, ridge sag (shapeEdge). */
+  edge?: { verge?: 'raised'; kick?: number; corners?: boolean; sag?: boolean };
+  /** Roof surface: darker course rows, a living moss/azalea roof or thatch lumps (see texturePass). */
+  texture?: 'courses' | 'living' | 'thatch';
 }
 
 interface Column {
@@ -77,6 +93,9 @@ interface Column {
   /** Column outside the walls on an eave side. */
   eave: boolean;
   lowest: number;
+  layer: number;
+  /** Slope columns of the section (eave to ridge). */
+  n: number;
 }
 
 export interface EaveCell {
@@ -215,13 +234,113 @@ function sectionTops(s: RoofSectionSpec, n: number): number[] {
   // The rise limit counts from the wall top: profiles with a flat eave (bell, flared) lift the
   // base above the wall, so their cap shrinks by that lift.
   const maxRise = s.maxRise ?? 7;
-  let t = tops(profileDeltas(profile, n, maxRise));
+  let t = tops(profileDeltas(profile, n, maxRise, s.pitch));
   for (let cap = maxRise - 1; cap >= 3; cap--) {
     const lift = baseY(s, t) - s.wallTop;
     if (Math.ceil(Math.max(0, ...t) / 2) + lift <= maxRise) break;
-    t = tops(profileDeltas(profile, n, cap));
+    t = tops(profileDeltas(profile, n, cap, s.pitch));
   }
   return t;
+}
+
+/**
+ * Roof blend partners (research 07 T1, 06 R23, 13 P3): a darker sister material runs up from
+ * the eave in streaks along the fall line (water), a lighter one bleaches a few cells near the
+ * ridge. Only the material changes; facing, half and shape stay, so the resolver computes the
+ * same corners. Materials without a fitting sister stay plain.
+ */
+const ROOF_BLEND: Readonly<Record<string, { darker?: string; lighter?: string }>> = {
+  spruce_planks: { darker: 'dark_oak_planks', lighter: 'oak_planks' },
+  dark_oak_planks: { lighter: 'spruce_planks' },
+  oak_planks: { darker: 'spruce_planks', lighter: 'birch_planks' },
+  birch_planks: { darker: 'oak_planks' },
+  jungle_planks: { darker: 'spruce_planks' },
+  deepslate_tiles: { darker: 'cobbled_deepslate', lighter: 'deepslate_bricks' },
+  polished_deepslate: { darker: 'deepslate_tiles', lighter: 'deepslate_bricks' },
+  deepslate_bricks: { darker: 'deepslate_tiles' },
+  bricks: { lighter: 'granite' },
+  cobblestone: { darker: 'mossy_cobblestone', lighter: 'andesite' },
+  stone_bricks: { darker: 'mossy_stone_bricks' },
+  tuff_bricks: { darker: 'tuff', lighter: 'polished_tuff' },
+};
+
+/** Share of darker-partner columns by distance from the eave: 55 / 35 / 15 / 5 %. */
+const DRIP = [0.55, 0.35, 0.15, 0.05];
+
+function hash(...v: number[]): number {
+  let h = 0x811c9dc5;
+  for (const n of v) {
+    h ^= n | 0;
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x2c1b3c6d) >>> 0;
+  return (h >>> 8) / 0x1000000;
+}
+
+function blendedRoof(s: RoofSectionSpec, x: number, z: number, l: Layout): string {
+  const blend = s.blendSeed === undefined ? undefined : ROOF_BLEND[s.materials.roof];
+  if (!blend || l.ridge || !l.facing || l.n < 3) return s.materials.roof;
+  // Coordinate along the eave of this slope face: one streak length per eave column.
+  const a = l.facing === 'north' || l.facing === 'south' ? x : z;
+  const face = ['north', 'east', 'south', 'west'].indexOf(l.facing);
+  // Course rows (research 06 R23): every third row from the eave in the darker (or lighter)
+  // partner, a few columns skipped so the line reads as hand-laid.
+  if (s.texture === 'courses' && l.d >= 2 && l.d < l.n - 1 && l.d % 3 === 2 && hash(s.blendSeed!, a, face, 3) >= 1 / 6) return blend.darker ?? blend.lighter ?? s.materials.roof;
+  if (blend.darker) {
+    const r = hash(s.blendSeed!, a, face, 1);
+    let streak = 0;
+    while (streak < DRIP.length && r < DRIP[streak]!) streak++;
+    if (l.d < streak) return blend.darker;
+  }
+  if (blend.lighter) {
+    // Sun bleaching: short streaks down from the ridge (1–2 rows) on some columns.
+    const r = hash(s.blendSeed!, a, face, 2);
+    const streak = r < 0.08 ? 2 : r < 0.2 ? 1 : 0;
+    if (l.d >= l.n - streak) return blend.lighter;
+  }
+  return s.materials.roof;
+}
+
+/** Number of slope columns (eave to ridge) of a section. */
+export function slopeColumns(s: RoofSectionSpec): number {
+  const { X0, Z0 } = outer(s);
+  return layoutAt(s, X0, Z0)?.n ?? 0;
+}
+
+/**
+ * Ladder step for a whole house, taken from its main section (research 05: one pitch per
+ * building; wings, cross gables and annexes follow it instead of picking their own), never
+ * below the style's minimum pitch. Undefined for curved profiles and flat roofs.
+ */
+export function housePitch(main: RoofSectionSpec, floor: PitchId = 'P27'): PitchId | undefined {
+  if (main.type === 'flat' || main.type === 'shed' || main.type === 'a_frame' || main.type === 'skirt') return undefined;
+  const profile = main.type === 'saltbox' ? 'standard' : profileFor(main);
+  return pickPitch(profile, Math.max(1, slopeColumns(main)), main.maxRise ?? 7, undefined, floor);
+}
+
+/**
+ * Irimoya (research 05 T-irimoya, 11 Empf. 1): a hip roof over the whole footprint and a
+ * gable roof of the same pitch, shortened at both ridge ends by about a third of the slope.
+ * The column union keeps the higher surface, so the hip runs round below and the gable
+ * triangle stands on it at the ends, its verge overhanging the hip slope. Too short a house
+ * keeps the plain hip.
+ */
+export function irimoyaSections(s: RoofSectionSpec): RoofSectionSpec[] {
+  const hip: RoofSectionSpec = { ...s, type: 'hip' };
+  const n = slopeColumns({ ...s, type: 'gable' });
+  const k = Math.max(2, Math.min(n - 2, Math.round(0.35 * n)));
+  const alongX = s.ridgeAxis === 'x';
+  const length = alongX ? s.x1 - s.x0 + 1 : s.z1 - s.z0 + 1;
+  if (n < 4 || length - 2 * k < 3) return [hip];
+  const gable: RoofSectionSpec = {
+    ...s,
+    id: `${s.id}-gable`,
+    type: 'gable',
+    gableRecess: false,
+    ...(alongX ? { x0: s.x0 + k, x1: s.x1 - k } : { z0: s.z0 + k, z1: s.z1 - k }),
+  };
+  return [hip, gable];
 }
 
 /** Roof base y: the column above the wall line rests on the wall top. */
@@ -231,29 +350,129 @@ function baseY(s: RoofSectionSpec, t: readonly number[]): number {
   return s.wallTop + 1 - Math.floor((atWall - 1) / 2);
 }
 
+const OUTWARD: Readonly<Record<HorizontalDirection, HorizontalDirection>> = { north: 'south', south: 'north', east: 'west', west: 'east' };
+
+/**
+ * Edge shaping (research 05/06, the creative director's references 19098029, 18791820 and
+ * 19864998): roofs whose edges have a shape of their own instead of a recoloured row.
+ *
+ * - **Raised verge:** the barge board stands one block above the roof surface (full block plus
+ *   a stair of the trim material); at the apex it rises one block above the ridge.
+ * - **Kicked verge foot:** at the eave end of the verge the board turns up (full block, then a
+ *   stair facing outwards; two blocks for fantasy) – the "tips up" of the references.
+ * - **Corner upturn (Japanese):** on roofs that start with two half steps (flared, bell,
+ *   shallow) the outer corner of the lowest rings rises like a horn, the cells beside it in
+ *   half steps; lanterns hang under it.
+ *
+ * Only the pieces of the column change; the union of sections, `planRoofs` and the lints see
+ * the shaped tops. Returns the new top in half blocks.
+ */
+function shapeEdge(s: RoofSectionSpec, l: Layout, at: { x: number; z: number; X0: number; X1: number; Z0: number; Z1: number }, trim: boolean, t: readonly number[], base: number, pieces: { y: number; state: string }[], topHalf: number): number {
+  const e = s.edge;
+  if (!e || pieces.length === 0 || s.type === 'flat' || s.type === 'shed' || s.type === 'skirt') return topHalf;
+  const m = s.materials;
+  const topY = Math.max(...pieces.map((p) => p.y));
+  const top = pieces.find((p) => p.y === topY)!;
+  if (trim && (e.kick ?? 0) > 0 && l.d === 0 && !l.ridge && l.facing) {
+    top.state = full(m.trim);
+    for (let k = 1; k < e.kick!; k++) pieces.push({ y: topY + k, state: full(m.trim) });
+    pieces.push({ y: topY + e.kick!, state: stairs(m.trim, OUTWARD[l.facing], 'bottom') });
+    return (topY + e.kick!) * 2 + 2;
+  }
+  if (trim && e.verge === 'raised') {
+    if (l.ridge) {
+      pieces.push({ y: topY + 1, state: full(m.trim) });
+      return (topY + 1) * 2 + 2;
+    }
+    if (!l.facing) return topHalf;
+    const props = propsOf(top.state);
+    const raisedTop = props.type ? (topY + 1) * 2 + 1 : (topY + 1) * 2 + 2;
+    top.state = full(m.trim);
+    pieces.push({ y: topY + 1, state: props.type === 'top' ? slab(m.trim, 'bottom') : props.type === 'bottom' ? slab(m.trim, 'bottom') : stairs(m.trim, l.facing, 'bottom') });
+    return raisedTop;
+  }
+  if (e.corners && !trim && (s.type === 'hip' || s.type === 'pyramid') && t[0] === 1 && t[1] === 2 && l.d <= 1) {
+    const dx = Math.min(at.x - at.X0, at.X1 - at.x);
+    const dz = Math.min(at.z - at.Z0, at.Z1 - at.z);
+    const c = Math.abs(dx - dz);
+    const longX = at.X1 - at.X0 >= at.Z1 - at.Z0;
+    const outward: HorizontalDirection = longX ? (at.x - at.X0 < at.X1 - at.x ? 'west' : 'east') : at.z - at.Z0 < at.Z1 - at.z ? 'north' : 'south';
+    const mat = l.d === 0 && c <= 1 ? m.trim : m.roof;
+    const set = (list: { y: number; state: string }[]) => pieces.splice(0, pieces.length, ...list);
+    if (l.d === 0 && c === 0) {
+      set([{ y: base, state: full(mat) }, { y: base + 1, state: stairs(mat, outward, 'bottom') }]);
+      return (base + 1) * 2 + 2;
+    }
+    if (l.d === 0 && c === 1) {
+      set([{ y: base, state: slab(mat, 'top') }, { y: base + 1, state: slab(mat, 'bottom') }]);
+      return (base + 1) * 2 + 1;
+    }
+    if (l.d === 0 && c === 2) {
+      set([{ y: base, state: slab(mat, 'top') }]);
+      return base * 2 + 2;
+    }
+    if (l.d === 1 && c === 0) {
+      set([{ y: base, state: slab(mat, 'top') }, { y: base + 1, state: full(mat) }]);
+      return (base + 2) * 2;
+    }
+    if (l.d === 1 && c === 1) {
+      set([{ y: base, state: slab(mat, 'top') }, { y: base + 1, state: slab(mat, 'bottom') }]);
+      return (base + 1) * 2 + 1;
+    }
+  }
+  return topHalf;
+}
+
+/** Tops of a slope one block lower at the ridge (last Δ ≥ 4 → −2, or a final 2,2 → 1,1). */
+function sagTops(t: readonly number[]): number[] | null {
+  const d = t.map((v, i) => v - (i === 0 ? 0 : t[i - 1]!));
+  const n = d.length;
+  if (n < 4) return null;
+  if (d[n - 1]! >= 4) d[n - 1] = d[n - 1]! - 2;
+  else if (d[n - 1] === 2 && d[n - 2] === 2) {
+    d[n - 1] = 1;
+    d[n - 2] = 1;
+  } else return null;
+  return tops(d);
+}
+
 function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<string, Column>; base: number } {
   const columns = new Map<string, Column>();
   const { X0, X1, Z0, Z1 } = outer(s);
   const sample = layoutAt(s, X0, Z0);
   const n = sample?.n ?? 0;
-  const t = s.type === 'flat' ? [] : sectionTops(s, Math.max(n, 1));
-  const base = s.type === 'flat' ? s.wallTop + 1 : baseY(s, t);
+  const tBase = s.type === 'flat' ? [] : sectionTops(s, Math.max(n, 1));
+  const base = s.type === 'flat' ? s.wallTop + 1 : baseY(s, tBase);
+  const tSag = GABLE_LIKE.has(s.type) && s.edge?.sag ? sagTops(tBase) : null;
   const m = s.materials;
   const ridgeStyle = s.ridgeStyle ?? 'slab';
   for (let x = X0; x <= X1; x++)
     for (let z = Z0; z <= Z1; z++) {
+      if (s.hole && x >= s.hole.x0 && x <= s.hole.x1 && z >= s.hole.z0 && z <= s.hole.z1) continue;
       const l = layoutAt(s, x, z);
       if (!l) continue;
       const outside = x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1;
-      const trim = l.d === 0 || l.verge;
-      const material = trim ? m.trim : m.roof;
+      // Organic sag (fantasy, research 05 R13): the middle third of the ridge dips one block.
+      const along = s.ridgeAxis === 'x' ? x : z;
+      const [a0, a1] = s.ridgeAxis === 'x' ? [s.x0, s.x1] : [s.z0, s.z1];
+      const third = Math.floor((a1 - a0 + 1) / 3);
+      const t = s.edge?.sag && tSag && along >= a0 + third && along <= a1 - third ? tSag : tBase;
+      // Contrast only as a thin barge board on the outermost verge column; the eaves stay in
+      // the roof material (research 06: a full contrast ring covered 36–43 % of the roof).
+      const trim = l.verge && (s.ridgeAxis === 'x' || s.type === 'shed' ? x === X0 || x === X1 : z === Z0 || z === Z1);
+      const material = trim ? m.trim : blendedRoof(s, x, z, l);
       const pieces: { y: number; state: string }[] = [];
       let topHalf: number;
-      if (s.type === 'flat') {
+      if (s.type === 'flat' && s.overhang === 0) {
+        // Parapet in the wall material with a thin trim cap instead of a dark two-block lid.
         const edge = l.d === 0;
-        pieces.push({ y: base, state: edge ? full(m.trim) : slab(m.roof, 'bottom') });
+        pieces.push({ y: base, state: edge ? full(m.gable) : slab(m.roof, 'bottom') });
         if (edge) pieces.push({ y: base + 1, state: slab(m.trim, 'bottom') });
         topHalf = base * 2 + (edge ? 3 : 1);
+      } else if (s.type === 'flat') {
+        // Cantilevered roof plate: a thin trim slab sticking out beyond the walls (research 12).
+        pieces.push({ y: base, state: outside ? slab(m.trim, 'top') : slab(m.roof, 'bottom') });
+        topHalf = base * 2 + (outside ? 2 : 1);
       } else if (l.ridge) {
         const tPrev = t[Math.min(l.d, t.length) - 1] ?? 0;
         topHalf = base * 2 + tPrev;
@@ -289,6 +508,7 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
         for (const p of columnPieces(tPrev, tCol)) pieces.push({ y: base + p.y, state: pieceState(p, material, l.facing) });
         topHalf = base * 2 + tCol;
       }
+      topHalf = shapeEdge(s, l, { x, z, X0, X1, Z0, Z1 }, trim, t, base, pieces, topHalf);
       if (pieces.length === 0) continue;
       columns.set(key(x, z), {
         section: index,
@@ -301,6 +521,8 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
         verge: l.verge,
         eave: outside && !l.verge,
         lowest: Math.min(...pieces.map((p) => p.y)),
+        layer: s.layer ?? 0,
+        n: l.n,
       });
     }
   return { columns, base };
@@ -355,18 +577,81 @@ export function buildRoofs(builder: VoxelBuilder, sections: readonly RoofSection
     result.ridgeY[s.id] = Math.max(result.ridgeY[s.id] ?? -Infinity, top);
   }
 
+  // Under the verge of an irimoya gable the hip slope still has to be there, or the overhang
+  // leaves a hole into the attic.
+  for (const [k, w] of winners) {
+    if (!w.verge || !sections[w.section]!.id.endsWith('-gable')) continue;
+    const hipId = sections[w.section]!.id.replace(/-gable$/, '');
+    let under: Column | undefined;
+    for (const { columns } of all) {
+      const c = columns.get(k);
+      if (!c || c === w || sections[c.section]!.id !== hipId || Math.max(...c.pieces.map((p) => p.y)) >= w.lowest) continue;
+      if (!under || c.top > under.top) under = c;
+    }
+    if (!under) continue;
+    const [x, z] = k.split(',').map(Number) as [number, number];
+    const priority = sections[under.section]!.priority ?? Priority.ROOF;
+    for (const p of under.pieces) if (builder.inside(x, p.y, z)) builder.setBlock(x, p.y, z, p.state, priority);
+  }
+
+  // Lower layers under a higher roof of another layer: the pieces below its lowest piece.
+  for (const [k, w] of winners) {
+    let under: Column | undefined;
+    for (const { columns } of all) {
+      const c = columns.get(k);
+      if (!c || c === w || c.layer <= w.layer) continue;
+      if (!under || c.top > under.top) under = c;
+    }
+    if (!under) continue;
+    const [x, z] = k.split(',').map(Number) as [number, number];
+    const priority = sections[under.section]!.priority ?? Priority.ROOF;
+    for (const p of under.pieces) if (p.y < w.lowest && builder.inside(x, p.y, z)) builder.setBlock(x, p.y, z, p.state, priority);
+  }
+
+  // Roof surface (research 06 R23, 09 T12, 13 P3): living roofs get moss blocks in the slope,
+  // azalea clumps and moss carpet on top; thatch gets lumps (a stair becomes a full block of
+  // the same material). Deterministic per column; never on trim, ridge, eave row or diagonals.
+  sections.forEach((s, i) => {
+    if (s.texture !== 'living' && s.texture !== 'thatch') return;
+    const seed = s.blendSeed ?? 0;
+    for (const [k, c] of all[i]!.columns) {
+      if (winners.get(k) !== c || c.trim || c.ridge || c.d === 0 || !c.facing || c.d >= c.n - 1) continue;
+      const [x, z] = k.split(',').map(Number) as [number, number];
+      const y = Math.max(...c.pieces.map((p) => p.y));
+      if (!builder.inside(x, y + 1, z)) continue;
+      const state = builder.getBlock(x, y, z);
+      const r = hash(seed, x, y, z, 5);
+      if (s.texture === 'thatch') {
+        if (r < 0.08 && state.includes('_stairs[') && builder.isAir(x, y + 1, z)) builder.setBlock(x, y, z, full(s.materials.roof), s.priority ?? Priority.ROOF);
+        continue;
+      }
+      const p = c.d <= 1 ? 0.3 : c.d >= c.n - 2 ? 0 : 0.14;
+      if (r >= p || !builder.isAir(x, y + 1, z)) continue;
+      builder.setBlock(x, y, z, blockState('moss_block'), s.priority ?? Priority.ROOF);
+      const r2 = hash(seed, x, y, z, 6);
+      if (r2 < 0.3) builder.setBlock(x, y + 1, z, blockState(r2 < 0.12 ? 'flowering_azalea_leaves' : 'azalea_leaves', { persistent: 'true' }), Priority.DECOR);
+      else if (r2 < 0.65) builder.setBlock(x, y + 1, z, blockState('moss_carpet'), Priority.DECOR);
+    }
+  });
+
   // Soffits: cornice under the eaves, boards under the verges.
   sections.forEach((s, i) => {
     if (!s.soffit || s.type === 'flat' || s.type === 'skirt') return;
     for (const [k, c] of all[i]!.columns) {
-      if (winners.get(k) !== c || !c.facing) continue;
+      if (winners.get(k) !== c) continue;
       const [x, z] = k.split(',').map(Number) as [number, number];
       const below = c.lowest - 1;
       if (!builder.inside(x, below, z) || !builder.isAir(x, below, z)) continue;
+      // The barge board meets itself under the ridge: close the notch with a full block.
+      if (!c.facing) {
+        if (c.ridge && c.trim) builder.setBlock(x, below, z, full(s.materials.trim), s.priority ?? Priority.ROOF);
+        continue;
+      }
       if (c.verge && c.d > 0) {
-        // Board under the verge: upside-down stair facing away from the ridge.
+        // Board under the verge: upside-down stair facing away from the ridge; the outermost
+        // column is the barge board itself (one material with the verge, research 06 R01).
         const away = ({ north: 'south', south: 'north', east: 'west', west: 'east' } as const)[c.facing];
-        builder.setBlock(x, below, z, stairs(s.materials.soffit, away, 'top'), s.priority ?? Priority.ROOF);
+        builder.setBlock(x, below, z, stairs(c.trim ? s.materials.trim : s.materials.soffit, away, 'top'), s.priority ?? Priority.ROOF);
       } else if (c.eave && !c.verge && c.d === s.overhang - 1) {
         // Cornice right outside the wall: the full side of the upside-down stair against the wall.
         builder.setBlock(x, below, z, stairs(s.materials.soffit, c.facing, 'top'), s.priority ?? Priority.ROOF);
@@ -389,7 +674,9 @@ export function buildRoofs(builder: VoxelBuilder, sections: readonly RoofSection
             { fixed: s.z0 + recess, side: 'north' as const },
             { fixed: s.z1 - recess, side: 'south' as const },
           ];
-    const gableBlock = full(s.materials.gable);
+    // Log gables lie like the wall courses below them (axis along the gable).
+    const plain = full(s.materials.gable);
+    const gableBlock = propsOf(plain).axis ? blockState(requireForm(s.materials.gable, 'block'), { axis: s.ridgeAxis === 'x' ? 'z' : 'x' }) : plain;
     for (const { fixed, side } of planes) {
       const from = s.ridgeAxis === 'x' ? s.z0 : s.x0;
       const to = s.ridgeAxis === 'x' ? s.z1 : s.x1;

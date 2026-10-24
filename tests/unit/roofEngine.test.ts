@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AIR, blockIdOf, propsOf } from '@/core/blocks/registry';
 import { VoxelBuilder } from '@/core/generator/geometry';
-import { capRise, columnPieces, normalizeDeltas, profileDeltas, rawDeltas, tops } from '@/core/generator/roof/profiles';
+import { capRise, columnPieces, ladderDeltas, normalizeDeltas, pickPitch, profileDeltas, rawDeltas, tops } from '@/core/generator/roof/profiles';
 import { buildRoofs, planRoofs, type RoofSectionSpec } from '@/core/generator/roof/roofEngine';
 import { DEFAULT_HOUSE_SPEC } from '@/core/schema/buildSpec';
 import { blockAt, type VoxelModel } from '@/core/schema/voxelModel';
@@ -48,7 +48,8 @@ describe('Dachprofile (Δ-Folgen)', () => {
 
   it('Profile haben die dokumentierte Form und gerade Treppen-Oberkanten', () => {
     expect(rawDeltas('flared', 5)).toEqual([1, 1, 2, 2, 2]);
-    expect(rawDeltas('bell', 7)).toEqual([1, 1, 2, 2, 2, 4, 4]);
+    expect(rawDeltas('bell', 7)).toEqual([1, 1, 2, 2, 2, 2, 4]);
+    expect(rawDeltas('bell', 9)).toEqual([1, 1, 1, 1, 2, 2, 2, 4, 4]); // monotone (was 1,1,1,3,… before)
     expect(rawDeltas('convex', 6)).toEqual([4, 4, 2, 2, 1, 1]);
     for (const profile of ['standard', 'steep', 'shallow', 'flared', 'bell', 'convex', 'ogee', 'mansard'] as const) {
       for (let n = 1; n < 14; n++) {
@@ -64,14 +65,42 @@ describe('Dachprofile (Δ-Folgen)', () => {
     expect(normalizeDeltas([1, 2, 2])).toEqual([1, 3, 2]);
     expect(capRise([4, 4, 4, 4], 10).reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(10);
   });
+
+  it('Neigungsleiter: Steil- und Normaldächer werden nicht oben abgeflacht, sondern nehmen eine flachere Stufe', () => {
+    for (let n = 3; n <= 14; n++)
+      for (const cap of [5, 7, 9, 11]) {
+        for (const profile of ['steep', 'standard'] as const) {
+          const d = profileDeltas(profile, n, cap);
+          const step = pickPitch(profile, n, cap)!;
+          const sum = d.reduce((a, b) => a + b, 0);
+          if (step !== 'P27') {
+            expect(d, `${profile} n=${n} cap=${cap}`).toEqual(ladderDeltas(step, n));
+            expect(sum).toBeLessThanOrEqual(cap * 2);
+          }
+          // A periodic ladder pattern: never a run of Δ1 after a Δ4 (the old barn profile).
+          expect(d.join(',').includes('4,1'), `${profile} n=${n} cap=${cap}: ${d.join(',')}`).toBe(false);
+        }
+      }
+    // n = 7 under a cap of 10: 53° instead of the flattened 4,4,2,1,1,1,1.
+    expect(profileDeltas('steep', 7, 10)).toEqual([4, 2, 2, 4, 2, 2, 4]);
+    // Bell profiles never fall towards the ridge.
+    for (let n = 4; n <= 14; n++) {
+      const d = rawDeltas('bell', n);
+      d.forEach((v, i) => i > 0 && expect(v, `bell n=${n}`).toBeGreaterThanOrEqual(d[i - 1]!));
+    }
+  });
 });
 
 describe('Dach-Engine', () => {
   it('Satteldach 9 × 7 mit Überstand 1: Traufe neben der Wandkrone, First aus Stufe, Kontrastkante, Untersicht', () => {
     const { model } = build([section({})]);
     // Cross-section at x = 6: walls z = 2..8, overhang to z = 1 and 9, ridge at z = 5.
-    expect(at(model, 6, 4, 1)).toContain('dark_oak_stairs'); // eave row (trim) beside the wall top
+    // The eave row stays in the roof material; contrast only on the outermost verge column.
+    expect(at(model, 6, 4, 1)).toContain('spruce_stairs');
     expect(propsOf(at(model, 6, 4, 1))).toMatchObject({ facing: 'south', half: 'bottom' });
+    for (let z = 1; z <= 9; z++) if (z !== 5) expect(blockIdOf(at(model, 1, 4 + Math.min(z - 1, 9 - z), z)), `Ortgang z=${z}`).toBe('minecraft:dark_oak_stairs');
+    // The barge board closes under the ridge (no notch).
+    expect(blockIdOf(at(model, 1, 7, 5))).toBe('minecraft:dark_oak_planks');
     expect(at(model, 6, 5, 2)).toContain('spruce_stairs');
     expect(at(model, 6, 8, 5)).toBe('minecraft:dark_oak_slab[type=bottom,waterlogged=false]'); // ridge cap
     expect(propsOf(at(model, 6, 4, 9))).toMatchObject({ facing: 'north' });
@@ -123,5 +152,31 @@ describe('Dach-Engine', () => {
     expect(propsOf(at(model, 7, 4, 0))).toMatchObject({ half: 'top' }); // cornice below the flared eave
     const slope = Array.from({ length: 6 }, (_, i) => Array.from({ length: 20 }, (_, y) => at(model, 7, y, i + 1))).flat();
     expect(slope.some((s) => s === 'minecraft:spruce_planks')).toBe(true);
+  });
+});
+
+describe('Dachmischung', () => {
+  it('dunkler Partner in Streifen von der Traufe aus, Formen unverändert, deterministisch', () => {
+    const plain = build([section({ materials: { ...MATERIALS, roof: 'spruce_planks' } })]).model;
+    const mixed = build([section({ materials: { ...MATERIALS, roof: 'spruce_planks' }, blendSeed: 42 })]).model;
+    const again = build([section({ materials: { ...MATERIALS, roof: 'spruce_planks' }, blendSeed: 42 })]).model;
+    expect(mixed.hash).toBe(again.hash);
+    let dark = 0;
+    let eaveDark = 0;
+    for (let x = 0; x < 16; x++)
+      for (let y = 0; y < 20; y++)
+        for (let z = 0; z < 16; z++) {
+          const a = at(plain, x, y, z);
+          const b = at(mixed, x, y, z);
+          // Same shape and properties everywhere; only the wood may differ.
+          const norm = (s: string) => s.replace(/minecraft:(dark_oak|spruce|oak)_/, 'minecraft:wood_');
+          expect(norm(b)).toBe(norm(a));
+          if (b !== a && b.includes('dark_oak_stairs')) {
+            dark++;
+            if (z === 1 || z === 9) eaveDark++;
+          }
+        }
+    expect(dark).toBeGreaterThan(0);
+    expect(eaveDark).toBeGreaterThan(0);
   });
 });

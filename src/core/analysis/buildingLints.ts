@@ -2,10 +2,10 @@ import { VECTOR, type HorizontalDirection } from '@/core/blocks/directions';
 import { AIR, blockIdOf, definitionOf, propsOf } from '@/core/blocks/registry';
 import { PaletteGrid, resolveStates } from '@/core/blocks/stateResolver';
 import type { HouseResult } from '@/core/generator/house/buildHouse';
-import { floorY, storeyRect } from '@/core/generator/house/plan';
-import { facadeOf, facadePos } from '@/core/generator/house/walls';
+import { floorY, joinedAt, storeyRect } from '@/core/generator/house/plan';
+import { coveredColumns, facadeOf, facadePos } from '@/core/generator/house/walls';
 import { planRoofs } from '@/core/generator/roof/roofEngine';
-import { blockAt, type VoxelModel } from '@/core/schema/voxelModel';
+import { aboveGround, blockAt, type VoxelModel } from '@/core/schema/voxelModel';
 
 /**
  * Automatic checks of a generated building (phase 8, research report "Abnahme"): structure
@@ -94,13 +94,15 @@ function depthAt(model: VoxelModel, side: HorizontalDirection, u: number, y: num
   return 'none';
 }
 
-export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
+export function lintHouse(full: VoxelModel, house: HouseResult): LintIssue[] {
   const issues: LintIssue[] = [];
   const { plan, sections, roof, openings } = house;
 
-  const floating = floatingBlocks(model);
+  const floating = floatingBlocks(full);
   if (floating > 0) issues.push({ rule: 'schwebend', message: `${floating} Blöcke ohne Verbindung zum Boden` });
-  const changes = resolverChanges(model);
+  const changes = resolverChanges(full);
+  // Everything below works in plan coordinates: the model from its ground layer up.
+  const model = aboveGround(full);
   if (changes > 0) issues.push({ rule: 'fixpunkt', message: `Ein zweiter Resolver-Lauf ändert ${changes} Blöcke` });
 
   // Flat walls: every 6-wide stretch of a storey's wall must contain a depth change.
@@ -111,8 +113,10 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
       const y0 = floorY(plan, k) + 1;
       const y1 = floorY(plan, k + 1) - 1;
       for (const side of ['north', 'east', 'south', 'west'] as const) {
-        if (mass.joins[side]) continue;
+        if (joinedAt(plan, mass, side, k)) continue;
         const f = facadeOf(rect, side);
+        // Parts with another mass in front (cross gable, wing, annex) are no facade.
+        const covered = coveredColumns(plan, mass, side, k);
         const depth: string[][] = [];
         for (let u = 0; u < f.length; u++) {
           const column: string[] = [];
@@ -120,6 +124,7 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
           depth.push(column);
         }
         for (let u = 0; u + 6 <= f.length; u++) {
+          if ([0, 1, 2, 3, 4, 5].some((i) => covered.has(u + i))) continue;
           const first = depth[u]![0];
           const flat = depth.slice(u, u + 6).every((col) => col.every((d) => d === first));
           if (flat) {
@@ -136,10 +141,13 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
     if (!main) continue;
     // Overhang ≥ 1 (modern flat roofs may sit flush with a parapet).
     if (s.overhang < 1 && s.type !== 'flat') issues.push({ rule: 'ueberstand', message: `${s.id}: Dachüberstand ${s.overhang}` });
-    // Rise per section ≤ 7 (towers and A-frames excluded by design).
+    // Rise per section ≤ the style's cap (+1 for the ridge piece); towers and A-frames excluded.
+    // Shed roofs of annexes need their minimum slope and are only held to the general 7.
     if (main.kind !== 'tower' && s.type !== 'a_frame' && s.type !== 'flat') {
       const rise = planRoofs([s]).topY - s.wallTop;
-      if (rise > 8) issues.push({ rule: 'anstieg', message: `${s.id}: Dachanstieg ${rise} Blöcke` });
+      const cap = s.type === 'shed' ? 7 : (s.maxRise ?? 7);
+      // A raised verge lifts the gable tip one block above the ridge (an ornament, not roof).
+      if (rise > cap + 1 + (s.edge?.verge === 'raised' ? 1 : 0)) issues.push({ rule: 'anstieg', message: `${s.id}: Dachanstieg ${rise} Blöcke` });
     }
     // Closed roof: every column of the footprint (incl. overhang) carries roof blocks.
     for (let x = s.x0 - s.overhang; x <= s.x1 + s.overhang; x++)
@@ -152,6 +160,8 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
       }
   }
 
+  // A house without a door (all templates rejected) is a fault, not a style.
+  if (openings.doors.length === 0) issues.push({ rule: 'eingang', message: 'Keine Tür gesetzt' });
   // Doors: both halves present, free in front (2) and behind (1).
   for (const d of openings.doors) {
     const lower = blockAt(model, d.x, d.y, d.z);

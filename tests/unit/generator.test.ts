@@ -60,7 +60,7 @@ describe('Haus: Bauteile und Feinparameter wirken', () => {
   const base = spec({ style: 'medieval', size: 'medium', seed: 4 });
   const options: [string, BuildSpec['options']][] = [
     ['Breite', { width: 15 }],
-    ['Tiefe', { depth: 13 }],
+    ['Tiefe', { depth: 11 }],
     ['Geschosse', { floors: 3 }],
     ['Dachform Walm', { roofType: 'hip' }],
     ['Dachform Mansard', { roofType: 'mansard' }],
@@ -139,7 +139,8 @@ describe('Haus: Bauteile und Feinparameter wirken', () => {
   });
 
   it('Mittelalter: Obergeschoss kragt auf Konsolen aus (Jetty)', () => {
-    const r = generateBuildingWithReport(spec({ style: 'medieval', size: 'medium', seed: 1 }, { floors: 2, jetty: true }));
+    // A cross gable in front stops the jetty on that side, so the plain body is checked here.
+    const r = generateBuildingWithReport(spec({ style: 'medieval', size: 'medium', seed: 1 }, { floors: 2, jetty: true, composition: 'simple' }));
     const main = r.house!.plan.masses[0]!;
     const lower = storeyRect(main, 0);
     const upper = storeyRect(main, 1);
@@ -151,8 +152,21 @@ describe('Haus: Bauteile und Feinparameter wirken', () => {
     const shapes = new Set(m.palette.filter((s) => s.includes('_stairs[')).map((s) => propsOf(s).shape));
     expect(shapes).toContain('outer_left');
     expect(shapes).toContain('straight');
-    const l = generateBuilding(spec({ style: 'rustic', size: 'large', seed: 1 }, { wings: 'L' }));
-    expect(l.palette.some((s) => s.includes('_stairs[') && /inner_/.test(propsOf(s).shape ?? ''))).toBe(true);
+    // Valleys of a T plan: roof stairs (bottom half) turn into inner corners.
+    const t = generateBuilding(spec({ style: 'medieval', size: 'large', seed: 1 }, { wings: 'T' }));
+    expect(t.palette.some((s) => s.includes('_stairs[') && propsOf(s).half === 'bottom' && /inner_/.test(propsOf(s).shape ?? ''))).toBe(true);
+  });
+
+  it('eine Dachneigung je Haus: Flügel und Quergiebel folgen dem Hauptdach, nie flacher als die Mindestneigung des Stils', () => {
+    for (const style of ['medieval', 'nordic', 'rustic'] as const)
+      for (const wings of ['L', 'T'] as const) {
+        const r = generateBuildingWithReport(spec({ style, size: 'large', seed: 2 }, { wings, roofType: 'gable', roofProfile: 'steep' }));
+        const massIds = new Set(r.house!.plan.masses.map((m) => m.id));
+        const pitches = new Set(r.house!.sections.filter((s) => massIds.has(s.id) && s.type !== 'shed').map((s) => s.pitch));
+        expect(pitches.size, `${style} ${wings}`).toBe(1);
+        // Never flatter than the style's minimum pitch (45° for the steep styles).
+        expect(style === 'rustic' ? ['P37', 'P45', 'P53', 'P56', 'P63'] : ['P45', 'P53', 'P56', 'P63'], `${style} ${wings}`).toContain([...pitches][0]);
+      }
   });
 });
 
@@ -174,12 +188,13 @@ describe('Thema: Weihnachten und Winter', () => {
     expect(m.palette.some((s) => blockIdOf(s) === 'minecraft:end_rod' && propsOf(s).facing === 'down')).toBe(false);
   });
 
-  it('Schnee nur auf ausdrücklichen Wunsch – dann Bodenfläche und Schneeschichten, wo sie im Spiel liegen bleiben', () => {
+  it('Schnee nur auf ausdrücklichen Wunsch – dann nur Schneeschichten, wo sie im Spiel liegen bleiben (nie Schneeblöcke)', () => {
     expect(ids(generateBuilding(spec())).has('minecraft:snow_block')).toBe(false);
     expect(ids(generateBuilding(spec())).has('minecraft:snow')).toBe(false);
     for (const style of STYLE_IDS) {
       const r = generateBuildingWithReport(spec({ style, theme: 'winter' }, { snow: true }));
-      expect(ids(r.model).has('minecraft:snow_block'), style).toBe(true);
+      // CD decision 23.10.2026: snow only as layers, the ground stays grass under them.
+      expect(ids(r.model).has('minecraft:snow_block'), style).toBe(false);
       expect(ids(r.model).has('minecraft:snow'), style).toBe(true);
       // No layer melts or falls off: the validator had nothing to repair.
       expect(r.repairs, style).toEqual([]);
@@ -212,5 +227,133 @@ describe('Leistung', () => {
   it('nichts schwebt (auch nicht mit allen Bauteilen)', () => {
     const m = generateBuilding(spec({ style: 'fantasy', size: 'large' }, { tower: 'square', annex: 'right', porch: true, dormers: 3, symmetry: 'rambling' }));
     expect(floatingBlocks(m)).toBe(0);
+  });
+});
+
+describe('Giebelfelder und Firstzier', () => {
+  const gableHouse = (style: BuildSpec['style'], over: Partial<BuildSpec> = {}) =>
+    // The plain body (composition 'simple'): both gables free, no tower or cross gable in front.
+    generateBuildingWithReport(spec({ style, size: 'large', seed: 3, ...over }, { roofType: 'gable', chimney: false, composition: 'simple' }));
+
+  it('Fachwerkgiebel: zurückgesetzte Füllung, davor Firstständer und Kehlbalken, Fenster neben dem Ständer', () => {
+    const r = gableHouse('medieval');
+    const { roof, sections } = r.house!;
+    const main = sections.find((s) => s.id === 'main')!;
+    expect(main.gableRecess).toBe(true);
+    // King post: an upright log in front of the recessed gable on the ridge axis.
+    const cells = roof.gableCells.filter((c) => c.section === 'main');
+    expect(cells.length).toBeGreaterThan(10);
+    const c = cells[0]!;
+    const out = c.side === 'west' ? -1 : c.side === 'east' ? 1 : 0;
+    const zc = Math.round((main.z0 + main.z1) / 2);
+    const xc = Math.round((main.x0 + main.x1) / 2);
+    const front = (y: number) => (main.ridgeAxis === 'x' ? blockAt(r.model, c.x + out, y, zc) : blockAt(r.model, xc, y, c.z + (c.side === 'north' ? -1 : 1)));
+    const logs = Array.from({ length: 6 }, (_, i) => front(main.wallTop + 1 + i)).filter((s) => /_(log|wood)\[/.test(s));
+    expect(logs.length).toBeGreaterThanOrEqual(3);
+    expect(r.house!.openings.windows).toBeGreaterThan(0);
+    expect(lintHouse(r.model, r.house!)).toEqual([]);
+  });
+
+  it('Giebel ohne Fachwerk bekommen Fenster auf der Firstachse', () => {
+    for (const style of ['rustic', 'nordic'] as const) {
+      const r = gableHouse(style);
+      const panes = r.house!.roof.gableCells.filter((c) => blockIdOf(blockAt(r.model, c.x, c.y, c.z)).endsWith('_pane'));
+      expect(panes.length, style).toBeGreaterThanOrEqual(2);
+      expect(r.repairs, style).toEqual([]);
+    }
+  });
+
+  it('Firstzier je Stil: Blitzableiter, Endstab, gekreuzte Windbretter; bei Schnee kein Endstab', () => {
+    expect(has(gableHouse('medieval').model, 'lightning_rod')).toBe(true);
+    expect(has(gableHouse('fantasy').model, 'end_rod')).toBe(true);
+    const snowy = generateBuildingWithReport(spec({ style: 'fantasy', size: 'large', seed: 3, theme: 'winter' }, { roofType: 'gable', snow: true }));
+    expect(has(snowy.model, 'end_rod')).toBe(false);
+    expect(snowy.repairs).toEqual([]);
+    expect(has(gableHouse('modern').model, 'lightning_rod')).toBe(false);
+  });
+});
+
+describe('Blockhauswand', () => {
+  it('Stammwände liegen als Lagen mit Kreuzecken, ohne Pfosten davor; der Giebel liegt mit', () => {
+    const r = generateBuildingWithReport(spec({ style: 'rustic', size: 'medium', seed: 2 }, { palette: 'rustic_logs', roofType: 'gable' }));
+    const m = r.model;
+    const plan = r.house!.plan;
+    const main = plan.masses[0]!;
+    let lying = 0;
+    let upright = 0;
+    for (let k = 0; k < main.floors; k++) {
+      const rect = storeyRect(main, k);
+      for (let y = floorY(plan, k) + 1; y < floorY(plan, k + 1); y++)
+        for (let x = rect.x0; x <= rect.x1; x++)
+          for (const z of [rect.z0, rect.z1]) {
+            const s = blockAt(m, x, y, z);
+            if (blockIdOf(s) !== `minecraft:${plan.input.materials.wall}`) continue;
+            if (propsOf(s).axis === 'y') upright++;
+            else lying++;
+          }
+    }
+    expect(lying).toBeGreaterThan(10);
+    expect(upright / (lying + upright)).toBeLessThan(0.1);
+    // Saddle notch: logs stick out beyond the corner.
+    const rect = main.rect;
+    const y = floorY(plan, 0) + 1;
+    const ends = [blockAt(m, rect.x0 - 1, y, rect.z0), blockAt(m, rect.x0, y, rect.z0 - 1), blockAt(m, rect.x0 - 1, y + 1, rect.z0), blockAt(m, rect.x0, y + 1, rect.z0 - 1)];
+    expect(ends.filter((s) => s.includes('_log[')).length).toBeGreaterThanOrEqual(2);
+    expect(r.repairs).toEqual([]);
+    expect(lintHouse(m, r.house!)).toEqual([]);
+  });
+});
+
+describe('Irimoya', () => {
+  it('japanisches Dach: Walm unten rundum, eingerückter Giebel oben, ohne Lücken und Reparaturen', () => {
+    const r = generateBuildingWithReport(spec({ style: 'japanese', size: 'large', seed: 1 }, { roofType: 'irimoya' }));
+    const ids = r.house!.sections.map((s) => `${s.id}:${s.type}`);
+    expect(ids).toContain('main:hip');
+    expect(ids).toContain('main-gable:gable');
+    // The gable triangle stands on the hip: gable cells of the inner section exist.
+    expect(r.house!.roof.gableCells.some((c) => c.section === 'main-gable')).toBe(true);
+    expect(r.repairs).toEqual([]);
+    expect(lintHouse(r.model, r.house!)).toEqual([]);
+    expect(floatingBlocks(r.model)).toBe(0);
+  });
+
+  it('der Stil japanisch wählt Irimoya statt Krüppelwalm; „Irimoya“ im Text wird erkannt', () => {
+    const types = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => generateBuildingWithReport(spec({ style: 'japanese', seed })).house!.plan.masses[0]!.roofType);
+    expect(types).not.toContain('half_hip');
+    expect(types).toContain('irimoya');
+  });
+});
+
+describe('Modern: versetzte Baukörper', () => {
+  it('ab mittlerer Größe zwei Kuben mit Versatz und unterschiedlicher Höhe, kein dunkler Balkenring', () => {
+    for (const size of ['medium', 'large'] as const)
+      for (const seed of [1, 2, 3]) {
+        const r = generateBuildingWithReport(spec({ style: 'modern', size, seed }));
+        const plan = r.house!.plan;
+        const [main, ...others] = plan.masses;
+        // A second cube beside or in front (annex, entrance cube, wing) or a shifted upper cube.
+        const volumes = others.length + (main!.upper ? 1 : 0);
+        expect(volumes, `${size} ${seed}`).toBeGreaterThanOrEqual(1);
+        const offset = others.some((m) => m.rect.z0 !== main!.rect.z0 || m.rect.z1 !== main!.rect.z1) || (main!.upper !== undefined && main!.upper.x0 !== main!.rect.x0);
+        expect(offset, `${size} ${seed}`).toBe(true);
+        const heights = new Set([...plan.masses.map((m) => m.floors), ...(main!.upper ? [1] : [])]);
+        expect(heights.size, `${size} ${seed}`).toBeGreaterThanOrEqual(2);
+        expect(r.repairs).toEqual([]);
+        expect(lintHouse(r.model, r.house!)).toEqual([]);
+      }
+  });
+});
+
+describe('Regressionen aus dem Breitendurchlauf', () => {
+  it('tiefe Traufe über dem Eingang: der Türfreiraum bleibt frei (rustikal, eingeschossig, Gambrel)', () => {
+    for (const detailLevel of [1, 2] as const) {
+      const r = generateBuildingWithReport(spec({ style: 'rustic', size: 'medium', theme: 'none', detailLevel, seed: 4 }));
+      expect(lintHouse(r.model, r.house!), `Detailgrad ${detailLevel}`).toEqual([]);
+    }
+  });
+
+  it('Trampelpfad unter später gesetzter Deko wird gleich als grobe Erde gespeichert (keine Reparatur)', () => {
+    const r = generateBuildingWithReport(spec({ style: 'rustic', size: 'medium', theme: 'christmas', detailLevel: 2, seed: 2 }));
+    expect(r.repairs).toEqual([]);
   });
 });

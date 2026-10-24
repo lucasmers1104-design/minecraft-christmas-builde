@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { modelDisplayName, type AiProvider } from '@/core/ai/providers';
 import { AIR, blockState, labelFor } from '@/core/blocks/registry';
 import { requireProfile } from '@/core/compat/profile';
 import {
@@ -28,20 +29,22 @@ import {
   type LoadedProject,
   type ProjectContent,
 } from '@/lib/persistence/projects';
-import { AppHeader, type BuilderStatus } from '@/components/builder/AppHeader';
+import { AppHeader, type BuilderStatus, type PlannedBy } from '@/components/builder/AppHeader';
 import { ExportPanel, type ExportInfo } from '@/components/builder/ExportPanel';
 import { FineControls } from '@/components/builder/FineControls';
 import { buildingTitle } from '@/components/builder/labels';
 import { MaterialList } from '@/components/builder/MaterialList';
 import { AiPlannerPanel } from '@/components/builder/AiPlannerPanel';
 import { ProjectLibrary } from '@/components/builder/ProjectLibrary';
-import { PromptPanel } from '@/components/builder/PromptPanel';
+import { GenerateBar, PromptPanel } from '@/components/builder/PromptPanel';
 import { SaveProjectPanel } from '@/components/builder/SaveProjectPanel';
 import { StyleControls, type SettingsBinding } from '@/components/builder/StyleControls';
 import { VariantSelector } from '@/components/builder/VariantSelector';
 import { PreviewPanel } from '@/components/preview/PreviewPanel';
 import type { CellAction } from '@/components/preview/VoxelScene';
 import { EditorPanel, type EditMode } from '@/components/editor/EditorPanel';
+import { AiSettingsDialog } from '@/components/settings/AiSettingsDialog';
+import { Callout, type CalloutTone } from '@/components/ui/Callout';
 
 type MobileTab = 'input' | 'preview' | 'details';
 
@@ -68,6 +71,43 @@ function specChanged(current: BuildSpec, generated: BuildSpec | undefined): bool
   return JSON.stringify(current) !== JSON.stringify(generated);
 }
 
+/** Who made a plan; plans saved before OpenRouter existed carry no source (= Ollama). */
+function planSource(plan: object): AiProvider {
+  return 'source' in plan && plan.source === 'openrouter' ? 'openrouter' : 'ollama';
+}
+
+/**
+ * The AI plan as a project stores it. The stored schema is strict (unknown keys fail the
+ * save), so only its fields are copied; optional ones only when present.
+ */
+function toStoredAiPlan(plan: AiPlanState): NonNullable<ProjectContent['aiPlan']> {
+  const { description, model, durationMs, explanation, unsupported, patch, plan: fields, attempts, source, costUsd } = plan;
+  return {
+    description,
+    model,
+    durationMs,
+    explanation,
+    unsupported,
+    patch,
+    ...(fields ? { plan: fields } : {}),
+    ...(attempts !== undefined ? { attempts } : {}),
+    ...(source ? { source } : {}),
+    ...(costUsd !== undefined ? { costUsd } : {}),
+  };
+}
+
+/** One line under the generate button: who plans the building and who sets the blocks. */
+function generatorModeLabel(aiOn: boolean, aiReady: boolean, aiActive: boolean, status: AiStatus | null): string {
+  if (aiOn && aiReady && status) {
+    const planner =
+      status.provider === 'openrouter' ? (status.label ?? `${modelDisplayName(status.model)} über OpenRouter`) : `lokale KI (${status.model})`;
+    return `Planung: ${planner} · Blöcke: regelbasierter Generator`;
+  }
+  if (aiActive) return 'Planung: vorhandener KI-Plan für diesen Text · Blöcke: regelbasierter Generator';
+  if (aiOn) return 'Regelbasierter Generator · KI gerade nicht erreichbar';
+  return 'Regelbasierter Generator · keine KI aktiv';
+}
+
 export function BuilderApp() {
   const [description, setDescription] = useState(DEFAULT_HOUSE_SPEC.description);
   const [manual, setManual] = useState<SpecPatch>({});
@@ -78,10 +118,17 @@ export function BuilderApp() {
   const [project, setProject] = useState<Pick<LoadedProject, 'id' | 'name' | 'updatedAt'> | null>(null);
   const [savedKey, setSavedKey] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [mode, setMode] = useState<EditMode>('view');
   const [brush, setBrush] = useState(() => blockState('spruce_planks'));
   const [editorMessage, setEditorMessage] = useState<string | null>(null);
+  const [editorTone, setEditorTone] = useState<CalloutTone>('info');
+  /** Editor feedback with its tone: success after a change, warning if nothing happened, danger on errors. */
+  const say = useCallback((text: string, tone: CalloutTone) => {
+    setEditorMessage(text);
+    setEditorTone(tone);
+  }, []);
   /** Undo/redo availability of the selected variant, synced after every history change. */
   const [historyFlags, setHistoryFlags] = useState({ canUndo: false, canRedo: false });
   const [regenerateArmed, setRegenerateArmed] = useState(false);
@@ -91,9 +138,13 @@ export function BuilderApp() {
   const [aiOn, setAiOn] = useState(false);
   const [aiPlan, setAiPlan] = useState<AiPlanState | null>(null);
   const [aiNotice, setAiNotice] = useState<string | null>(null);
-  const [plannedBy, setPlannedBy] = useState<string | null>(null);
+  const [plannedBy, setPlannedBy] = useState<PlannedBy>(null);
   const [variants, setVariants] = useState<VoxelModel[]>([]);
   const [selected, setSelected] = useState(0);
+  // Seed the shown variants were generated from (houses show the best candidates, whose own
+  // seeds differ from it) and how many candidates were scored (null: unknown, e.g. a loaded project).
+  const [generatedSeed, setGeneratedSeed] = useState<number | null>(null);
+  const [candidates, setCandidates] = useState<number | null>(null);
   const [status, setStatus] = useState<BuilderStatus>('bereit');
   const [busy, setBusy] = useState<'generate' | 'plan' | 'export' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +168,7 @@ export function BuilderApp() {
   }, [description, seed, version, parsed, manual, aiActive, aiPlan]);
   const spec = resolved.spec;
   const model = variants[selected] ?? null;
-  const stale = specChanged(spec, variants[0]?.spec);
+  const stale = specChanged(spec, variants[0] ? { ...variants[0].spec, seed: generatedSeed ?? variants[0].spec.seed } : undefined);
   const title = useMemo(() => (model ? buildingTitle(model.spec.kind, model.spec.style, model.spec.theme) : ''), [model]);
 
   const content: ProjectContent = useMemo(
@@ -129,7 +180,7 @@ export function BuilderApp() {
       variants,
       edits: variants.map((_, i) => edits[i] ?? 0),
       selected,
-      aiPlan: plannedBy && aiPlan ? aiPlan : null,
+      aiPlan: plannedBy && aiPlan ? toStoredAiPlan(aiPlan) : null,
     }),
     [description, manual, seed, version, variants, edits, selected, plannedBy, aiPlan],
   );
@@ -180,13 +231,15 @@ export function BuilderApp() {
     setDescription(loaded.description);
     setManual(loaded.manual);
     setSeed(loaded.seed);
+    setGeneratedSeed(loaded.seed);
+    setCandidates(null);
     setVersion(loaded.targetMinecraftVersion);
     setVariants(loaded.variants);
     setEdits(loaded.edits);
     setSelected(loaded.selected);
     setAiPlan(loaded.aiPlan ?? null);
     setAiOn(!!loaded.aiPlan);
-    setPlannedBy(loaded.aiPlan?.model ?? null);
+    setPlannedBy(loaded.aiPlan ? { model: loaded.aiPlan.model, source: planSource(loaded.aiPlan) } : null);
     historiesRef.current = [];
     setHistoryFlags({ canUndo: false, canRedo: false });
     setEditorMessage(null);
@@ -225,10 +278,10 @@ export function BuilderApp() {
       setVariants((vs) => vs.map((v, i) => (i === selected ? next : v)));
       setEdits((es) => es.map((n, i) => (i === selected ? Math.max(0, n + delta) : n)));
       syncHistoryFlags(selected);
-      setEditorMessage(message);
+      say(message, 'success');
       setStatus('bearbeitet');
     },
-    [selected],
+    [selected, say],
   );
 
   const runEdit = useCallback(
@@ -238,20 +291,20 @@ export function BuilderApp() {
       try {
         const command = build(current);
         if (!command) {
-          setEditorMessage('Keine Änderung nötig.');
+          say('Keine Änderung nötig.', 'warning');
           return;
         }
         const notes = command.notes?.length ? ` Hinweis: ${command.notes.join('; ')}.` : '';
         if (command.changes.length === 0) {
-          setEditorMessage(`Nicht gesetzt.${notes}`);
+          say(`Nicht gesetzt.${notes}`, 'warning');
           return;
         }
         replaceSelected(historyFor(selected).execute(current, command), 1, `${command.label}.${notes}`);
       } catch (e) {
-        setEditorMessage(describeError(e));
+        say(describeError(e), 'danger');
       }
     },
-    [variants, selected, replaceSelected],
+    [variants, selected, replaceSelected, say],
   );
 
   const undo = useCallback(() => {
@@ -278,10 +331,10 @@ export function BuilderApp() {
           const state = blockAtCell(current, action.hit);
           if (state !== AIR) {
             setBrush(state);
-            setEditorMessage(`Pipette: „${labelFor(state)}“ ausgewählt.`);
+            say(`Pipette: „${labelFor(state)}“ ausgewählt.`, 'info');
           }
         } catch (e) {
-          setEditorMessage(describeError(e));
+          say(describeError(e), 'danger');
         }
         return;
       }
@@ -293,7 +346,7 @@ export function BuilderApp() {
           { brush, hit: action.hit, place: action.place, face: action.face, point: action.point, look: action.look },
         );
         if (!placement.ok) {
-          setEditorMessage(placement.reason);
+          say(placement.reason, 'warning');
           return;
         }
         runEdit((m) => setBlockCommand(m, placement.cell, placement.state));
@@ -304,7 +357,7 @@ export function BuilderApp() {
       if (mode === 'remove') runEdit((m) => removeBlockCommand(m, cell));
       else if (mode === 'paint') runEdit((m) => setBlockCommand(m, cell, brush));
     },
-    [variants, selected, mode, brush, runEdit],
+    [variants, selected, mode, brush, runEdit, say],
   );
 
   // Keyboard shortcuts: Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z), Escape leaves the edit tool.
@@ -343,18 +396,18 @@ export function BuilderApp() {
     setError(null);
     try {
       let target = spec;
-      let planner: string | null = aiActive && aiPlan ? aiPlan.model : null;
+      let planner: PlannedBy = aiActive && aiPlan ? { model: aiPlan.model, source: planSource(aiPlan) } : null;
       if (aiOn && !aiReady && !aiActive) {
-        setAiNotice('Lokale KI ist gerade nicht erreichbar – es wurde regelbasiert erzeugt.');
+        setAiNotice('Die KI ist gerade nicht erreichbar – es wurde regelbasiert erzeugt.');
       }
       if (aiOn && aiReady && !aiActive && description.trim().length > 0) {
-        // Ask the local model first; fall back to the rule-based reading if that fails.
+        // Ask the AI for a plan first; fall back to the rule-based reading if that fails.
         setBusy('plan');
         try {
           const plan = await requestAiPlan(description, controller.signal);
           setAiPlan(plan);
           setAiNotice(null);
-          planner = plan.model;
+          planner = { model: plan.model, source: planSource(plan) };
           target = resolveSpec(
             { ...DEFAULT_HOUSE_SPEC, description, seed, targetMinecraftVersion: version },
             { patch: plan.patch, recognized: [], warnings: [], unsupported: plan.unsupported, explanation: plan.explanation },
@@ -363,7 +416,7 @@ export function BuilderApp() {
           ).spec;
         } catch (e) {
           if (controller.signal.aborted) return;
-          setAiNotice(`Lokale KI nicht nutzbar – ${describeError(e)}. Es wurde regelbasiert erzeugt.`);
+          setAiNotice(`Die KI-Planung hat nicht geklappt: ${describeError(e).replace(/\.$/, '')}. Es wurde regelbasiert erzeugt.`);
           planner = null;
         }
         setBusy('generate');
@@ -376,6 +429,8 @@ export function BuilderApp() {
       setHistoryFlags({ canUndo: false, canRedo: false });
       setEditorMessage(null);
       setNotes(result.warnings);
+      setGeneratedSeed(target.seed);
+      setCandidates(result.selection.candidates);
       setSelected(0);
       setStatus('generiert');
       setMobileTab('preview');
@@ -440,6 +495,8 @@ export function BuilderApp() {
       setSelected(index);
       const h = historiesRef.current[index];
       setHistoryFlags({ canUndo: !!h?.canUndo, canRedo: !!h?.canRedo });
+      // Editor feedback belongs to the variant it was about.
+      setEditorMessage(null);
       if (variants.length > 0) setStatus('generiert');
     },
     [variants.length],
@@ -455,13 +512,28 @@ export function BuilderApp() {
 
   const panelVisibility = (tab: MobileTab) => (mobileTab === tab ? 'flex' : 'hidden lg:flex');
 
+  // Mobile tabs: arrow keys move between the tabs (WAI-ARIA tabs pattern).
+  const onTabKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (delta === 0) return;
+    event.preventDefault();
+    const next = MOBILE_TABS[(index + delta + MOBILE_TABS.length) % MOBILE_TABS.length];
+    if (!next) return;
+    setMobileTab(next.id);
+    document.getElementById(`tab-${next.id}`)?.focus();
+  };
+
+  const busyLabel = busy === 'plan' ? 'KI plant …' : busy === 'export' ? 'Export wird geprüft …' : 'Wird erzeugt …';
+
   return (
-    <div className="flex min-h-dvh flex-col lg:h-dvh">
+    <div className="flex min-h-dvh flex-col bg-canvas lg:h-dvh">
       <AppHeader
         status={status}
+        busyLabel={busyLabel}
         profile={requireProfile(spec.targetMinecraftVersion)}
         projectName={project?.name ?? null}
         onOpenLibrary={() => setLibraryOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
         plannedBy={variants.length > 0 ? plannedBy : null}
       />
       <ProjectLibrary
@@ -472,39 +544,43 @@ export function BuilderApp() {
         hasUnsavedChanges={dirty}
       />
 
-      <nav aria-label="Bereiche" className="border-b border-white/6 bg-night-950/60 px-4 py-2 lg:hidden">
-        <div role="tablist" className="grid grid-cols-3 gap-1 rounded-xl bg-white/4 p-1">
-          {MOBILE_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={mobileTab === tab.id}
-              aria-controls={`panel-${tab.id}`}
-              data-testid={`tab-${tab.id}`}
-              onClick={() => setMobileTab(tab.id)}
-              className={`min-h-9 rounded-lg text-xs font-semibold transition-colors ${
-                mobileTab === tab.id ? 'bg-night-700 text-gold-300' : 'text-mist-300'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      <AiSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} onSaved={() => void checkAi()} />
+
+      <nav aria-label="Bereiche" className="sticky top-0 z-20 border-b border-line bg-canvas/95 px-4 py-2 backdrop-blur lg:hidden">
+        <div role="tablist" aria-label="Bereich wählen" className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-surface p-1">
+          {MOBILE_TABS.map((tab, index) => {
+            const selectedTab = mobileTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                id={`tab-${tab.id}`}
+                type="button"
+                role="tab"
+                aria-selected={selectedTab}
+                aria-controls={`panel-${tab.id}`}
+                tabIndex={selectedTab ? 0 : -1}
+                data-testid={`tab-${tab.id}`}
+                onClick={() => setMobileTab(tab.id)}
+                onKeyDown={(e) => onTabKeyDown(e, index)}
+                className={`h-9 rounded-md px-1 text-[13px] font-medium transition-colors ${
+                  selectedTab ? 'bg-hover text-fg shadow-sm ring-1 ring-line-strong' : 'text-fg-muted hover:text-fg'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </nav>
 
-      <main className="grid flex-1 grid-cols-1 gap-4 p-4 lg:min-h-0 lg:grid-cols-[minmax(300px,340px)_minmax(0,1fr)_minmax(320px,360px)] lg:px-6">
-        <div id="panel-input" className={`${panelVisibility('input')} min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1`}>
+      <main className="grid flex-1 grid-cols-1 gap-4 p-4 lg:min-h-0 lg:grid-cols-[320px_minmax(0,1fr)_300px] xl:grid-cols-[370px_minmax(0,1fr)_350px]">
+        {/* Left: the guided input flow; the generate bar stays reachable at the bottom. */}
+        <div id="panel-input" className={`${panelVisibility('input')} min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1.5`}>
           <PromptPanel
             description={description}
             onDescriptionChange={setDescription}
-            onGenerate={generate}
-            busy={busy === 'generate' || busy === 'plan'}
-            planning={busy === 'plan'}
-            aiActive={aiActive}
-            plannerLabel={aiOn && aiReady ? `Planung: lokale KI (${aiStatus?.model}) · Blöcke: regelbasierter Generator` : 'Regelbasierter Generator · keine KI aktiv'}
             ready={hydrated}
-            confirmRegenerate={regenerateArmed}
+            aiActive={aiActive}
             parsed={parsed}
             conflicts={resolved.conflicts}
           />
@@ -517,6 +593,7 @@ export function BuilderApp() {
             plan={aiPlan}
             planIsCurrent={aiPlan !== null && aiPlan.description === description}
             notice={aiNotice}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
           <StyleControls
             binding={binding}
@@ -526,27 +603,42 @@ export function BuilderApp() {
             onResetAll={() => setManual({})}
           />
           <FineControls binding={binding} />
+          <div className="sticky bottom-0 z-10 -mx-4 mt-auto border-t border-line bg-canvas/95 px-4 pt-3 pb-4 backdrop-blur lg:mx-0 lg:border-t-0 lg:bg-canvas lg:px-0 lg:pt-2 lg:pb-0 lg:backdrop-blur-none">
+            <GenerateBar
+              onGenerate={generate}
+              busy={busy === 'generate' || busy === 'plan'}
+              planning={busy === 'plan'}
+              ready={hydrated}
+              confirmRegenerate={regenerateArmed}
+              plannerLabel={generatorModeLabel(aiOn, aiReady, aiActive, aiStatus)}
+              className="lg:rounded-xl lg:border lg:border-line lg:bg-surface lg:p-3 lg:shadow-(--shadow-panel)"
+            />
+          </div>
         </div>
 
-        <div id="panel-preview" className={`${panelVisibility('preview')} min-h-[60dvh] min-w-0 flex-col gap-2 lg:min-h-0`}>
+        {/* Middle: the 3D preview dominates; hints above, variants right below it. */}
+        <div id="panel-preview" className={`${panelVisibility('preview')} min-h-[60dvh] min-w-0 flex-col gap-3 lg:min-h-0`}>
           {stale ? (
-            <p className="rounded-lg border border-gold-400/30 bg-gold-400/10 px-3 py-2 text-xs text-gold-300" data-testid="stale-hint">
-              Beschreibung oder Einstellungen wurden geändert. Die Vorschau zeigt noch das zuletzt generierte Bauwerk – zum
-              Übernehmen neu generieren.
-            </p>
+            <Callout tone="warning" title="Die Vorschau ist nicht mehr aktuell" className="shrink-0" data-testid="stale-hint">
+              Beschreibung oder Einstellungen wurden geändert. Die Vorschau zeigt noch das zuletzt generierte Bauwerk – generiere neu, um die
+              Änderungen zu übernehmen.
+            </Callout>
           ) : null}
           {notes.length > 0 ? (
-            <ul className="rounded-lg border border-white/10 bg-white/4 px-3 py-2 text-xs text-mist-300" data-testid="generation-notes">
-              {notes.map((n) => (
-                <li key={n}>{n}</li>
-              ))}
-            </ul>
+            <Callout tone="info" title="Hinweise zum Bauwerk" className="shrink-0" data-testid="generation-notes">
+              <ul className="flex flex-col gap-0.5">
+                {notes.map((n) => (
+                  <li key={n}>{n}</li>
+                ))}
+              </ul>
+            </Callout>
           ) : null}
           <div className="min-h-0 flex-1">
             <PreviewPanel
               model={model}
               title={title}
               busy={busy === 'generate' || busy === 'plan'}
+              planning={busy === 'plan'}
               error={error}
               editing={{
                 mode,
@@ -560,20 +652,15 @@ export function BuilderApp() {
               }}
             />
           </div>
+          {variants.length > 0 ? (
+            <div className="shrink-0">
+              <VariantSelector variants={variants} selected={selected} onSelect={selectVariant} edits={edits} candidates={candidates} baseSeed={generatedSeed} />
+            </div>
+          ) : null}
         </div>
 
-        <div id="panel-details" className={`${panelVisibility('details')} min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pl-1`}>
-          <VariantSelector variants={variants} selected={selected} onSelect={selectVariant} edits={edits} />
-          <EditorPanel
-            model={model}
-            brush={brush}
-            onBrushChange={setBrush}
-            onSetAt={(cell, remove) => runEdit((m) => (remove ? removeBlockCommand(m, cell) : setBlockCommand(m, cell, brush)))}
-            onReplaceAll={(from, to) => runEdit((m) => replaceAllCommand(m, from, to))}
-            editCount={edits[selected] ?? 0}
-            message={editorMessage}
-          />
-          <MaterialList model={model} />
+        {/* Right: what to do with the result – export, save, material, edit. */}
+        <div id="panel-details" className={`${panelVisibility('details')} min-w-0 flex-col gap-4 lg:min-h-0 lg:overflow-y-auto lg:pr-1.5`}>
           <ExportPanel model={model} onExport={exportSelected} exporting={busy === 'export'} lastExport={lastExport} />
           <SaveProjectPanel
             key={project?.id ?? 'neu'}
@@ -586,6 +673,17 @@ export function BuilderApp() {
             onSave={(name) => void saveProject(name, false)}
             onSaveAsNew={(name) => void saveProject(name, true)}
             onOpenLibrary={() => setLibraryOpen(true)}
+          />
+          <MaterialList model={model} />
+          <EditorPanel
+            model={model}
+            brush={brush}
+            onBrushChange={setBrush}
+            onSetAt={(cell, remove) => runEdit((m) => (remove ? removeBlockCommand(m, cell) : setBlockCommand(m, cell, brush)))}
+            onReplaceAll={(from, to) => runEdit((m) => replaceAllCommand(m, from, to))}
+            editCount={edits[selected] ?? 0}
+            message={editorMessage}
+            messageTone={editorTone}
           />
         </div>
       </main>

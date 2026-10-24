@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { APPLICABLE_OPTIONS } from "@/core/generator/generateBuilding";
+import { festiveChoices } from "@/core/generator/festiveKits";
 import { resolveHouseInput } from "@/core/generator/house/resolveInput";
 import { createSeededRandom } from "@/core/generator/seededRandom";
 import { FOOTPRINT_LIMITS, type BuildOptions, type MaterialRoleUi } from "@/core/schema/buildOptions";
@@ -10,6 +11,10 @@ import { sourceOf, type SettingPath } from "@/core/schema/resolveSpec";
 import { getMaterial, hasOwnForm, listMaterials, type MaterialFamily } from "@/core/style/materials";
 import { getPalette } from "@/core/style/palettes";
 import { STYLES, type RoofProfile, type RoofType } from "@/core/style/styles";
+import { COMPOSITION_INFO, COMPOSITION_LABELS, stylesCompositions } from "@/core/style/compositions";
+import { Button } from "@/components/ui/Button";
+import { Select } from "@/components/ui/Field";
+import { Icon } from "@/components/ui/Icon";
 import { Panel } from "@/components/ui/Panel";
 import { SourceBadge } from "@/components/ui/SourceBadge";
 import type { SettingsBinding } from "@/components/builder/StyleControls";
@@ -18,6 +23,7 @@ export const ROOF_TYPE_LABELS: Record<RoofType, string> = {
   gable: "Satteldach",
   hip: "Walmdach",
   half_hip: "Krüppelwalm",
+  irimoya: "Irimoya (Walm unten, Giebel oben)",
   pyramid: "Pyramide",
   mansard: "Mansarddach",
   gambrel: "Gambrel (Scheune)",
@@ -102,6 +108,7 @@ function currentValue(spec: BuildSpec, path: SettingPath): unknown {
 /** What the style would choose for this option if it were left automatic. */
 function automaticValue(spec: BuildSpec, path: SettingPath): string {
   const [, key, sub] = path.split(".");
+  if (key === "foundation") return "aus";
   if (spec.kind !== "house" && spec.kind !== "tower") return "Standard";
   const options: BuildOptions = { ...spec.options };
   if (key === "materials" && sub) options.materials = { ...options.materials, [sub]: undefined };
@@ -116,6 +123,8 @@ function automaticValue(spec: BuildSpec, path: SettingPath): string {
     case "overhang":
     case "dormers":
       return String(input[key]);
+    case "composition":
+      return input.composition ? COMPOSITION_LABELS[input.composition.id] : "Standard";
     case "roofType":
       return ROOF_TYPE_LABELS[input.roofType];
     case "roofProfile":
@@ -145,8 +154,11 @@ function automaticValue(spec: BuildSpec, path: SettingPath): string {
     case "garden":
       return flag(input[key]);
     case "garland":
+      return flag(festiveChoices(spec.style, spec.theme, spec.detailLevel, {}).garland);
     case "christmasTree":
+      return flag(festiveChoices(spec.style, spec.theme, spec.detailLevel, {}).tree);
     case "presents":
+      return flag(festiveChoices(spec.style, spec.theme, spec.detailLevel, {}).presents);
     case "snow":
       return flag(input.festive[key]);
     case "soulLanterns":
@@ -170,17 +182,16 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
     const id = `fine-${path.replace(/\./g, "-")}`;
     return (
       <div key={path} className="min-w-0">
-        <label htmlFor={id} className="mb-1 flex items-center gap-2 text-[11px] font-medium text-mist-300">
+        <label htmlFor={id} className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] leading-snug font-medium text-fg-muted">
           {label}
           <SourceBadge source={source} label={label} onReset={() => reset(path)} />
         </label>
-        <select
+        <Select
           id={id}
           data-testid={id}
           disabled={disabled}
           value={selected}
           onChange={(e) => (e.target.value === "" ? reset(path) : set(path, parse(e.target.value)))}
-          className="w-full rounded-lg border border-white/10 bg-night-950/70 px-2 py-1.5 text-sm text-snow-50 focus:border-gold-400/60 focus:outline-none disabled:opacity-50"
         >
           <option value="">Automatisch ({automaticValue(spec, path)})</option>
           {choices.map((c) => (
@@ -188,7 +199,7 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
               {c.label}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
     );
   };
@@ -206,33 +217,41 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
   const summary = useMemo(() => {
     if (spec.kind !== "house") return "Optionen für diesen Bauwerkstyp";
     const input = resolveHouseInput(spec.style, spec.theme, spec.size, spec.detailLevel, spec.seed, spec.targetMinecraftVersion, { ...spec.options, materials: undefined } as never, createSeededRandom(spec.seed));
-    return `${input.width} × ${input.depth} Grundfläche, ${input.floors} Geschoss${input.floors > 1 ? "e" : ""}, ${ROOF_TYPE_LABELS[input.roofType]}`;
+    const form = input.composition ? `${COMPOSITION_LABELS[input.composition.id]}, ` : "";
+    return `${form}${input.width} × ${input.depth} Grundfläche, ${input.floors} Geschoss${input.floors > 1 ? "e" : ""}, ${ROOF_TYPE_LABELS[input.roofType]}`;
   }, [spec]);
 
-  const legend = (text: string) => <legend className="mb-1.5 text-xs font-medium uppercase tracking-wider text-mist-400">{text}</legend>;
+  const legend = (text: string) => <legend className="mb-2 text-sm font-semibold text-fg">{text}</legend>;
+  // Two columns; fields of one row line up at the bottom even if a label wraps.
+  const grid = "grid min-w-0 grid-cols-2 items-end gap-x-3 gap-y-3";
 
   return (
     <Panel
       title="Feinparameter"
       headingId="fine-heading"
       description={summary}
+      bodyClassName={open ? "p-4" : "hidden"}
       actions={
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls="fine-body"
           data-testid="toggle-fine"
-          className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-mist-300 hover:text-snow-50"
+          icon={<Icon name="chevron-down" className={`size-4 transition-transform ${open ? "rotate-180" : ""}`} />}
         >
           {open ? "Einklappen" : "Anzeigen"}
-        </button>
+        </Button>
       }
     >
       {open ? (
-        <div id="fine-body" className="flex flex-col gap-4">
+        <div id="fine-body" className="flex flex-col gap-5">
+          <p className="text-xs leading-snug text-fg-subtle">
+            Für Fortgeschrittene. „Automatisch“ zeigt in Klammern, was der Stil von selbst wählen würde.
+          </p>
           {shows("width") || shows("floors") ? (
-            <fieldset className="min-w-0 grid grid-cols-2 gap-2">
+            <fieldset className={grid}>
               {legend("Maße")}
               {shows("width") ? field("options.width", "Breite", numbers(range(FOOTPRINT_LIMITS.width.min, FOOTPRINT_LIMITS.width.max, 2)), Number) : null}
               {shows("depth") ? field("options.depth", "Tiefe", numbers(range(FOOTPRINT_LIMITS.depth.min, FOOTPRINT_LIMITS.depth.max, 2)), Number) : null}
@@ -241,7 +260,7 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
             </fieldset>
           ) : null}
           {shows("roofProfile") ? (
-            <fieldset className="min-w-0 grid grid-cols-2 gap-2">
+            <fieldset className={grid}>
               {legend("Dach")}
               {shows("roofType") ? field("options.roofType", "Dachform", Object.entries(ROOF_TYPE_LABELS).map(([value, label]) => ({ value, label }))) : null}
               {field("options.roofProfile", "Profil", Object.entries(ROOF_PROFILE_LABELS).map(([value, label]) => ({ value, label })))}
@@ -250,8 +269,15 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
             </fieldset>
           ) : null}
           {shows("wings") ? (
-            <fieldset className="min-w-0 grid grid-cols-2 gap-2">
+            <fieldset className={grid}>
               {legend("Form & Bauteile")}
+              {shows("composition")
+                ? field(
+                    "options.composition",
+                    "Bauform",
+                    stylesCompositions(spec.style).map((id) => ({ value: id, label: COMPOSITION_INFO[id].label })),
+                  )
+                : null}
               {enumField("symmetry", "Symmetrie")}
               {enumField("wings", "Flügel")}
               {enumField("annex", "Anbau")}
@@ -260,20 +286,34 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
             </fieldset>
           ) : null}
           {shows("windows") ? (
-            <fieldset className="min-w-0 grid grid-cols-2 gap-2">
+            <fieldset className={grid}>
               {legend("Fenster & Türen")}
               {enumField("windows", "Fensterzahl")}
               {shows("windowFamily") ? enumField("windowFamily", "Fensterform") : null}
               {shows("doorFamily") ? enumField("doorFamily", "Türform") : null}
             </fieldset>
           ) : null}
-          <fieldset className="min-w-0 grid grid-cols-2 gap-2">
+          <fieldset className={grid}>
             {legend("Ausstattung & Licht")}
             {shows("lanternDensity") ? enumField("lanternDensity", "Laternen") : null}
             {FLAGS.filter(([key]) => shows(key)).map(([key, label]) => field(`options.${key}`, label, flagChoices, (v) => v === "true"))}
           </fieldset>
+          {shows("foundation") ? (
+            <fieldset className={grid}>
+              {legend("Grundstück & Einfügen")}
+              {field(
+                "options.foundation",
+                "Fundament nach unten",
+                range(FOOTPRINT_LIMITS.foundation.min, FOOTPRINT_LIMITS.foundation.max).map((n) => ({ value: String(n), label: n === 0 ? "aus" : `${n} Lage${n > 1 ? "n" : ""}` })),
+                Number,
+              )}
+              <p className="col-span-2 text-xs leading-snug text-fg-subtle">
+                Verlängert Sockel und Erdreich unter das Bodenniveau, damit das Bauwerk auf unebenem Gelände nicht schwebt. Der Einfügepunkt der .schem wandert mit: Der Boden liegt beim Einfügen weiter auf Höhe deiner Füße.
+              </p>
+            </fieldset>
+          ) : null}
           {shows("materials") ? (
-            <fieldset className="min-w-0 grid grid-cols-1 gap-2">
+            <fieldset className="grid min-w-0 grid-cols-1 gap-3">
               {legend("Palette & Material")}
               {field(
                 "options.palette",

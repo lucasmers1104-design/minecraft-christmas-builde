@@ -11,9 +11,78 @@ import type { RoofProfile } from '@/core/style/styles';
  *
  * Stairs need an even top (a stair always rises from x.5 to x+1); `normalizeDeltas` fixes the
  * parity by turning a Δ into Δ±1 (Δ=3 = top slab + stairs).
+ *
+ * Planar profiles (shallow, standard, steep) do not get flattened at the top when the rise cap
+ * is reached – that turned a steep roof into a barn (4,4,2,1,1,1,1). Instead a whole house uses
+ * the steepest step of the pitch ladder that fits under the cap (research 05, T1):
+ *
+ *   P27 1 · P34 2,1,1 · P37 2,2,1,1 · P45 2 · P53 4,2,2 · P56 4,2 · P63 4   (repeated from the eave)
  */
 
 export type ProfileName = RoofProfile | 'mansard';
+
+/** Pitch ladder, flattest first: a short Δ pattern repeated from the eave. */
+export const PITCH_LADDER = [
+  { id: 'P27', pattern: [1] },
+  { id: 'P34', pattern: [2, 1, 1] },
+  { id: 'P37', pattern: [2, 2, 1, 1] },
+  { id: 'P45', pattern: [2] },
+  { id: 'P53', pattern: [4, 2, 2] },
+  { id: 'P56', pattern: [4, 2] },
+  { id: 'P63', pattern: [4] },
+] as const;
+export type PitchId = (typeof PITCH_LADDER)[number]['id'];
+
+/** Preferred ladder step of the planar profiles (the others are curves, not ladder steps). */
+const PLANAR: Partial<Record<ProfileName, PitchId>> = { shallow: 'P27', standard: 'P45', steep: 'P63' };
+
+export function isPlanar(profile: ProfileName): boolean {
+  return PLANAR[profile] !== undefined;
+}
+
+/** Δ sequence of a ladder step for `n` slope columns. */
+export function ladderDeltas(pitch: PitchId, n: number): number[] {
+  const pattern = PITCH_LADDER.find((p) => p.id === pitch)!.pattern;
+  return normalizeDeltas(Array.from({ length: n }, (_, i) => pattern[i % pattern.length]!));
+}
+
+/**
+ * Steepest ladder step at or below `start` (default: the profile's own) whose rise fits under
+ * the cap, but never below `floor` (the style's minimum pitch: then the roof gets taller than
+ * the cap instead of flatter). Undefined for curved profiles.
+ */
+export function pickPitch(profile: ProfileName, n: number, maxRiseBlocks: number, start?: PitchId, floor: PitchId = 'P27'): PitchId | undefined {
+  const own = PLANAR[profile];
+  if (!own) return undefined;
+  const from = PITCH_LADDER.findIndex((p) => p.id === (start ?? own));
+  const to = Math.min(from, PITCH_LADDER.findIndex((p) => p.id === floor));
+  for (let i = from; i >= to; i--) {
+    const step = PITCH_LADDER[i]!.id;
+    if (ladderRise(step, n) <= maxRiseBlocks) return step;
+  }
+  return PITCH_LADDER[to]!.id;
+}
+
+/** Rise of a ladder step over `n` columns in blocks (rounded up). */
+export function ladderRise(pitch: PitchId, n: number): number {
+  return Math.ceil(ladderDeltas(pitch, n).reduce((a, b) => a + b, 0) / 2);
+}
+
+/**
+ * Bell-cast (concave) profiles from the curve quantiser of research 05 (T2), n = 4…12: the Δ
+ * never falls towards the ridge and every stair top stays even.
+ */
+const BELL: Readonly<Record<number, readonly number[]>> = {
+  4: [1, 1, 2, 4],
+  5: [1, 1, 2, 2, 4],
+  6: [1, 1, 2, 2, 2, 4],
+  7: [1, 1, 2, 2, 2, 2, 4],
+  8: [1, 1, 1, 1, 2, 2, 4, 4],
+  9: [1, 1, 1, 1, 2, 2, 2, 4, 4],
+  10: [1, 1, 1, 1, 2, 2, 2, 2, 4, 4],
+  11: [1, 1, 1, 1, 2, 2, 2, 2, 2, 4, 4],
+  12: [1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 4, 4],
+};
 
 /** Fractions of the slope taken by each Δ, eave first. */
 function split(n: number, parts: readonly (readonly [delta: number, fraction: number])[]): number[] {
@@ -41,7 +110,8 @@ export function rawDeltas(profile: ProfileName, n: number): number[] {
     case 'flared':
       return n <= 2 ? Array.from({ length: n }, () => 2) : [1, 1, ...Array.from({ length: n - 2 }, () => 2)];
     case 'bell':
-      return n < 4 ? rawDeltas('flared', n) : split(n, [[1, 0.28], [2, 0.42], [4, 0.3]]);
+      if (n < 4) return rawDeltas('flared', n);
+      return [...(BELL[n] ?? [...Array.from({ length: n - 12 }, () => 1), ...BELL[12]!])];
     case 'convex':
       return n < 4 ? rawDeltas('standard', n) : split(n, [[4, 0.34], [2, 0.38], [1, 0.28]]);
     case 'ogee':
@@ -100,7 +170,15 @@ export function capRise(deltas: readonly number[], maxHalfBlocks: number, concav
   return out;
 }
 
-export function profileDeltas(profile: ProfileName, n: number, maxRiseBlocks = 7): number[] {
+/**
+ * Δ sequence of a roof slope. Planar profiles use the pitch ladder (`pitch` = the house's step,
+ * stepping further down only if this section still does not fit); curves are capped softly.
+ */
+export function profileDeltas(profile: ProfileName, n: number, maxRiseBlocks = 7, pitch?: PitchId): number[] {
+  if (isPlanar(profile)) {
+    const step = pickPitch(profile, n, maxRiseBlocks, pitch)!;
+    return capRise(ladderDeltas(step, n), maxRiseBlocks * 2);
+  }
   return capRise(normalizeDeltas(rawDeltas(profile, n)), maxRiseBlocks * 2, profile === 'bell' || profile === 'flared');
 }
 

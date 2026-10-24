@@ -27,7 +27,7 @@ test.describe('Phase 3: Projekte (IndexedDB)', () => {
     expect(await waitForRenderedModel(page)).toBe(hash);
     await expect(page.getByTestId('variant-1')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('prompt-input')).toHaveValue('Ein kleines Haus aus Eiche');
-    await expect(page.getByTestId('preview-dimensions')).toContainText('21 × 15 × 24');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 17 × 31');
 
     const { report } = await downloadSchematic(page);
     expect(report.ok).toBe(true);
@@ -76,7 +76,7 @@ test.describe('Phase 3: Projekte (IndexedDB)', () => {
     await page.getByTestId('variant-2').click();
     await expect(page.getByTestId('project-heading-header')).toContainText('Ungespeicherte Änderungen');
     await page.getByTestId('open-library').click();
-    const other = page.getByTestId('project-row').filter({ hasNotText: '(geöffnet)' }).first();
+    const other = page.getByTestId('project-row').filter({ hasNot: page.getByTestId('project-current') }).first();
     await other.getByTestId('project-open').click();
     await expect(other).toContainText('Ungespeicherte Änderungen');
     await other.getByTestId('project-open').click();

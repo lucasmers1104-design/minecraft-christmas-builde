@@ -95,8 +95,11 @@ describe('Sponge-v3-Export des Weihnachtshauses', () => {
     expect(report.decoded?.dataVersion).toBe(3955);
     expect(report.decoded?.minecraftVersion).toBe('1.21.1');
     expect(validateSchematic(writeSpongeV3(house)).decoded?.dataVersion).toBe(4671);
-    // Same blocks, different target => different file, same block hash.
-    expect(old.hash).toBe(house.hash);
+    // Same blocks, different target => different file. The grids are identical up to the
+    // version renames (iron_chain ↔ chain, waxed_lightning_rod ↔ lightning_rod in 1.21.1).
+    const canonical = (s: string) => s.replace(/^minecraft:chain\[/, 'minecraft:iron_chain[').replace(/^minecraft:lightning_rod\[/, 'minecraft:waxed_lightning_rod[');
+    expect(old.indices.length).toBe(house.indices.length);
+    expect(old.indices.every((v, i) => canonical(old.palette[v]!) === house.palette[house.indices[i]!])).toBe(true);
     expect(writeSpongeV3(old).equals(writeSpongeV3(house))).toBe(false);
     // A 1.21.1 file is rejected when 1.21.11 is expected.
     expect(validateSchematic(writeSpongeV3(old), { expected: house }).issues.join()).toMatch(/DataVersion/);
@@ -188,9 +191,23 @@ describe('Negative Fälle', () => {
     });
     expect(validateSchematic(dataVersion).issues.join()).toMatch(/DataVersion/);
 
+    // An index just past the palette (one or two VarInt bytes, depending on the palette size),
+    // written over the first VarInt of the same length so the number of values stays the same.
     const badIndex = tamper((r) => {
       const data = blocks(r).Data as nbt.ByteArray;
-      data.value = data.value.map((b, i) => (i === 0 ? 120 : b));
+      const v = house.palette.length;
+      const bytes = v < 128 ? [v] : [(v & 0x7f) | 0x80, v >> 7];
+      let at = 0;
+      for (let i = 0; i < data.value.length; ) {
+        let len = 1;
+        while (data.value[i + len - 1]! & 0x80) len++;
+        if (len === bytes.length) {
+          at = i;
+          break;
+        }
+        i += len;
+      }
+      data.value = data.value.map((b, i) => (i >= at && i < at + bytes.length ? (bytes[i - at]! << 24) >> 24 : b));
     });
     expect(validateSchematic(badIndex).issues.join()).toMatch(/verweist auf keinen Paletteneintrag/);
 

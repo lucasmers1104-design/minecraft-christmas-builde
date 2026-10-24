@@ -9,13 +9,15 @@
  * the docs ("abgeleitet, im Spiel ungetestet").
  */
 
+import type { PitchId } from '@/core/generator/roof/profiles';
+
 export const STYLE_IDS = ['medieval', 'fantasy', 'rustic', 'nordic', 'japanese', 'cherry', 'modern', 'mediterranean'] as const;
 export type StyleId = (typeof STYLE_IDS)[number];
 
 export const THEMES = ['none', 'winter', 'christmas'] as const;
 export type Theme = (typeof THEMES)[number];
 
-export const ROOF_TYPES = ['gable', 'hip', 'half_hip', 'pyramid', 'mansard', 'gambrel', 'saltbox', 'a_frame', 'flat', 'pagoda'] as const;
+export const ROOF_TYPES = ['gable', 'hip', 'half_hip', 'irimoya', 'pyramid', 'mansard', 'gambrel', 'saltbox', 'a_frame', 'flat', 'pagoda'] as const;
 export type RoofType = (typeof ROOF_TYPES)[number];
 
 export const ROOF_PROFILES = ['standard', 'steep', 'shallow', 'flared', 'bell', 'convex', 'ogee'] as const;
@@ -37,6 +39,13 @@ export interface StyleDef {
     floorHeight: readonly [number, number];
     overhang: readonly [number, number];
     plinth: readonly [number, number];
+    /**
+     * Roof rise cap in blocks: round(factor × wall top above ground), clamped to [min, max]
+     * ("a roof between one and two storeys tall", research 05/19; values are estimates). The
+     * pitch never drops below `minPitch`: a wide single-storey house then gets a taller roof
+     * rather than a flat one.
+     */
+    roofRise: { factor: number; min: number; max: number; minPitch: PitchId };
     /** Default footprint (odd width × odd depth) and storeys per size class. */
     size: Readonly<Record<SizeClass, { width: number; depth: number; floors: number }>>;
   };
@@ -67,14 +76,15 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
         'Mittelalterliches Haus: Erdgeschoss aus Steinziegeln oder Bruchstein, Obergeschoss als Fachwerk (dunkle Balken, helle Füllung) mit Auskragung, steiles Sattel- oder Krüppelwalmdach aus Fichte, Schwarzeiche oder Schiefer, Eckpfosten aus Stämmen.',
       keywords: ['mittelalter', 'mittelalterlich', 'fachwerk', 'tudor', 'burg', 'dorf', 'taverne', 'gasthaus', 'schmiede', 'zunft'],
     },
-    palettes: ['medieval_timber', 'medieval_tudor', 'medieval_stone'],
+    palettes: ['medieval_timber', 'medieval_tudor', 'medieval_stone', 'medieval_cottage', 'medieval_franken', 'medieval_tuff_hall'],
     roofTypes: { gable: 0.55, half_hip: 0.25, hip: 0.1, gambrel: 0.1 },
     roofProfiles: { steep: 0.5, standard: 0.35, flared: 0.15 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [1, 1],
       plinth: [1, 2],
-      size: { small: W(7, 7, 1), medium: W(9, 9, 2), large: W(11, 11, 2), huge: W(15, 13, 3) },
+      roofRise: { factor: 1.25, min: 7, max: 13, minPitch: 'P45' },
+      size: { small: W(7, 9, 1), medium: W(9, 13, 2), large: W(11, 15, 2), huge: W(13, 19, 3) },
     },
     symmetric: false,
     timber: 'upper',
@@ -94,21 +104,23 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
         'Märchen- oder Hexenhaus: helle Putzwände, dunkle krumme Balken, geschwungenes Glocken- oder Steildach in Dunkeleiche, Karmesin oder Wirrholz, Türmchen, runde Fenster und Bogentüren, Moos am Sockel, verspielt und asymmetrisch.',
       keywords: ['märchen', 'maerchen', 'fantasy', 'hexe', 'hexenhaus', 'zauber', 'zauberer', 'fee', 'feen', 'elfen', 'hobbit', 'verwunschen', 'storybook'],
     },
-    palettes: ['fantasy_storybook', 'fantasy_crimson', 'fantasy_warped'],
+    palettes: ['fantasy_storybook', 'fantasy_witch', 'fantasy_copper', 'fantasy_gingerbread'],
     roofTypes: { gable: 0.45, half_hip: 0.25, hip: 0.15, gambrel: 0.15 },
     roofProfiles: { bell: 0.4, flared: 0.35, steep: 0.25 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [1, 2],
       plinth: [1, 2],
-      size: { small: W(7, 7, 1), medium: W(9, 9, 2), large: W(11, 11, 2), huge: W(13, 13, 3) },
+      roofRise: { factor: 1.3, min: 8, max: 14, minPitch: 'P45' },
+      size: { small: W(7, 9, 1), medium: W(9, 11, 2), large: W(11, 13, 2), huge: W(13, 15, 3) },
     },
     symmetric: false,
     timber: 'all',
     jetty: true,
     windows: ['W07', 'W05', 'W08', 'W13'],
     doors: ['T04', 'T02'],
-    lantern: 'soul_lantern',
+    // Warm light reads cosy; blue soul lanterns only on request (research 09/18).
+    lantern: 'lantern',
     details: { shutters: 0.4, flowerBoxes: 0.5, porch: 0.2, chimney: 0.7, dormers: 0.5, annex: 0.6 },
     forbidden: ['concrete', 'acacia'],
   },
@@ -121,14 +133,15 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
         'Rustikale Holzhütte oder Landhaus: Wände aus Fichten- oder Eichenbrettern mit Stammrahmen, Bruchsteinsockel, Satteldach aus Schwarzeiche, Veranda mit Zaun-Geländer, Steinkamin, Fensterläden und Blumenkästen, gemütlich und etwas unregelmäßig.',
       keywords: ['rustikal', 'hütte', 'huette', 'blockhaus', 'landhaus', 'bauernhaus', 'cottage', 'chalet', 'holzhaus', 'gemütlich', 'gemuetlich', 'jagdhütte', 'berghütte'],
     },
-    palettes: ['rustic_spruce', 'rustic_oak', 'rustic_logs'],
+    palettes: ['rustic_spruce', 'rustic_oak', 'rustic_logs', 'rustic_alpine', 'rustic_thatch', 'rustic_barn'],
     roofTypes: { gable: 0.6, half_hip: 0.15, saltbox: 0.15, gambrel: 0.1 },
     roofProfiles: { standard: 0.6, flared: 0.25, steep: 0.15 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [1, 2],
       plinth: [1, 2],
-      size: { small: W(7, 7, 1), medium: W(9, 9, 1), large: W(11, 9, 2), huge: W(15, 11, 2) },
+      roofRise: { factor: 0.7, min: 6, max: 9, minPitch: 'P37' },
+      size: { small: W(9, 7, 1), medium: W(11, 7, 1), large: W(13, 9, 2), huge: W(15, 11, 2) },
     },
     symmetric: false,
     timber: 'none',
@@ -148,13 +161,14 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
         'Nordisches Langhaus oder Wikingerhalle: dunkles Fichten- und Schwarzeichenholz, schwerer dunkler Steinsockel, langgestreckt, steiles Satteldach mit 2–3 Block Überstand und Firstbalken aus Stämmen, kleine dunkle Fenster.',
       keywords: ['nordisch', 'skandinavisch', 'wikinger', 'viking', 'langhaus', 'halle', 'met', 'norden', 'fjord', 'skandinavien'],
     },
-    palettes: ['nordic_longhouse', 'nordic_dark'],
+    palettes: ['nordic_longhouse', 'nordic_falu', 'nordic_ochre', 'nordic_sod'],
     roofTypes: { gable: 0.75, a_frame: 0.1, half_hip: 0.15 },
     roofProfiles: { steep: 0.55, standard: 0.3, flared: 0.15 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [2, 3],
       plinth: [2, 3],
+      roofRise: { factor: 1.15, min: 7, max: 12, minPitch: 'P45' },
       size: { small: W(7, 9, 1), medium: W(9, 15, 1), large: W(11, 19, 1), huge: W(13, 25, 2) },
     },
     symmetric: true,
@@ -164,7 +178,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
     doors: ['T01', 'T06'],
     lantern: 'lantern',
     details: { shutters: 0.5, flowerBoxes: 0, porch: 0.4, chimney: 0.5, dormers: 0.1, annex: 0.2 },
-    forbidden: ['acacia', 'bamboo', 'concrete', 'birch'],
+    forbidden: ['acacia', 'bamboo', 'concrete', 'birch_planks', 'jungle', 'cherry', 'crimson', 'warped'],
   },
   japanese: {
     id: 'japanese',
@@ -175,15 +189,17 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
         'Japanisches Haus oder Tempel: erhöhter Steinsockel, weiße Wände zwischen dunklen Holzständern, Shoji-Fenster aus weißen Scheiben, geschwungenes Walm- oder Pagodendach aus Schiefer oder Schwarzeiche mit großem Überstand, Laternen unter der Traufe, ruhig und symmetrisch.',
       keywords: ['japanisch', 'japan', 'pagode', 'tempel', 'schrein', 'dojo', 'shoji', 'asiatisch', 'teehaus', 'zen'],
     },
-    palettes: ['japanese_classic', 'japanese_temple'],
+    palettes: ['japanese_classic', 'japanese_temple', 'japanese_machiya', 'japanese_teahouse'],
     // Irimoya-like half-hip first: on a wider-than-deep plan it keeps a ridge (a hip on a
     // near-square plan reads as a stepped pyramid).
-    roofTypes: { half_hip: 0.4, hip: 0.3, pagoda: 0.2, gable: 0.1 },
+    // Irimoya (hip below, gable above) is the Japanese form; half_hip is its inverse (research 05/11).
+    roofTypes: { irimoya: 0.45, hip: 0.3, pagoda: 0.15, gable: 0.1 },
     roofProfiles: { flared: 0.55, bell: 0.45 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [2, 3],
       plinth: [1, 2],
+      roofRise: { factor: 0.8, min: 5, max: 9, minPitch: 'P34' },
       size: { small: W(9, 7, 1), medium: W(13, 9, 1), large: W(15, 11, 2), huge: W(19, 15, 3) },
     },
     symmetric: true,
@@ -193,7 +209,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
     doors: ['T09'],
     lantern: 'lantern',
     details: { shutters: 0, flowerBoxes: 0, porch: 0.6, chimney: 0, dormers: 0, annex: 0.2 },
-    forbidden: ['cobblestone', 'acacia', 'mossy'],
+    forbidden: ['cobblestone', 'acacia', 'nether'],
   },
   cherry: {
     id: 'cherry',
@@ -204,13 +220,14 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
         'Kirschblüten-Haus: rosa Kirschholzwände oder weiße Wände mit sehr dunklen Kirschstämmen als Rahmen, dunkles Schiefer- oder Kirschdach mit geschwungener Traufe, Kirschlaub und rosa Blütenblätter im Garten, Shoji- oder Rahmenfenster.',
       keywords: ['kirsch', 'kirschblüte', 'kirschbluete', 'sakura', 'rosa', 'pink', 'blüten', 'blueten', 'frühling', 'fruehling'],
     },
-    palettes: ['cherry_slate', 'cherry_white'],
-    roofTypes: { half_hip: 0.35, gable: 0.35, hip: 0.3 },
+    palettes: ['cherry_slate', 'cherry_white', 'cherry_shrine', 'cherry_teahouse'],
+    roofTypes: { irimoya: 0.35, gable: 0.35, hip: 0.3 },
     roofProfiles: { flared: 0.5, bell: 0.3, standard: 0.2 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [1, 2],
       plinth: [1, 2],
+      roofRise: { factor: 0.8, min: 5, max: 9, minPitch: 'P34' },
       size: { small: W(9, 7, 1), medium: W(11, 9, 1), large: W(13, 11, 2), huge: W(17, 13, 2) },
     },
     symmetric: true,
@@ -231,13 +248,14 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
         'Modernes Haus: klare Kuben aus weißem Beton mit schwarzen oder grauen Kanten, Flachdach mit Attika, große Fensterbänder, versetzte Baukörper, nur 3–4 Blocktypen, keine Treppendächer, ruhig und symmetrisch.',
       keywords: ['modern', 'bungalow', 'villa', 'kubus', 'würfel', 'wuerfel', 'flachdach', 'minimalistisch', 'beton', 'glas', 'zeitgenössisch', 'bauhaus'],
     },
-    palettes: ['modern_white', 'modern_wood'],
+    palettes: ['modern_white', 'modern_wood', 'modern_scandi', 'modern_concrete'],
     roofTypes: { flat: 1 },
     roofProfiles: { standard: 1 },
     proportions: {
       floorHeight: [4, 5],
-      overhang: [0, 1],
+      overhang: [0, 2],
       plinth: [1, 1],
+      roofRise: { factor: 0.3, min: 3, max: 5, minPitch: 'P27' },
       size: { small: W(9, 7, 1), medium: W(11, 9, 2), large: W(15, 11, 2), huge: W(19, 15, 3) },
     },
     symmetric: true,
@@ -247,7 +265,7 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
     doors: ['T01'],
     lantern: 'lantern',
     details: { shutters: 0, flowerBoxes: 0, porch: 0.3, chimney: 0, dormers: 0, annex: 0.6 },
-    forbidden: ['cobblestone', 'mossy', 'log', 'acacia'],
+    forbidden: ['cobblestone', 'mossy', 'log!stripped', 'acacia'],
   },
   mediterranean: {
     id: 'mediterranean',
@@ -258,14 +276,15 @@ export const STYLES: Readonly<Record<StyleId, StyleDef>> = {
         'Mediterranes Haus oder toskanische Villa: weiße oder sandfarbene Wände, flaches Walm- oder Satteldach aus roten Ziegeln mit wenig Überstand, Bogenfenster und Arkaden, türkise Fensterläden, Blumentöpfe, ruhig und symmetrisch.',
       keywords: ['mediterran', 'toskana', 'toskanisch', 'italienisch', 'griechisch', 'spanisch', 'villa', 'süden', 'sueden', 'meer', 'santorini', 'finca'],
     },
-    palettes: ['mediterranean_white', 'mediterranean_warm'],
+    palettes: ['mediterranean_white', 'mediterranean_warm', 'mediterranean_ochre', 'mediterranean_provence'],
     roofTypes: { hip: 0.5, gable: 0.4, flat: 0.1 },
     roofProfiles: { shallow: 0.6, standard: 0.4 },
     proportions: {
       floorHeight: [4, 5],
       overhang: [1, 1],
       plinth: [1, 1],
-      size: { small: W(7, 7, 1), medium: W(11, 9, 2), large: W(13, 11, 2), huge: W(17, 13, 3) },
+      roofRise: { factor: 0.4, min: 3, max: 5, minPitch: 'P27' },
+      size: { small: W(9, 7, 1), medium: W(11, 9, 2), large: W(13, 11, 2), huge: W(17, 13, 3) },
     },
     symmetric: true,
     timber: 'none',

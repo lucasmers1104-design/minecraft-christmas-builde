@@ -105,6 +105,12 @@ function supportProblem(grid: MutableGrid, x: number, y: number, z: number, stat
       const ok = below !== AIR && !SNOW_CANNOT_SURVIVE_ON.has(blockIdOf(below)) && isFaceFull(below, 'up', 'collision');
       return ok ? null : { fix: AIR, reason: 'Schneeschicht ohne volle Oberseite darunter entfernt' };
     }
+    case 'tall_plant': {
+      if (p.half === 'upper') return blockIdOf(below) === def.id && propsOf(below).half === 'lower' ? null : { fix: AIR, reason: `${def.label}: einzelne obere Hälfte entfernt` };
+      const pair = blockIdOf(above) === def.id && propsOf(above).half === 'upper';
+      if (!DIRT_LIKE.has(blockIdOf(below))) return { fix: AIR, reason: `${def.label} braucht Erde oder Gras darunter` };
+      return pair ? null : { fix: AIR, reason: `${def.label}: obere Hälfte fehlt` };
+    }
     case 'plant':
     case 'sapling':
     case 'petals':
@@ -132,6 +138,18 @@ function supportProblem(grid: MutableGrid, x: number, y: number, z: number, stat
   }
 }
 
+// Landschaft (bq-landscape): falling blocks (vanilla FallingBlock.isFree: air or a replaceable
+// block below). On the model's ground layer (y = 0) they rest on the world.
+const FALLING_BLOCKS = new Set(['minecraft:gravel']);
+const FALL_THROUGH = new Set(['minecraft:short_grass', 'minecraft:fern', 'minecraft:vine', 'minecraft:snow']);
+
+function fallProblem(grid: MutableGrid, x: number, y: number, z: number, state: string): { fix: string; reason: string } | null {
+  if (y === 0 || !FALLING_BLOCKS.has(blockIdOf(state))) return null;
+  const below = grid.get(x, y - 1, z);
+  if (below !== AIR && !FALL_THROUGH.has(blockIdOf(below))) return null;
+  return { fix: AIR, reason: `${definitionOf(state).label} ohne festen Block darunter (würde fallen) entfernt` };
+}
+
 function golemProblem(grid: MutableGrid, x: number, y: number, z: number, state: string): string | null {
   if (!PUMPKIN_HEADS.has(blockIdOf(state))) return null;
   for (const dir of Object.keys(VECTOR) as Direction[]) {
@@ -154,10 +172,13 @@ function* around(x: number, y: number, z: number, r: number): Generator<[number,
     }
 }
 
-/** Highest block light any source within reach gives at (x, y, z) (light − Manhattan distance, ≥ 12 only). */
-export function strongLightAt(get: (x: number, y: number, z: number) => string, x: number, y: number, z: number): number {
+/**
+ * Highest block light any source within taxicab `reach` gives at (x, y, z) (light − Manhattan
+ * distance). Reach 3 covers everything ≥ 12 (snow), reach 4 everything ≥ 11 (ice).
+ */
+export function strongLightAt(get: (x: number, y: number, z: number) => string, x: number, y: number, z: number, reach = 3): number {
   let best = 0;
-  for (const [nx, ny, nz] of around(x, y, z, 3)) {
+  for (const [nx, ny, nz] of around(x, y, z, reach)) {
     const light = emittedLight(get(nx, ny, nz));
     if (light === 0) continue;
     best = Math.max(best, light - (Math.abs(nx - x) + Math.abs(ny - y) + Math.abs(nz - z)));
@@ -172,9 +193,12 @@ export function snowCanRestOn(below: string): boolean {
 
 function meltProblem(grid: MutableGrid, x: number, y: number, z: number, state: string): { fix: string; reason: string } | null {
   const id = blockIdOf(state);
-  // Snow layers melt at block light >= 12, ice at > 11 (vanilla random ticks).
+  // Snow layers melt at block light >= 12 in their own cell. Ice melts when the light in its
+  // cell exceeds 11 minus its own light dampening (1), i.e. >= 11: a level-15 source melts ice
+  // up to taxicab distance 4, snow only up to 3 (vanilla SnowLayerBlock / IceBlock random ticks).
   if (id !== 'minecraft:snow' && id !== 'minecraft:ice') return null;
-  if (strongLightAt((a, b, c) => grid.get(a, b, c), x, y, z) < 12) return null;
+  const get = (a: number, b: number, c: number) => grid.get(a, b, c);
+  if (id === 'minecraft:snow' ? strongLightAt(get, x, y, z) < 12 : strongLightAt(get, x, y, z, 4) < 11) return null;
   return id === 'minecraft:snow'
     ? { fix: AIR, reason: 'Schneeschicht zu nah an einer Lichtquelle (würde schmelzen) entfernt' }
     : { fix: blockState('packed_ice'), reason: 'Eis neben einer Lichtquelle (würde schmelzen) durch Packeis ersetzt' };
@@ -214,7 +238,7 @@ export function validateAndRepair(grid: MutableGrid, minecraftVersion: string, r
             fix(x, y, z, state, blockState('pumpkin'), `${golem}: Kopf durch ungeschnitzten Kürbis ersetzt`);
             continue;
           }
-          const support = supportProblem(grid, x, y, z, state) ?? meltProblem(grid, x, y, z, state);
+          const support = supportProblem(grid, x, y, z, state) ?? meltProblem(grid, x, y, z, state) ?? fallProblem(grid, x, y, z, state);
           if (support) fix(x, y, z, state, support.fix, support.reason);
         }
     if (repairs.length === before) break;

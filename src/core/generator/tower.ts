@@ -1,5 +1,5 @@
 import { GeometryError, Priority, VoxelBuilder } from '@/core/generator/geometry';
-import { battlementSymmetric, straightRun } from '@/core/geometry';
+import { straightRun } from '@/core/geometry';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import type { HouseResult } from '@/core/generator/house/buildHouse';
 import { Blocks } from '@/core/generator/house/materials';
@@ -20,13 +20,21 @@ import { MAX_DIMENSIONS } from '@/core/schema/voxelModel';
 const MARGIN = 4;
 const FRONT = 3;
 
-/** Wall diameter per size; 7, 9 and 15 carry symmetric battlements. */
+/**
+ * Wall diameter per size, from the ladder of diameters that read as round (research 16, T17:
+ * 7 as a deliberate rounded square, 13, 15; no 11, which rasters to an octagon). Medium keeps 9:
+ * with its default of four storeys a 13 would give a squat silo (shaft height / D ≈ 1.5, research
+ * 19 asks for ≥ 2.5), which reads worse than the octagonal hint of the 9.
+ */
+export const TOWER_DIAMETERS: Readonly<Record<SizeClass, number>> = { small: 7, medium: 9, large: 13, huge: 15 };
+
 export function towerDiameter(size: SizeClass): number {
-  return { small: 7, medium: 9, large: 11, huge: 15 }[size];
+  return TOWER_DIAMETERS[size];
 }
 
 export function buildTower(input: HouseInput, d: number, rng: SeededRandom, profileWished = false): HouseResult {
-  const roofSpec = roundRoofFor(input, battlementSymmetric(d), profileWished);
+  // Merlons by angular sectors are symmetric for every diameter (roundTower.ts).
+  const roofSpec = roundRoofFor(input, true, profileWished);
   const r = (d - 1) / 2;
   // One block for the apron ring around the wall.
   const x0 = MARGIN + 1;

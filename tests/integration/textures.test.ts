@@ -88,6 +88,35 @@ describe('Textur-API', () => {
     expect(s.candidates.map((c) => c.version)).toEqual(['1.21.11']);
   });
 
+  it('findet die Client-Datei der Modrinth-App zwischen Bibliotheken, Profilen und Loader-Jars', async () => {
+    const root =
+      process.platform === 'win32'
+        ? join(home, 'AppData', 'Roaming', 'ModrinthApp')
+        : process.platform === 'darwin'
+          ? join(home, 'Library', 'Application Support', 'ModrinthApp')
+          : join(home, '.local', 'share', 'ModrinthApp');
+    // Layout of the Modrinth App: client jars in meta/versions/<v>-<app>/, a deep libraries tree,
+    // instances under profiles/ (mods, saves …) and loader jars that are no client.
+    for (let i = 0; i < 40; i++) await mkdir(join(root, 'meta', 'libraries', 'org', `lib${i}`, 'a', 'b', 'c'), { recursive: true });
+    await mkdir(join(root, 'profiles', 'Weihnachten', 'mods'), { recursive: true });
+    await mkdir(join(root, 'profiles', 'Weihnachten', 'saves', 'Welt'), { recursive: true });
+    await writeFile(join(root, 'profiles', 'Weihnachten', 'mods', 'worldedit-mod-7.3.18.jar'), Buffer.from('mod'));
+    const loader = join(root, 'meta', 'versions', 'fabric-loader-0.16.9-1.21.11');
+    await mkdir(loader, { recursive: true });
+    await writeFile(join(loader, 'fabric-loader-0.16.9-1.21.11.jar'), Buffer.from('loader'));
+    for (const [folder, version] of [
+      ['1.21.1-0.19.3', '1.21.1'],
+      ['1.21.11-0.19.3', '1.21.11'],
+    ] as const) {
+      await mkdir(join(root, 'meta', 'versions', folder), { recursive: true });
+      await writeFile(join(root, 'meta', 'versions', folder, `${folder}.jar`), fakeClientJar({ version }));
+    }
+    const s = await status();
+    expect(s).toMatchObject({ available: true, version: '1.21.11', source: { kind: 'launcher', label: 'Modrinth App, 1.21.11' } });
+    expect(s.candidates.map((c) => c.version).sort()).toEqual(['1.21.1', '1.21.11']);
+    expect(s.candidates.every((c) => c.launcher === 'Modrinth App')).toBe(true);
+  });
+
   it('MINECRAFT_JAR hat Vorrang', async () => {
     const jar = join(home, 'eigene.jar');
     await writeFile(jar, fakeClientJar({ version: '1.21.1' }));

@@ -19,6 +19,7 @@ export function Segmented<T extends string | number>({
   disabled = false,
   testId,
   badge,
+  description,
 }: {
   legend: string;
   name: string;
@@ -28,14 +29,17 @@ export function Segmented<T extends string | number>({
   disabled?: boolean;
   testId?: string;
   badge?: ReactNode;
+  /** Short help text under the legend. */
+  description?: ReactNode;
 }) {
   const id = useId();
   return (
     <fieldset className="min-w-0" disabled={disabled} data-testid={testId}>
-      <legend className="mb-1.5 flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-mist-400">
+      <legend className="mb-2 flex items-center gap-2 text-[13px] font-medium text-fg-muted">
         {legend}
         {badge}
       </legend>
+      {description ? <p className="-mt-1 mb-2 text-xs text-fg-subtle">{description}</p> : null}
       <div className="flex flex-wrap gap-1.5">
         {options.map((option) => {
           const optionId = `${id}-${String(option.value)}`;
@@ -45,12 +49,12 @@ export function Segmented<T extends string | number>({
               key={String(option.value)}
               htmlFor={optionId}
               title={option.hint}
-              className={`relative flex min-h-9 cursor-pointer items-center rounded-lg border px-3 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-gold-300 ${
+              className={`relative flex min-h-9 cursor-pointer items-center rounded-lg border px-3 text-[13px] transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent-text ${
                 option.disabled
-                  ? 'cursor-not-allowed border-white/5 bg-transparent text-mist-400/60'
+                  ? 'cursor-not-allowed border-line/60 bg-transparent text-fg-subtle/70'
                   : checked
-                    ? 'border-gold-400/70 bg-gold-400/12 text-gold-300'
-                    : 'border-white/10 bg-white/3 text-mist-300 hover:border-white/20 hover:text-snow-50'
+                    ? 'border-accent/70 bg-accent/15 font-medium text-accent-text'
+                    : 'border-line bg-raised text-fg-muted hover:border-line-strong hover:text-fg'
               }`}
             >
               <input
@@ -64,7 +68,7 @@ export function Segmented<T extends string | number>({
                 className="sr-only"
               />
               {option.label}
-              {option.hint && option.disabled ? <span className="ml-1.5 text-[10px] uppercase tracking-wide">{option.hint}</span> : null}
+              {option.hint && option.disabled ? <span className="ml-1.5 text-xs text-fg-subtle">({option.hint})</span> : null}
             </label>
           );
         })}

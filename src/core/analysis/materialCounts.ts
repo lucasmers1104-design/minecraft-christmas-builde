@@ -61,6 +61,7 @@ export function itemsForState(state: string): { item: string; count: number }[] 
   const props = propsOf(state);
   switch (definitionOf(state).shape) {
     case 'door':
+    case 'tall_plant':
       return props.half === 'upper' ? [] : [{ item: id, count: 1 }];
     case 'slab':
       return [{ item: id, count: props.type === 'double' ? 2 : 1 }];

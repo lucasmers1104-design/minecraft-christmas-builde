@@ -12,6 +12,9 @@ const config = [
       'playwright-report/**',
       'test-results/**',
       'tests/worldedit/**',
+      // Local output folders of the screenshot and render tools (gitignored).
+      'ui-shots/**',
+      'render-out/**',
     ],
   },
 ];

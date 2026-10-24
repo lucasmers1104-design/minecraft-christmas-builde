@@ -3,7 +3,7 @@ import { STYLE_LABELS } from '@/core/style/styles';
 import * as nbt from 'prismarine-nbt';
 import { getProfileForVersion, type CompatibilityProfile } from '@/core/compat/profile';
 import { encodeVarIntArray } from '@/core/export/encodeVarInt';
-import { collectVoxelIssues, type VoxelModel } from '@/core/schema/voxelModel';
+import { collectVoxelIssues, groundLevel, type VoxelModel } from '@/core/schema/voxelModel';
 
 export class SchematicExportError extends Error {
   readonly issues: string[];
@@ -81,7 +81,9 @@ export function buildSpongeV3Nbt(model: VoxelModel, requestedProfile?: Compatibi
     Width: short(width),
     Height: short(height),
     Length: short(length),
-    Offset: { type: 'intArray', value: [0, 0, 0] } as Tag,
+    // WorldEdit pastes the minimum corner at the player's feet plus Offset: a foundation of N
+    // layers goes N below the feet, the ground layer stays where it would be without one.
+    Offset: { type: 'intArray', value: [0, 0 - groundLevel(model.spec), 0] } as Tag,
     Blocks: compound({
       Palette: compound(palette),
       // Typed as number[] by prismarine-nbt; at runtime an Int8Array (see above).

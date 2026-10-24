@@ -12,6 +12,104 @@ export function jsonError(status: number, error: string, issues?: string[]): Nex
   });
 }
 
+/** JSON response that is never cached. */
+export function jsonNoStore<T>(body: T, status = 200): NextResponse<T> {
+  return NextResponse.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Origin checks. `next dev` / `next start` also listen on the LAN, and any web page in the
+// browser can send requests to localhost. Routes that change settings or spend money check
+// where a request comes from.
+
+/** Host the request was sent to, e.g. "localhost:3000" (Host header, else the URL). */
+export function requestHost(request: Request): string {
+  const header = request.headers.get('host');
+  if (header) return header.trim().toLowerCase();
+  try {
+    return new URL(request.url).host.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/** localhost, 127.x.x.x or [::1] (with or without port). */
+export function isLoopbackHost(host: string): boolean {
+  if (!host) return false;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${host}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return hostname === 'localhost' || hostname === '[::1]' || /^127(\.\d{1,3}){3}$/.test(hostname);
+}
+
+/**
+ * Why a request does not come from the app's own page, or null. Browsers send Sec-Fetch-Site
+ * and Origin; a request without both (curl, server to server) is not a browser attack and
+ * passes.
+ */
+export function crossOriginProblem(request: Request): string | null {
+  const site = request.headers.get('sec-fetch-site');
+  if (site && site !== 'same-origin' && site !== 'none') return `Sec-Fetch-Site: ${site.slice(0, 40)}`;
+  const origin = request.headers.get('origin');
+  if (origin === null) return null;
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host.toLowerCase();
+  } catch {
+    return `Origin: ${origin.slice(0, 100)}`;
+  }
+  return originHost !== '' && originHost === requestHost(request) ? null : `Origin: ${origin.slice(0, 100)}`;
+}
+
+export const CROSS_ORIGIN_MESSAGE =
+  'Diese Anfrage kommt nicht von der App selbst (z. B. von einer fremden Webseite) und wurde aus Sicherheitsgründen abgelehnt.';
+
+/**
+ * Host names the app is really reached under: localhost, IP literals and single-label LAN
+ * names ("desktop-luca"). A dotted name ("evil.example") pointing at this PC is a DNS
+ * rebinding attempt – there Origin and Host match, so the origin check alone cannot see it.
+ */
+export function isDirectHost(host: string): boolean {
+  if (isLoopbackHost(host)) return true;
+  let hostname: string;
+  try {
+    hostname = new URL(`http://${host}`).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.startsWith('[') || /^[a-z0-9-]+$/.test(hostname);
+}
+
+/** 403 unless the request comes from the app's own page (or from no browser at all). */
+export function rejectCrossOrigin(request: Request): NextResponse<ApiErrorBody> | null {
+  const host = requestHost(request);
+  if (!isDirectHost(host)) return jsonError(403, CROSS_ORIGIN_MESSAGE, [`Host: ${host.slice(0, 100)}`]);
+  const problem = crossOriginProblem(request);
+  return problem ? jsonError(403, CROSS_ORIGIN_MESSAGE, [problem]) : null;
+}
+
+/** 403 unless the request was sent to localhost on this PC AND comes from the app's own page. */
+export function rejectUnlessLocal(request: Request): NextResponse<ApiErrorBody> | null {
+  const host = requestHost(request);
+  if (!isLoopbackHost(host)) {
+    let port = '';
+    try {
+      port = new URL(`http://${host}`).port;
+    } catch {
+      // keep the default
+    }
+    return jsonError(
+      403,
+      `Diese Einstellungen lassen sich nur an dem PC ändern, auf dem die App läuft. Öffne sie dort über http://localhost${port ? `:${port}` : ''} (nicht über die Netzwerkadresse).`,
+      [`Host: ${host.slice(0, 100)}`],
+    );
+  }
+  return rejectCrossOrigin(request);
+}
+
 export class RequestBodyError extends Error {
   constructor(
     readonly status: number,

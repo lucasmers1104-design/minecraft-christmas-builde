@@ -3,7 +3,7 @@ import { countMaterials } from '@/core/analysis/materialCounts';
 import { AIR, blockState, listBlockDefinitions, propsOf } from '@/core/blocks/registry';
 import { PaletteGrid, resolveStates } from '@/core/blocks/stateResolver';
 import { mirrorState, rotateState } from '@/core/blocks/transform';
-import { validateAndRepair } from '@/core/blocks/validator';
+import { emittedLight, validateAndRepair } from '@/core/blocks/validator';
 import { createSeededRandom } from '@/core/generator/seededRandom';
 
 function grid(w: number, h: number, l: number): PaletteGrid {
@@ -238,6 +238,27 @@ describe('Validator', () => {
     expect(g.get(0, 1, 0)).not.toBe(AIR);
     expect(g.get(1, 1, 0)).not.toBe(AIR);
     expect(g.get(8, 1, 0)).toBe(AIR); // taxicab distance 2 to a light-15 lantern
+  });
+
+  it('Eis schmilzt bis Abstand 4 zu Licht 15, Schnee nur bis Abstand 3', () => {
+    const g = grid(11, 1, 1);
+    for (let x = 0; x < 11; x++) g.set(x, 0, 0, blockState('stone'));
+    g.set(5, 0, 0, blockState('glowstone'));
+    g.set(1, 0, 0, blockState('ice')); // distance 4: melts
+    g.set(0, 0, 0, blockState('ice')); // distance 5: stays
+    g.set(9, 0, 0, blockState('ice')); // distance 4 on the other side: melts
+    validateAndRepair(g, '1.21.11');
+    expect(g.get(1, 0, 0)).toBe(blockState('packed_ice'));
+    expect(g.get(9, 0, 0)).toBe(blockState('packed_ice'));
+    expect(g.get(0, 0, 0)).toBe(blockState('ice'));
+  });
+
+  it('Kupferleuchten werden mit der Oxidation dunkler (15/12/8/4)', () => {
+    const lit = (id: string) => emittedLight(blockState(id, { lit: 'true' }));
+    expect(lit('waxed_copper_bulb')).toBe(15);
+    expect(lit('waxed_exposed_copper_bulb')).toBe(12);
+    expect(lit('waxed_weathered_copper_bulb')).toBe(8);
+    expect(lit('waxed_oxidized_copper_bulb')).toBe(4);
   });
 });
 

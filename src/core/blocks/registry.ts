@@ -80,10 +80,31 @@ export function isAvailableIn(id: string, minecraftVersion?: string): boolean {
 /**
  * Version-specific spelling of a block: `iron_chain` (1.21.9+) is `chain` in 1.21.1. Generators
  * ask for the modern id and get the one valid in the target version.
+ *
+ * Blocks added in 1.21.4 (pale oak, resin bricks) get a look-alike stand-in of the same shape
+ * class for 1.21.1, so palettes may use them (research 07, recommendation 6; ΔE00 of the
+ * measured texture colours in brackets).
  */
 const RENAMED: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   'minecraft:iron_chain': { '1.21.1': 'minecraft:chain' },
   'minecraft:waxed_lightning_rod': { '1.21.1': 'minecraft:lightning_rod' },
+  // Stand-ins (1.21.4+ → 1.21.1).
+  'minecraft:pale_oak_planks': { '1.21.1': 'minecraft:smooth_quartz' }, // 4.7
+  'minecraft:pale_oak_stairs': { '1.21.1': 'minecraft:smooth_quartz_stairs' },
+  'minecraft:pale_oak_slab': { '1.21.1': 'minecraft:smooth_quartz_slab' },
+  'minecraft:pale_oak_log': { '1.21.1': 'minecraft:deepslate' }, // 5.8, grey bark
+  'minecraft:pale_oak_wood': { '1.21.1': 'minecraft:deepslate' },
+  'minecraft:stripped_pale_oak_log': { '1.21.1': 'minecraft:quartz_pillar' }, // 4.0
+  'minecraft:stripped_pale_oak_wood': { '1.21.1': 'minecraft:quartz_pillar' },
+  'minecraft:pale_oak_trapdoor': { '1.21.1': 'minecraft:iron_trapdoor' }, // 6.2
+  'minecraft:pale_oak_door': { '1.21.1': 'minecraft:birch_door' }, // a door that opens by hand
+  'minecraft:pale_oak_fence': { '1.21.1': 'minecraft:birch_fence' },
+  'minecraft:pale_oak_fence_gate': { '1.21.1': 'minecraft:birch_fence_gate' },
+  'minecraft:pale_oak_button': { '1.21.1': 'minecraft:birch_button' },
+  'minecraft:resin_bricks': { '1.21.1': 'minecraft:cut_red_sandstone' }, // 6.2
+  'minecraft:resin_brick_stairs': { '1.21.1': 'minecraft:red_sandstone_stairs' },
+  'minecraft:resin_brick_slab': { '1.21.1': 'minecraft:cut_red_sandstone_slab' },
+  'minecraft:resin_brick_wall': { '1.21.1': 'minecraft:red_sandstone_wall' },
 };
 
 export function profileBlockId(id: string, minecraftVersion: string): string {
@@ -163,7 +184,14 @@ export function checkBlockState(state: string, minecraftVersion?: string): Block
  * filling registry defaults. Throws on anything invalid – generator code must never
  * produce an unregistered block. Unknown override keys are an error, too.
  */
+/** Canonical states already built (pure function of id and overrides; invalid input is never cached). */
+const STATE_CACHE = new Map<string, string>();
+
 export function blockState(shortOrFullId: string, overrides: Readonly<Record<string, string>> = {}): string {
+  let key = shortOrFullId;
+  for (const name in overrides) key += `|${name}=${overrides[name]}`;
+  const hit = STATE_CACHE.get(key);
+  if (hit !== undefined) return hit;
   const id = shortOrFullId.includes(':') ? shortOrFullId : `minecraft:${shortOrFullId}`;
   const def = BY_ID.get(id);
   if (!def) throw new Error(`Block nicht in der Registry: ${id}`);
@@ -171,6 +199,7 @@ export function blockState(shortOrFullId: string, overrides: Readonly<Record<str
   const state = formatBlockState(id, properties);
   const check = checkBlockState(state);
   if (!check.ok) throw new Error(check.reason);
+  STATE_CACHE.set(key, check.canonical);
   return check.canonical;
 }
 

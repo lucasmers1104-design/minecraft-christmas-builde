@@ -2,12 +2,16 @@ import { readFile } from 'node:fs/promises';
 import { expect, type Page } from '@playwright/test';
 import { validateSchematic, type SchematicValidationReport } from '../../src/core/export/validateSchematic';
 
-/** Waits until the 3D scene has built geometry for exactly the currently selected model. */
+/**
+ * Waits until the 3D scene has built geometry for exactly the currently selected model.
+ * Generating (houses score their candidates first) and meshing with software WebGL can take
+ * longer than the default 15 s on a slow machine under test load, hence the longer limit.
+ */
 export async function waitForRenderedModel(page: Page): Promise<string> {
   const scene = page.getByTestId('scene');
-  await expect(scene).toHaveAttribute('data-model-hash', /^[0-9a-f]{64}$/);
+  await expect(scene).toHaveAttribute('data-model-hash', /^[0-9a-f]{64}$/, { timeout: 45_000 });
   const hash = (await scene.getAttribute('data-model-hash'))!;
-  await expect(scene).toHaveAttribute('data-rendered-hash', hash);
+  await expect(scene).toHaveAttribute('data-rendered-hash', hash, { timeout: 45_000 });
   const faces = Number(await scene.getAttribute('data-face-count'));
   expect(faces).toBeGreaterThan(100);
   await expect(scene.locator('canvas')).toBeVisible();

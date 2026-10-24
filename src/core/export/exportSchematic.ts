@@ -17,7 +17,4 @@ export function exportSchematic(
   return { file, report };
 }
 
-export function schematicFileName(model: VoxelModel): string {
-  const { kind, size, seed } = model.spec;
-  return `christmas-${kind}-${size}-seed${seed}-${model.hash.slice(0, 8)}.schem`;
-}
+export { schematicFileName } from '@/core/export/schematicFileName';

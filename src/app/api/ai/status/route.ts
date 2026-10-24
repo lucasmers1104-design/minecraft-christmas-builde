@@ -1,11 +1,19 @@
 import { NextResponse } from 'next/server';
-import { getAiStatus, readAiConfig } from '@/lib/ai/ollamaPlanner';
+import { aiStatus } from '@/lib/ai/planner';
+import { loadAiConfig } from '@/lib/ai/settingsStore';
+import { jsonNoStore, rejectCrossOrigin } from '@/lib/http/apiResponses';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-/** Reports whether the optional local AI (Ollama) is enabled, reachable and has the model. */
-export async function GET(): Promise<NextResponse> {
-  const status = await getAiStatus(readAiConfig());
-  return NextResponse.json(status, { headers: { 'Cache-Control': 'no-store' } });
+/**
+ * Reports whether the active AI provider is ready (costs nothing): OpenRouter = key accepted,
+ * credit, model with structured output; Ollama = server reachable, model pulled; off = no
+ * network access at all.
+ */
+export async function GET(request: Request): Promise<NextResponse> {
+  // The status shows the remaining credit – only for the app's own page.
+  const denied = rejectCrossOrigin(request);
+  if (denied) return denied;
+  return jsonNoStore(await aiStatus(await loadAiConfig()));
 }

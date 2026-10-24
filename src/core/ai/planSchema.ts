@@ -21,6 +21,7 @@ import { BUILD_SIZES, BUILDING_TYPES, type BuildingType, type BuildSize } from '
 import { getMaterial, hasMaterial } from '@/core/style/materials';
 import { PALETTES } from '@/core/style/palettes';
 import { ROOF_PROFILES, ROOF_TYPES, STYLE_IDS, STYLE_LABELS, STYLES, THEME_LABELS, THEMES, type StyleId, type Theme } from '@/core/style/styles';
+import { COMPOSITION_LABELS, COMPOSITIONS } from '@/core/style/compositions';
 
 /**
  * The building plan: ONE flat format shared by the rule-based parser and the local AI.
@@ -192,6 +193,7 @@ export function createPlanSchema() {
       theme: z.enum(withAuto(THEMES)),
       size: z.enum(withAuto(BUILD_SIZES)),
       detailLevel: z.literal([1, 2, 3]).nullable(),
+      composition: z.enum(COMPOSITIONS),
       floors: nullableInt(PLAN_LIMITS.floors),
       width: nullableInt(PLAN_LIMITS.width),
       depth: nullableInt(PLAN_LIMITS.depth),
@@ -238,7 +240,7 @@ export const PLAN_FIELDS: readonly PlanField[] = Object.keys(planSchema.shape) a
 
 const INT_FIELDS = ['floors', 'width', 'depth', 'overhang', 'dormers'] as const;
 const BOOL_FIELDS = ['porch', 'balcony', 'chimney', 'oriel', 'jetty', 'garden', 'soulLanterns', 'garland', 'christmasTree', 'presents', 'snow'] as const;
-const ENUM_OPTION_FIELDS = ['roofType', 'roofProfile', 'wings', 'annex', 'tower', 'towerPosition', 'symmetry', 'windows', 'windowFamily', 'doorFamily', 'lanternDensity'] as const;
+const ENUM_OPTION_FIELDS = ['composition', 'roofType', 'roofProfile', 'wings', 'annex', 'tower', 'towerPosition', 'symmetry', 'windows', 'windowFamily', 'doorFamily', 'lanternDensity'] as const;
 
 /** Fields whose "not specified" value is null (numbers and switches); all others use "auto". */
 const NULL_FIELDS: ReadonlySet<PlanField> = new Set<PlanField>(['detailLevel', ...INT_FIELDS, ...BOOL_FIELDS]);
@@ -458,6 +460,7 @@ export const PLAN_FIELD_LABELS: Readonly<Record<PlanField, string>> = {
   theme: 'Thema',
   size: 'Größe',
   detailLevel: 'Detailgrad',
+  composition: 'Bauform',
   floors: 'Geschosse',
   width: 'Breite',
   depth: 'Tiefe',
@@ -499,10 +502,12 @@ export const PLAN_VALUE_LABELS: Readonly<Partial<Record<PlanField, Readonly<Reco
   theme: THEME_LABELS,
   size: SIZE_LABELS,
   detailLevel: { 1: 'schlicht', 2: 'normal', 3: 'festlich' },
+  composition: COMPOSITION_LABELS,
   roofType: {
     gable: 'Satteldach',
     hip: 'Walmdach',
     half_hip: 'Krüppelwalmdach',
+    irimoya: 'Irimoya-Dach (unten Walm, oben Giebel)',
     pyramid: 'Pyramidendach',
     mansard: 'Mansarddach',
     gambrel: 'Scheunendach (Gambrel)',

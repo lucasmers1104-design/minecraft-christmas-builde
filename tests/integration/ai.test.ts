@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { POST as planRoute, type AiPlanResponse } from '@/app/api/ai/plan/route';
 import { GET as statusRoute } from '@/app/api/ai/status/route';
@@ -53,7 +56,13 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
 }
 
+// The routes read the app's settings file: point them at an empty folder so a real
+// .mcb-local/ai-settings.json on this PC cannot change the result.
+const settingsDir = mkdtempSync(join(tmpdir(), 'mcb-ai-settings-'));
+const previousSettingsDir = process.env.MCB_SETTINGS_DIR;
+
 beforeAll(async () => {
+  process.env.MCB_SETTINGS_DIR = settingsDir;
   server = createServer(async (req, res) => {
     if (req.url === '/api/tags') return reply(res, 200, { models: [{ name: 'qwen3:14b' }, { name: 'llama3.1:8b' }] });
     if (req.url !== '/api/chat') return reply(res, 404, { error: 'not found' });
@@ -85,6 +94,9 @@ beforeAll(async () => {
 
 afterAll(() => {
   server.close();
+  if (previousSettingsDir === undefined) delete process.env.MCB_SETTINGS_DIR;
+  else process.env.MCB_SETTINGS_DIR = previousSettingsDir;
+  rmSync(settingsDir, { recursive: true, force: true });
 });
 
 beforeEach(() => {
@@ -197,7 +209,7 @@ describe('API-Routen', () => {
     process.env.MCB_AI_PROVIDER = 'ollama';
     process.env.OLLAMA_BASE_URL = baseUrl;
     try {
-      const status = await (await statusRoute()).json();
+      const status = await (await statusRoute(new Request('http://localhost:3000/api/ai/status'))).json();
       expect(status).toMatchObject({ enabled: true, reachable: true, modelInstalled: true });
       const res = await planRoute(post({ description: 'Großes Steinhaus mit Turm' }));
       expect(res.status).toBe(200);

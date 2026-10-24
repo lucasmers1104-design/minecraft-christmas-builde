@@ -200,10 +200,11 @@ function stoneFamily(k: StoneKind): BlockSeed[] {
 // Copper (always waxed, so it never oxidises in the world).
 
 const COPPER_STAGES = [
-  { id: '', label: '', color: '#c06c50' },
-  { id: 'exposed_', label: 'angelaufen', color: '#a17e68' },
-  { id: 'weathered_', label: 'verwittert', color: '#6c9c6b' },
-  { id: 'oxidized_', label: 'oxidiert', color: '#53a387' },
+  // Copper bulbs dim with oxidation: 15 / 12 / 8 / 4 (minecraft.wiki, Copper Bulb).
+  { id: '', label: '', color: '#c06c50', bulb: 15 },
+  { id: 'exposed_', label: 'angelaufen', color: '#a17e68', bulb: 12 },
+  { id: 'weathered_', label: 'verwittert', color: '#6c9c6b', bulb: 8 },
+  { id: 'oxidized_', label: 'oxidiert', color: '#53a387', bulb: 4 },
 ] as const;
 
 function copperFamily(): BlockSeed[] {
@@ -226,7 +227,7 @@ function copperFamily(): BlockSeed[] {
       m(`waxed_${st.id}copper_door`, 'Kupfertür', 'door'),
       m(`waxed_${st.id}copper_trapdoor`, 'Kupferfalltür', 'trapdoor'),
       m(`waxed_${st.id}copper_grate`, 'Kupfergitter', 'grate', { kind: 'cutout' }),
-      m(`waxed_${st.id}copper_bulb`, 'Kupferleuchte', 'bulb', { category: 'light', light: 15 }),
+      m(`waxed_${st.id}copper_bulb`, 'Kupferleuchte', 'bulb', { category: 'light', light: st.bulb }),
     ];
   });
 }
@@ -337,6 +338,8 @@ const MISC: readonly BlockSeed[] = [
   { id: 'vine', label: 'Ranken', shape: 'vine', category: 'nature', color: '#3f6b1e', kind: 'cutout' },
   { id: 'short_grass', label: 'Gras', shape: 'plant', category: 'nature', color: '#6e9a44', kind: 'cutout' },
   { id: 'fern', label: 'Farn', shape: 'plant', category: 'nature', color: '#5f8a3a', kind: 'cutout' },
+  { id: 'tall_grass', label: 'Hohes Gras', shape: 'tall_plant', category: 'nature', color: '#6e9a44', kind: 'cutout' },
+  { id: 'large_fern', label: 'Großer Farn', shape: 'tall_plant', category: 'nature', color: '#5f8a3a', kind: 'cutout' },
   { id: 'azalea', label: 'Azalee', shape: 'plant', category: 'nature', color: '#5d7a2c', kind: 'cutout' },
   { id: 'flowering_azalea', label: 'Blühende Azalee', shape: 'plant', category: 'nature', color: '#6f7a3a', kind: 'cutout' },
   { id: 'poppy', label: 'Mohn', shape: 'plant', category: 'nature', color: '#c0251b', kind: 'cutout' },
@@ -376,9 +379,20 @@ const MISC: readonly BlockSeed[] = [
   { id: 'rail', label: 'Schiene', shape: 'rail', category: 'technic', color: '#8d8a84', kind: 'cutout' },
 ];
 
+// ----------------------------------------------------------------------------------------------
+// Landschaft (bq-landscape): ground blocks for paths and soil textures (research note
+// 15_gelaende_gaerten_wege.md, "Registry-Lücken"). Gravel falls without support (validator rule
+// in validator.ts); podzol carries `snowy` like grass, so it shares the grass_block shape class.
+
+const LANDSCAPE_BLOCKS: readonly BlockSeed[] = [
+  { id: 'gravel', label: 'Kies', shape: 'cube', category: 'nature', color: '#837f7e' },
+  { id: 'podzol', label: 'Podsol', shape: 'grass_block', category: 'nature', color: '#5c3f18' },
+];
+
 export function allBlockSeeds(): BlockSeed[] {
   return [
     ...MISC,
+    ...LANDSCAPE_BLOCKS,
     ...WOODS.flatMap(woodFamily),
     ...STONES.flatMap(stoneFamily),
     ...copperFamily(),

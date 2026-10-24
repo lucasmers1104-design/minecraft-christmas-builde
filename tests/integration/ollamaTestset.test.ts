@@ -3,23 +3,31 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { BuildPlan } from '@/core/ai/planSchema';
+import { modelDisplayName } from '@/core/ai/providers';
 import { parsedToPlan, parseDescription } from '@/core/generator/parseDescription';
-import { getAiStatus, PLANNER_NUM_CTX, readAiConfig, requestAiPlan, type AiConfig } from '@/lib/ai/ollamaPlanner';
+import { PLANNER_NUM_CTX } from '@/lib/ai/ollamaPlanner';
+import { aiStatus, planWithProvider } from '@/lib/ai/planner';
+import { AiPlanError } from '@/lib/ai/planValidation';
+import { loadAiConfig, resolveAiConfig, type ServerAiConfig } from '@/lib/ai/settingsStore';
 import { checkPlan, expectationSize, PLAN_TESTSET, type PlanTestCase } from '../fixtures/planTestset';
 
 /**
- * The plan test set against the LOCAL model (Ollama). Skipped unless MCB_OLLAMA_TESTSET=1:
+ * The plan test set against a REAL model – the provider configured in the app (settings file
+ * .mcb-local/ai-settings.json, else .env.local). Skipped unless one of the flags is set:
  *
- *   MCB_OLLAMA_TESTSET=1 OLLAMA_MODEL=qwen3:14b npx vitest run tests/integration/ollamaTestset.test.ts
+ *   MCB_AI_TESTSET=1      the configured provider (OpenRouter or Ollama)
+ *   MCB_OLLAMA_TESTSET=1  always the local Ollama (as before)
  *
- * Measures validation rate (valid plan after at most one repair round), retry rate,
- * duration and accuracy against the expected plan properties, and writes
- * reports/ki-testset.json. The same evaluation code runs every time against a simulated
- * model (the parser's plan as answer), so the runner itself stays tested without Ollama.
+ *   e.g. MCB_AI_TESTSET=1 npx vitest run tests/integration/ollamaTestset.test.ts
+ *
+ * Measures validation rate (valid plan after at most one repair round), retry rate, duration,
+ * cost (OpenRouter) and accuracy against the expected plan properties, and writes
+ * reports/ki-testset-<model>.json. The same evaluation code runs every time against simulated
+ * models (the parser's plan as answer), so the runner itself stays tested without a model.
  */
 
-const ENABLED = process.env.MCB_OLLAMA_TESTSET === '1';
-const REPORT_PATH = join(process.cwd(), 'reports', 'ki-testset.json');
+const OLLAMA_ONLY = process.env.MCB_OLLAMA_TESTSET === '1';
+const ENABLED = OLLAMA_ONLY || process.env.MCB_AI_TESTSET === '1';
 
 interface CaseResult {
   wish: string;
@@ -28,6 +36,8 @@ interface CaseResult {
   durationMs: number;
   examples: string[];
   fromThinking: boolean;
+  /** OpenRouter: cost of this wish in US dollars (null = not reported); Ollama: null. */
+  costUsd: number | null;
   /** Mismatches against the expectation (empty = fully correct). */
   problems: string[];
   checkedProperties: number;
@@ -47,6 +57,8 @@ interface Summary {
   errors: Record<string, number>;
   fromThinking: number;
   durationMs: { mean: number; median: number; p95: number; max: number; total: number };
+  /** OpenRouter only (null for Ollama): total and mean per wish in US dollars. */
+  costUsd: { total: number; meanPerWish: number; casesWithoutCost: number } | null;
   fullyCorrect: number;
   caseAccuracy: number;
   propertyAccuracy: number;
@@ -62,12 +74,21 @@ function percentile(sorted: number[], p: number): number {
   return sorted[Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1)]!;
 }
 
-async function runCase(config: AiConfig, c: PlanTestCase, fetchImpl: typeof fetch): Promise<CaseResult> {
+/** Model name as a file name part ("openai/gpt-6-luna" → "openai-gpt-6-luna", "qwen3:14b" → "qwen3-14b"). */
+function modelSlug(model: string): string {
+  return model.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '') || 'modell';
+}
+
+function activeModel(config: ServerAiConfig): string {
+  return config.provider === 'openrouter' ? config.openrouter.model : config.ollama.model;
+}
+
+async function runCase(config: ServerAiConfig, c: PlanTestCase, fetchImpl: typeof fetch): Promise<CaseResult> {
   const started = Date.now();
   const checkedProperties = expectationSize(c.expect);
   const parserProblems = checkPlan(parsedToPlan(parseDescription(c.wish)), c.expect);
   try {
-    const r = await requestAiPlan(config, c.wish, fetchImpl);
+    const r = await planWithProvider(config, c.wish, fetchImpl);
     const problems = checkPlan(r.plan, c.expect);
     return {
       wish: c.wish,
@@ -76,6 +97,7 @@ async function runCase(config: AiConfig, c: PlanTestCase, fetchImpl: typeof fetc
       durationMs: r.durationMs,
       examples: r.examples,
       fromThinking: r.fromThinking,
+      costUsd: r.costUsd,
       problems,
       checkedProperties,
       correctProperties: checkedProperties - problems.length,
@@ -91,6 +113,7 @@ async function runCase(config: AiConfig, c: PlanTestCase, fetchImpl: typeof fetc
       durationMs: Date.now() - started,
       examples: [],
       fromThinking: false,
+      costUsd: error instanceof AiPlanError && error.costUsd !== undefined ? error.costUsd : null,
       problems: [`kein gültiger Plan (${code}): ${(error as Error).message}`],
       checkedProperties,
       correctProperties: 0,
@@ -100,7 +123,7 @@ async function runCase(config: AiConfig, c: PlanTestCase, fetchImpl: typeof fetc
   }
 }
 
-function summarize(results: CaseResult[]): Summary {
+function summarize(results: CaseResult[], provider: ServerAiConfig['provider']): Summary {
   const n = results.length;
   const valid = results.filter((r) => r.valid);
   const durations = results.map((r) => r.durationMs).sort((a, b) => a - b);
@@ -115,6 +138,9 @@ function summarize(results: CaseResult[]): Summary {
   const checked = results.reduce((a, r) => a + r.checkedProperties, 0);
   const correct = results.reduce((a, r) => a + r.correctProperties, 0);
   const fullyCorrect = results.filter((r) => r.valid && r.problems.length === 0).length;
+  // Wishes that failed before reaching the model (e.g. no connection) cost nothing.
+  const billed = results.filter((r) => r.valid || r.error === 'invalid');
+  const totalCost = results.reduce((a, r) => a + (r.costUsd ?? 0), 0);
   return {
     cases: n,
     validPlans: valid.length,
@@ -130,6 +156,10 @@ function summarize(results: CaseResult[]): Summary {
       max: durations.at(-1) ?? 0,
       total,
     },
+    costUsd:
+      provider === 'openrouter'
+        ? { total: round(totalCost, 6), meanPerWish: round(totalCost / n, 6), casesWithoutCost: billed.filter((r) => r.costUsd === null).length }
+        : null,
     fullyCorrect,
     caseAccuracy: round(fullyCorrect / n),
     propertyAccuracy: round(correct / checked),
@@ -138,20 +168,28 @@ function summarize(results: CaseResult[]): Summary {
   };
 }
 
-async function runTestset(config: AiConfig, cases: readonly PlanTestCase[], fetchImpl: typeof fetch = fetch) {
+async function runTestset(config: ServerAiConfig, cases: readonly PlanTestCase[], fetchImpl: typeof fetch = fetch) {
   const results: CaseResult[] = [];
-  // Sequential on purpose: one local GPU, comparable durations.
+  // Sequential on purpose: one local GPU (Ollama), comparable durations, no rate limits.
   for (const c of cases) results.push(await runCase(config, c, fetchImpl));
+  const model = activeModel(config);
   return {
     generatedAt: new Date().toISOString(),
-    model: config.model,
-    baseUrl: config.baseUrl,
-    think: config.think ?? 'unset',
+    provider: config.provider,
+    model,
+    label: config.provider === 'openrouter' ? `${modelDisplayName(model)} über OpenRouter` : `${model} (lokal)`,
+    settings:
+      config.provider === 'openrouter'
+        ? { reasoning: config.openrouter.reasoning, baseUrl: config.openrouter.baseUrl, timeoutMs: config.openrouter.timeoutMs }
+        : { baseUrl: config.ollama.baseUrl, think: config.ollama.think ?? 'unset', numCtx: PLANNER_NUM_CTX, timeoutMs: config.ollama.timeoutMs },
     temperature: 0,
-    numCtx: PLANNER_NUM_CTX,
-    summary: summarize(results),
+    summary: summarize(results, config.provider),
     results,
   };
+}
+
+function reportPath(model: string, dir = join(process.cwd(), 'reports')): string {
+  return join(dir, `ki-testset-${modelSlug(model)}.json`);
 }
 
 function writeReport(path: string, report: unknown): void {
@@ -159,34 +197,58 @@ function writeReport(path: string, report: unknown): void {
   writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 }
 
-/** Simulated Ollama: answers with the parser's plan; one case answers garbage first (retry). */
+/** The wish of the last "Wunsch:" turn and whether this is the repair round. */
+function wishOf(body: { messages: { role: string; content: string }[] }): { wish: string; isRetry: boolean } {
+  const wishTurn = [...body.messages].reverse().find((m) => m.role === 'user' && m.content.startsWith('Wunsch:'))!;
+  return { wish: /"""([\s\S]*)"""/.exec(wishTurn.content)![1]!, isRetry: body.messages.at(-1) !== wishTurn };
+}
+
+/** The simulated model: the parser's plan; the "Pultdach" wish answers garbage first (retry). */
+function simulatedAnswer(body: { messages: { role: string; content: string }[] }): string {
+  const { wish, isRetry } = wishOf(body);
+  return wish.includes('Pultdach') && !isRetry ? 'Gern! Hier ist dein Plan.' : JSON.stringify(parsedToPlan(parseDescription(wish)));
+}
+
+const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
 function simulatedOllama(): typeof fetch {
   return (async (_url: string | URL | Request, init?: RequestInit) => {
-    const body = JSON.parse(String(init?.body)) as { messages: { role: string; content: string }[] };
-    const wishTurn = [...body.messages].reverse().find((m) => m.role === 'user' && m.content.startsWith('Wunsch:'))!;
-    const wish = /"""([\s\S]*)"""/.exec(wishTurn.content)![1]!;
-    const isRetry = body.messages.at(-1) !== wishTurn;
-    const content = wish.includes('Pultdach') && !isRetry ? 'Gern! Hier ist dein Plan.' : JSON.stringify(parsedToPlan(parseDescription(wish)));
-    return new Response(JSON.stringify({ message: { role: 'assistant', content }, done: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const content = simulatedAnswer(JSON.parse(String(init?.body)));
+    return json({ message: { role: 'assistant', content }, done: true });
   }) as typeof fetch;
 }
 
+const SIMULATED_COST = 0.001;
+
+function simulatedOpenRouter(): typeof fetch {
+  return (async (_url: string | URL | Request, init?: RequestInit) => {
+    const content = simulatedAnswer(JSON.parse(String(init?.body)));
+    return json({ provider: 'Simuliert', choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }], usage: { prompt_tokens: 6000, completion_tokens: 500, cost: SIMULATED_COST } });
+  }) as typeof fetch;
+}
+
+const meta = { storedIn: '(Test)', fileProblem: null };
+
 describe('KI-Testset: Auswertung (Trockenlauf mit simuliertem Modell)', () => {
-  it('misst Validierung, Retries, Laufzeit und Genauigkeit und schreibt einen JSON-Bericht', async () => {
-    const config = readAiConfig({ MCB_AI_PROVIDER: 'ollama', OLLAMA_BASE_URL: 'http://simuliert.invalid' });
+  it('Ollama: misst Validierung, Retries, Laufzeit und Genauigkeit und schreibt einen JSON-Bericht', async () => {
+    const config = resolveAiConfig(null, { MCB_AI_PROVIDER: 'ollama', OLLAMA_BASE_URL: 'http://simuliert.invalid' }, meta);
     const report = await runTestset(config, PLAN_TESTSET, simulatedOllama());
     const s = report.summary;
+    expect(report).toMatchObject({ provider: 'ollama', model: 'qwen3:14b', label: 'qwen3:14b (lokal)' });
     expect(s.cases).toBe(PLAN_TESTSET.length);
     expect(s.validationRate).toBe(1);
     expect(s.retryRate).toBeCloseTo(1 / PLAN_TESTSET.length, 3);
     expect(s.caseAccuracy).toBe(1);
     expect(s.propertyAccuracy).toBe(1);
     expect(s.parserCaseAccuracy).toBe(1);
+    expect(s.costUsd).toBeNull();
+    expect(s.durationMs.mean).toBeGreaterThanOrEqual(0);
     expect(report.results.every((r) => r.examples.length >= 2 && r.examples.length <= 4)).toBe(true);
 
     const dir = mkdtempSync(join(tmpdir(), 'mcb-ki-testset-'));
     try {
-      const path = join(dir, 'ki-testset.json');
+      const path = reportPath(report.model, dir);
+      expect(path.endsWith('ki-testset-qwen3-14b.json')).toBe(true);
       writeReport(path, report);
       const read = JSON.parse(readFileSync(path, 'utf8')) as typeof report;
       expect(read.summary.cases).toBe(PLAN_TESTSET.length);
@@ -195,22 +257,48 @@ describe('KI-Testset: Auswertung (Trockenlauf mit simuliertem Modell)', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('OpenRouter: derselbe Lauf mit Anbieter, Modell und Gesamtkosten', async () => {
+    const config = resolveAiConfig(
+      null,
+      { MCB_AI_PROVIDER: 'openrouter', OPENROUTER_API_KEY: `sk-or-v1-${'0'.repeat(64)}`, OPENROUTER_BASE_URL: 'http://simuliert.invalid/api/v1' },
+      meta,
+    );
+    const report = await runTestset(config, PLAN_TESTSET, simulatedOpenRouter());
+    const s = report.summary;
+    expect(report).toMatchObject({ provider: 'openrouter', model: 'openai/gpt-6-luna', label: 'GPT-6 Luna über OpenRouter', settings: { reasoning: 'low' } });
+    expect(s.validationRate).toBe(1);
+    expect(s.caseAccuracy).toBe(1);
+    // One wish needs the repair round → one extra paid answer.
+    expect(s.costUsd!.total).toBeCloseTo((PLAN_TESTSET.length + 1) * SIMULATED_COST, 6);
+    expect(s.costUsd!.casesWithoutCost).toBe(0);
+    expect(reportPath(report.model).endsWith('ki-testset-openai-gpt-6-luna.json')).toBe(true);
+    expect(modelSlug('anthropic/claude-haiku-5.5')).toBe('anthropic-claude-haiku-5.5');
+  });
 });
 
-describe.skipIf(!ENABLED)('KI-Testset gegen die echte lokale KI (MCB_OLLAMA_TESTSET=1)', () => {
+describe.skipIf(!ENABLED)('KI-Testset gegen die echte KI (MCB_AI_TESTSET=1 oder MCB_OLLAMA_TESTSET=1)', () => {
   it(
-    'läuft alle Wünsche durch und schreibt reports/ki-testset.json',
+    'läuft alle Wünsche durch und schreibt reports/ki-testset-<modell>.json',
     async () => {
-      const config = readAiConfig({ ...process.env, MCB_AI_PROVIDER: 'ollama', MCB_AI_TIMEOUT_MS: process.env.MCB_AI_TIMEOUT_MS ?? '300000' });
-      const status = await getAiStatus(config);
-      if (!status.reachable || !status.modelInstalled) throw new Error(`Ollama nicht bereit: ${status.message}`);
+      let config = await loadAiConfig(process.env);
+      if (OLLAMA_ONLY) {
+        // As before: always Ollama, with a generous time limit for a local GPU.
+        const timeoutMs = process.env.MCB_AI_TIMEOUT_MS ? config.ollama.timeoutMs : 300_000;
+        config = { ...config, provider: 'ollama', ollama: { ...config.ollama, enabled: true, provider: 'ollama', timeoutMs } };
+      }
+      if (config.provider === 'off') throw new Error('Kein KI-Anbieter eingerichtet: in der App unter „KI einrichten“ OpenRouter oder Ollama verbinden (oder MCB_AI_PROVIDER in .env.local).');
+      const status = await aiStatus(config);
+      if (!status.reachable || !status.modelInstalled) throw new Error(`KI nicht bereit: ${status.message}`);
       const report = await runTestset(config, PLAN_TESTSET);
-      writeReport(REPORT_PATH, report);
+      const path = reportPath(report.model);
+      writeReport(path, report);
       const s = report.summary;
+      const cost = s.costUsd ? `, Kosten gesamt ${s.costUsd.total.toFixed(4)} $ (${(s.costUsd.meanPerWish * 100).toFixed(3)} Cent je Wunsch)` : '';
       console.info(
-        `KI-Testset (${config.model}): gültig ${(100 * s.validationRate).toFixed(1)} %, Retries ${(100 * s.retryRate).toFixed(1)} %, ` +
+        `KI-Testset (${report.label}): gültig ${(100 * s.validationRate).toFixed(1)} %, Retries ${(100 * s.retryRate).toFixed(1)} %, ` +
           `vollständig richtig ${(100 * s.caseAccuracy).toFixed(1)} %, Eigenschaften ${(100 * s.propertyAccuracy).toFixed(1)} %, ` +
-          `Median ${(s.durationMs.median / 1000).toFixed(1)} s, p95 ${(s.durationMs.p95 / 1000).toFixed(1)} s → ${REPORT_PATH}`,
+          `Mittel ${(s.durationMs.mean / 1000).toFixed(1)} s, Median ${(s.durationMs.median / 1000).toFixed(1)} s, p95 ${(s.durationMs.p95 / 1000).toFixed(1)} s${cost} → ${path}`,
       );
       expect(s.cases).toBe(PLAN_TESTSET.length);
     },

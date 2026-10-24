@@ -17,7 +17,7 @@ Die App braucht die **Client-Datei** einer Minecraft-Version, z. B. `1.21.11.jar
    |---|---|
    | Offizieller Minecraft Launcher | `%APPDATA%\.minecraft\versions\1.21.11\1.21.11.jar` |
    | CurseForge | `C:\Users\<Name>\curseforge\minecraft\Install\versions\1.21.11\1.21.11.jar` |
-   | Modrinth App | unter `%APPDATA%\ModrinthApp\` |
+   | Modrinth App | `%APPDATA%\ModrinthApp\meta\versions\1.21.11-<App-Version>\1.21.11-<App-Version>.jar`, z. B. `1.21.11-0.19.3.jar` |
    | Prism Launcher | unter `%APPDATA%\PrismLauncher\libraries\com\mojang\minecraft\` (`minecraft-1.21.11-client.jar`) |
 
    Gesucht wird begrenzt: höchstens 7 Ordnerebenen tief, ohne `mods`, `saves`, `resourcepacks` usw. Die Version muss im Launcher **einmal gestartet** worden sein, sonst liegt die Datei noch nicht dort.
@@ -26,7 +26,7 @@ Die App braucht die **Client-Datei** einer Minecraft-Version, z. B. `1.21.11.jar
    - **„Minecraft-Datei auswählen …“**: Du wählst die `.jar`-Datei selbst aus, z. B. wenn CurseForge in einem eigenen Ordner installiert ist.
    - **„Von Mojang laden“**: Nur nachdem du bestätigt hast, dass du Minecraft Java besitzt und die [Minecraft-EULA](https://www.minecraft.net/eula) akzeptierst. Dann lädt die App die offizielle Client-Datei (ca. 30 MB) von `piston-data.mojang.com`. Adresse und SHA-1-Prüfsumme stammen aus Mojangs Versionsliste; die Datei wird vor der Verwendung geprüft.
 
-Mit **„Texturen an/aus“** schaltest du zwischen Texturen und einfarbigen Blöcken um.
+Mit dem Schalter **„Texturen“** unter der Vorschau schaltest du zwischen Texturen und einfarbigen Blöcken um.
 
 ## Wie die Darstellung entsteht
 
@@ -54,4 +54,5 @@ Mit **„Texturen an/aus“** schaltest du zwischen Texturen und einfarbigen Bl�
   ```
   Das wurde am 2026-10-22 mit der offiziellen 1.21.11-Client-Datei ausgeführt (SHA-1 `ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd`): alle Zustände vollständig, keine fehlenden Modelle oder Texturen.
 - `tests/e2e/textures.spec.ts` testet die Auswahl im Browser, die texturierte Vorschau und das Umschalten.
-- **Nicht getestet:** die automatische Suche auf einem echten Windows-PC mit CurseForge, Modrinth oder Prism. Für Modrinth und Prism ist nur der Ordner des Launchers belegt, nicht die genaue Lage der Datei darin; deshalb sucht die App dort rekursiv.
+- Die automatische Suche im Ordner der **Modrinth App** ist mit dem echten Layout nachgestellt (`meta/versions/1.21.11-0.19.3/1.21.11-0.19.3.jar` zwischen Bibliotheken, Profilen und Fabric-Loader; Test „findet die Client-Datei der Modrinth-App …“).
+- **Nicht getestet:** die automatische Suche auf einem echten Windows-PC mit CurseForge, Modrinth oder Prism. Für Prism ist nur der Ordner des Launchers belegt, nicht die genaue Lage der Datei darin; deshalb sucht die App dort rekursiv.
