@@ -130,12 +130,12 @@ KI und regelbasierter Text-Leser liefern **dasselbe flache Planformat** (`src/co
 | Gruppe | Felder |
 |---|---|
 | Text | `explanation` (kurze deutsche Zusammenfassung), `unsupported` (Wünsche, die der Generator nicht baut) |
-| Auswahl | `kind`, `style`, `palette`, `theme`, `size`, `roofType`, `roofProfile`, `wings`, `annex`, `tower`, `towerPosition`, `symmetry`, `windows`, `windowFamily`, `doorFamily`, `lanternDensity` – jeweils mit `"auto"` für „nicht angegeben“ |
+| Auswahl | `kind`, `style`, `palette`, `theme`, `size`, `composition` (Bauform, z. B. `cross_gable`, `chalet`, `pagoda`; seit der Ausbaustufe „Profi-Builds“), `roofType`, `roofProfile`, `wings`, `annex`, `tower`, `towerPosition`, `symmetry`, `windows`, `windowFamily`, `doorFamily`, `lanternDensity` – jeweils mit `"auto"` für „nicht angegeben“ |
 | Zahlen | `detailLevel`, `floors`, `width`, `depth`, `overhang`, `dormers` – `null` für „nicht angegeben“ |
 | Schalter | `porch`, `balcony`, `chimney`, `oriel`, `jetty`, `garden`, `soulLanterns`, `garland`, `christmasTree`, `presents`, `snow` – `null` für „nicht angegeben“ |
 | Materialien | `wallMaterial`, `roofMaterial`, `frameMaterial`, `plinthMaterial`, `accentMaterial` – nur aus einer festen Liste je Rolle, nur wenn ein Material genannt wird |
 
-Alle Felder sind Pflicht; das macht die strukturierte Ausgabe robuster. `normalizePlan` korrigiert kleine Abweichungen (gerade Maße → ungerade, Grenzen, stilfremde Palette), danach prüft Zod streng. Die App zeigt den Plan Feld für Feld an.
+Alle Felder sind Pflicht; das macht die strukturierte Ausgabe robuster. Die Bauformen je Stil stehen im Prompt (`src/core/ai/prompt.ts`), mehrere Beispiele zeigen sie (`fewShotExamples.ts`); eine stilfremde Bauform wird gebaut, aber als Hinweis gemeldet. Die technische Option „Fundament nach unten“ (`foundation`) ist bewusst **kein** Planfeld: Sie gehört zum Einfügen in die Welt, nicht zum Wunsch, und wird nur in den Feinparametern eingestellt. `normalizePlan` korrigiert kleine Abweichungen (gerade Maße → ungerade, Grenzen, stilfremde Palette), danach prüft Zod streng. Die App zeigt den Plan Feld für Feld an.
 
 ## Technik
 
@@ -175,8 +175,8 @@ Alle Felder sind Pflicht; das macht die strukturierte Ausgabe robuster. `normali
 
 ## Testset und Messung
 
-- `tests/fixtures/planTestset.ts` enthält **77 deutsche Wünsche** mit den erwarteten Planfeldern.
-- Der **regelbasierte Text-Leser** trifft alle 77 vollständig (`tests/unit/planTestset.test.ts`), und jeder dieser Wünsche wird zusätzlich bis zum fertigen Bauwerk erzeugt und geprüft (`tests/unit/wishesEndToEnd.test.ts`).
+- `tests/fixtures/planTestset.ts` enthält **85 deutsche Wünsche** mit den erwarteten Planfeldern (davon 8 zu Bauformen).
+- Der **regelbasierte Text-Leser** trifft alle 85 vollständig (`tests/unit/planTestset.test.ts`), und jeder dieser Wünsche wird zusätzlich bis zum fertigen Bauwerk erzeugt und geprüft (`tests/unit/wishesEndToEnd.test.ts`).
 - **Messung mit einem echten Modell** (auf dem Haupt-PC, nachdem die KI in der App eingerichtet ist). Der Lauf nimmt den in der App gewählten Anbieter (sonst `.env.local`):
   In PowerShell:
   ```text

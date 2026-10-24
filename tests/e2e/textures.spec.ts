@@ -16,7 +16,7 @@ test('echte Texturen: Minecraft-Datei auswählen, texturierte Vorschau, umschalt
   await page.getByTestId('texture-file-input').setInputFiles({ name: '1.21.11.jar', mimeType: 'application/java-archive', buffer: fakeClientJar() });
 
   await expect(page.getByTestId('texture-status')).toHaveAttribute('data-ready', 'true', { timeout: 60_000 });
-  await expect(page.getByTestId('texture-status')).toContainText('Minecraft 1.21.11');
+  await expect(page.getByTestId('texture-status')).toContainText('Minecraft 1.21.11', { timeout: 45_000 });
   const scene = page.getByTestId('scene');
   await expect(scene).toHaveAttribute('data-render-mode', 'textures');
   await waitForRenderedModel(page);

@@ -9,9 +9,12 @@ Zielversion ist **Minecraft Java 1.21.11** (DataVersion 4671); 1.21.1 ist als zw
 - **Fünf Bauwerkstypen:** Haus, Weihnachtsbaum, Marktstand, Bahnhof und Turm (Rundturm mit Kegel, Kuppel oder Zinnen).
 - **Acht Baustile als Daten:** Mittelalter, Fantasy/Märchen, Rustikal, Nordisch, Japanisch, Kirschblüte, Modern, Mediterran – mit 36 Paletten, Materialrollen (Wand, Rahmen, Dach, Sockel …), Proportionen, Dachvorlieben und Fenster- und Türvorlagen. Dazu das **Thema** unabhängig vom Stil: kein Thema, Winter oder Weihnachten.
 - **Häuser mit echter Bautechnik:**
+  - **Bauformen statt Kiste:** je Stil 4–6 Archetypen (z. B. Kreuzgiebelhaus, schmales Stadthaus, Treppenturm, Kapelle mit Turm, Chalet mit Balkon, Blockhütte mit Veranda, Hexenhaus mit Rundturm, Langhaus, Pagode, Engawa-Haus, versetzte Kuben, Villa mit Turm) mit Höhenstaffelung von Hauptkörper, Querteilen und Türmen; wählbar unter „Feinparameter → Bauform“.
+  - **Tiefe in jeder Fassade:** Glas und Türblatt sitzen eine Ebene in der Wand (Laibung mit Futter), Läden oder Blumenkästen nach Stil, mindestens drei Tiefenebenen je Hauptfassade.
   - Sockel mit Treppenschürze an Ecken und Eingang, Rahmen und Ständer eine Ebene vor der Wand, Fachwerk mit Streben und geschlossenen Eckfeldern (Fassadenrhythmus), Geschossbänder, Auskragung (Jetty) mit einer Knagge unter jedem Ständer – keine flache Wand breiter als 5 Blöcke. Holzhäuser ohne Fachwerk nur mit Eckpfosten, Blockhäuser aus liegenden Stämmen mit Kreuzecken, mediterrane Häuser mit Gurtgesims; Verwitterung in unregelmäßigen Flecken statt als Band.
   - Echte Geschosse mit Böden und Treppe oder Leiter; in jedem Raum eine Laterne an der Kette, im Dachboden eine stehende Laterne (kein dunkler Raum, Fenster leuchten nachts). Sonst bleiben die Innenräume frei.
   - Begehbarer Eingang auch bei hohem Sockel: Podest und je Sockelreihe eine Stufe (höchstens ½ Block), mit Wangen.
+  - Dachkanten mit Schwung: erhöhter Ortgang mit ausgestelltem Fuß, durchhängender First (Fantasy), hochgezogene Ecken (Japanisch); Ziegelreihen, Strohbuckel, lebendes Moos-Dach; gestufte Turmhauben mit Laternenstube; Laternen an allen freien Traufecken.
   - Dächer aus Treppen und Stufen: Sattel, Walm, Krüppelwalm, Irimoya (unten Walm, oben Giebel – für Japanisch und Kirschblüte), Pyramide, Mansard, Gambrel, Saltbox, A-Frame, Flach, Pult, Pagode; Profile gerade, steil, flach, ausgestellt, Glocke, konvex.
   - Eine Neigung je Haus aus einer Neigungsleiter (27°–63°) statt oben abgeflachter Steildächer; die Dachhöhe folgt Stil und Wandhöhe. Kontrast nur als schmales Ortgangbrett, Traufe im Dachmaterial; Dachfläche mit dunkleren Streifen von der Traufe und Bleiche am First; Untersicht, First-Varianten, Firstzier je Stil (Blitzableiter, Endstab, gekreuzte Windbretter, aufgebogene Firstenden), Gauben auf beiden Dachseiten, Kehlen bei Flügeln.
   - Giebelfelder: Fachwerkgiebel eine Ebene zurück mit Firstständer und Kehlbalken, sonst Giebelfenster auf der Firstachse.
@@ -19,15 +22,17 @@ Zielversion ist **Minecraft Java 1.21.11** (DataVersion 4671); 1.21.1 ist als zw
   - Fenster W01–W18 und Türen T01–T10 als Vorlagen (Simse, Läden, Blumenkästen, Bögen, Rundfenster, Shoji, Bandfenster, Bleiglas, Doppeltür, Portal …), Laternen an jedem Eingang.
   - Flügel (L/T/U), Zwerchgiebel, Anbau, eckiger oder runder Turm, Erker, Balkon, Veranda, Kamin mit Rauch; Grundrisse länglich je Stil (Mittelalter und Fantasy mit dem Giebel zur Straße), Modern aus zwei versetzten Kuben mit dünner Dachplatte.
 - **Türme:** Zinnenkrone auf einem tragenden Konsolenkranz, wenige Bänder, Kegel mit Traufknick und schlanker Spitze, Hexenhut, Kuppel mit Tambour, Zwiebelhelm, Bogenfenster.
-- **Landschaft je Stil:** geschwungene Wege aus der Palettenrolle Weg, Grenzen (Hecke, Zaun, Feldmauer, Bambuszaun …) mit Tor, 14 Laternenpfahl-Designs im Rhythmus, Beete, Büsche, Bäume, Felsen, Holzstapel; im Winter keine Blumen. Das Grundstück wächst mit dem Haus.
+- **Landschaft je Stil:** geschwungene Wege aus der Palettenrolle Weg mit Bordsteinen, Grenzen (Hecke, Zaun, Feldmauer, Bambuszaun …) mit Tor, 14 Laternenpfahl-Designs im Rhythmus, Büsche in drei Größen am Sockel, Beete, Blumen-Drifts, hohes Gras und große Farne, Bäume, Felsen, Holzstapel, Nutzgarten mit Vogelscheuche, Ranken an Kamin und Wänden; im Winter keine Blumen. Jede Seite ist gestaltet: Hintertür mit eigenem Weg. Das Grundstück wächst mit dem Haus.
+- **Fundament nach unten** (optional, 1–4 Lagen): Sockel und Erdreich reichen unter den Boden, am Rand eine Böschung mit Grasstufen – das Bauwerk schwebt nicht auf unebenem Gelände; beim Einfügen bleibt der Boden auf Höhe deiner Füße.
 - **Weihnachtsmarkt und Bahnhof:** Markthütten mit Klappladen, Gasse mit Lichterketten; Bahnhof mit Hausbahnsteig unter Pultdach, Gleisbett mit Schwellen, runder Uhr, Signalen und Güterschuppen.
-- **Festschicht:** Weihnachtsbaum mit Etagen, Schmuck in Stilfarben und mitwachsendem Stern; Geschenkgruppen unter dem Baum oder neben dem Eingang; Girlanden mit Durchhang, Schleifen an Ankerpunkten und verstecktem Licht; Kränze als Ring; Kerzen je Fassade einheitlich; Laternen an Ketten. Jeder Stil hat ein eigenes Fest-Kit (z. B. Japanisch mit Kadomatsu statt Baum, Nordisch mit Julbock, Modern mit Lichtband). Schnee nur auf ausdrücklichen Wunsch, und nur dort, wo er im Spiel liegen bleibt; keine Eiszapfen.
+- **Festschicht:** Weihnachtsbaum mit Etagen, Schmuck in Stilfarben und mitwachsendem Stern; Geschenkgruppen unter dem Baum oder neben dem Eingang; Girlanden mit Durchhang, Schleifen an Ankerpunkten und verstecktem Licht; bunte Lichterketten aus Kerzen an Traufen, Ortgängen und First; Mini-Tannen am Weg zur Tür; Kränze als Ring; Kerzen je Fassade einheitlich; Laternen an Ketten. Jeder Stil hat ein eigenes Fest-Kit (z. B. Japanisch mit Kadomatsu statt Baum, Nordisch mit Julbock, Modern mit Lichtband). Schnee nur auf ausdrücklichen Wunsch und nur als Schneeschicht, dort, wo sie im Spiel liegen bleibt (nie Schneeblöcke); keine Eiszapfen.
 - **Geformte Blöcke wie im Spiel:** Treppen, Stufen, Zäune, Mauern, Scheiben, Türen, Falltüren, Laternen, Ketten, Kerzen, Leitern … Ein Zustandsauflöser berechnet Treppenecken und Verbindungen so, wie Minecraft es beim Setzen täte; ein Validator verhindert Blöcke, die im Spiel abfallen würden.
 - **Freitext auf Deutsch**, z. B. „mittelalterliches Fachwerkhaus mit zwei Geschossen, Erker und rundem Turm vorne links“:
   - Ein regelbasierter Parser erkennt Typ, Stil, Thema, Größe, Maße, Dach, Bauteile, Fenster- und Türformen, Materialien und Verneinungen und erklärt, was er verstanden hat.
   - Wünsche, die nicht gebaut werden (z. B. Pool, Möbel), erscheinen als „nicht umsetzbar“.
 - **Einstellungen und Feinparameter:** Typ, Stil, Thema, Größe, Detailgrad, Seed, Minecraft-Version; dazu Maße, Geschosse, Dach, Form und Bauteile, Fenster- und Türform, Licht und Festschmuck, Palette und Material je Rolle. Manuelle Einstellungen haben Vorrang vor dem Text; Konflikte und angepasste Wünsche werden angezeigt.
-- **Drei echte Varianten** pro Generierung, bei gleicher Eingabe bitgenau reproduzierbar.
+- **Die drei besten Varianten:** Bei Häusern bewertet die App 8–16 Kandidaten (je Größe) mit Kennzahlen der Bauqualität (Tiefe, Silhouette, Materialien, Rückseite, Licht) und zeigt die drei besten, die sich deutlich unterscheiden (andere Bauform oder Silhouette). Gleiche Eingabe, gleiche drei – bitgenau reproduzierbar.
+- **Eigene Detail-Kits:** Fenster, Türen, Balkone, Gaubenfronten und Kaminköpfe, die du in Minecraft baust und mit WorldEdit speicherst, setzt der Generator vor seinen eigenen Vorlagen ein: [`docs/DETAIL_KITS.md`](docs/DETAIL_KITS.md).
 - **Große Bauwerke** bis 192 × 384 × 192 Blöcke (volle Bauhöhe), komprimierter Transport, Vorschau in Chunks im Web Worker.
 - **3D-Vorschau mit echten Minecraft-Texturen** aus deiner eigenen Installation (offizieller Launcher, CurseForge, Modrinth, Prism) oder nach Bestätigung der EULA direkt von Mojang; geformte Blöcke mit ihrer echten Geometrie. Ohne Texturen zeigt sie Farben. Details: [`docs/TEXTURES.md`](docs/TEXTURES.md).
 - **Editor:** Blöcke in 3D setzen, entfernen, ersetzen, per Pipette aufnehmen; Blockzustände wählen; Material global austauschen; Rückgängig/Wiederholen. Nachbarn (Treppenecken, Zäune, Türhälften) passen sich wie im Spiel an.
@@ -98,7 +103,8 @@ src/core/style/          Materialien, Paletten, Stile, Lints, Verwitterung, Text
 src/core/generator/      Parser, Haus (Plan, Wände, Dächer, Öffnungen, Bauteile, Rundturm), Baum, Markt, Bahnhof, Turm, Landschaft, Festschicht
 src/core/templates/      Fenster- und Türvorlagen als Daten, Balkon
 src/core/geometry/       Kreise, Kugeln, Kegel, Bögen, Zinnen
-src/core/analysis/       Materialliste, Bau-Lints
+src/core/analysis/       Materialliste, Bau-Lints, Kennzahlen der Bauqualität
+src/core/kits/           Detail-Kits: Einlesen, Vorlagen, Bibliothek (Laden: src/lib/kits/)
 src/core/schema/         BuildSpec v2 (Zod), Migration, VoxelModel, Text/Einstellungs-Auflösung
 src/core/editor/         Editier-Operationen und Verlauf
 src/core/export/         VarInt, Sponge-v3-Writer, unabhängiger NBT-Leser, Validator
@@ -125,6 +131,8 @@ docs/                    Architektur, Kompatibilität, Import, KI, Texturen, Tes
 - [`docs/WORLD_EDIT_IMPORT.md`](docs/WORLD_EDIT_IMPORT.md): Import in Minecraft
 - [`docs/KI.md`](docs/KI.md): KI-Planung einrichten – OpenRouter (Modellempfehlung, Kosten, Datenschutz) oder Ollama lokal
 - [`docs/TEXTURES.md`](docs/TEXTURES.md): echte Minecraft-Texturen in der Vorschau
+- [`docs/DETAIL_KITS.md`](docs/DETAIL_KITS.md): eigene Bauteile aus Minecraft als Detail-Kits
+- [`docs/AUFTRAG_PROFI_BUILDS.md`](docs/AUFTRAG_PROFI_BUILDS.md): Auftrag der Ausbaustufe „Profi-Builds“ (Phasen 1–7); Lückenanalyse in [`research_notes/Referenzen 2026-10/analyse.md`](<research_notes/Referenzen 2026-10/analyse.md>)
 - [`docs/AUFTRAG_PHASEN_1-8.md`](docs/AUFTRAG_PHASEN_1-8.md) und [`docs/PLAN_PHASEN_1-8.md`](docs/PLAN_PHASEN_1-8.md): Auftrag und Umsetzungsplan der Ausbaustufe (Phasen 1–8)
 - [`docs/screenshots/`](docs/screenshots/): Bilder aller Stile und Bauwerkstypen mit echten Texturen
 - [`reports/Minecraft Bautechniken für Generator.md`](<reports/Minecraft Bautechniken für Generator.md>): Recherche zu Minecraft-Bautechniken und Umsetzungsplan für den nächsten Generator (Quellennotizen in `research_notes/`)

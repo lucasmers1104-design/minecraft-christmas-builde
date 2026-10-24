@@ -4,7 +4,9 @@ Lokale Web-App (Next.js 16, React 19, TypeScript strict, three.js). Ein deutsche
 
 **Lies zuerst `AGENTS.md`:** Next.js 16 weicht von deinem Trainingswissen ab, die Doku liegt in `node_modules/next/dist/docs/`.
 
-**Aktueller Großauftrag:** [`docs/AUFTRAG_PROFI_BUILDS.md`](docs/AUFTRAG_PROFI_BUILDS.md) (Profi-Builds: Archetypen, Wandtiefe, Umgebung, Variantenauswahl, Detail-Kits). Abgeschlossen: [`docs/AUFTRAG_PHASEN_1-8.md`](docs/AUFTRAG_PHASEN_1-8.md).
+**Letzter Großauftrag:** [`docs/AUFTRAG_PROFI_BUILDS.md`](docs/AUFTRAG_PROFI_BUILDS.md) (Profi-Builds: Kennzahlen, Archetypen, Wandtiefe, Umgebung, Variantenauswahl, Detail-Kits) – Phasen 1–7 umgesetzt auf `feature/profi-builds`, Ergebnisse in `docs/TEST_REPORT.md` (Abschnitt „Profi-Builds“); Push erst nach Freigabe durch den Creative Director. Davor abgeschlossen: [`docs/AUFTRAG_PHASEN_1-8.md`](docs/AUFTRAG_PHASEN_1-8.md).
+
+**Qualität messbar halten:** `src/core/analysis/buildQuality.ts` misst Tiefe, Silhouette, Materialien, Rückseite und Licht; `tests/unit/buildQuality.test.ts` hält die Untergrenzen fest (dürfen nur steigen). Neue Bauteile über die Schreibprioritäten des `VoxelBuilder` einordnen und mit `lintHouse` (null Befunde) und null Validator-Reparaturen prüfen. Entscheidungen des Creative Directors: Innenräume nur Licht, Schnee nur auf Wunsch und nur als Schneeschicht, keine Eiszapfen.
 
 ## Befehle
 
@@ -27,6 +29,8 @@ Test gegen die echte Minecraft-Client-Datei: Umgebungsvariable `MCB_MINECRAFT_JA
 |---|---|
 | `docs/ARCHITECTURE.md` | Datenfluss, Datenmodelle, Generatoren, API |
 | `docs/TEXTURES.md`, `docs/COMPATIBILITY.md`, `docs/TEST_REPORT.md` | Texturen, Versionen/Registry, Testergebnisse |
+| `docs/DETAIL_KITS.md`, `kits/` | eigene Bauteile des Creative Directors (WorldEdit-`.schem` + JSON), Laden in `src/lib/kits/` |
+| `research_notes/Bauqualitaet 2026-10/`, `research_notes/Referenzen 2026-10/analyse.md` | Recherche zur Bauqualität und Lückenanalyse gegen die Referenzbilder (die Bilder selbst sind fremde Werke und nicht im Repo) |
 | `reports/Minecraft Bautechniken für Generator.md` | Recherchebericht und Umsetzungsplan (Phasen 1–8) |
 | `research_notes/Minecraft Bautechniken für Generator/` | Quellennotizen mit Paletten, Dach-, Fenster-, Kreis- und Winterdetails, Helligkeitstabelle (`helligkeit_texturen.tsv`) und Rechenskripten (`skripte/`) |
 | `src/core/` | reine Logik: Schema, Registry, Generatoren, Editor, Export, Texturen/Modell-Backen |

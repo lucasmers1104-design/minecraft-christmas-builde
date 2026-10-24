@@ -27,7 +27,7 @@ test.describe('Phase 3: Projekte (IndexedDB)', () => {
     expect(await waitForRenderedModel(page)).toBe(hash);
     await expect(page.getByTestId('variant-1')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('prompt-input')).toHaveValue('Ein kleines Haus aus Eiche');
-    await expect(page.getByTestId('preview-dimensions')).toContainText('27 × 15 × 29');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('25 × 17 × 31');
 
     const { report } = await downloadSchematic(page);
     expect(report.ok).toBe(true);

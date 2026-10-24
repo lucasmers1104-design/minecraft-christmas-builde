@@ -23,7 +23,8 @@ export const KITS_DIR_ENV = 'MCB_KITS_DIR';
 
 export function kitsDir(env: Env = process.env): string {
   const custom = env[KITS_DIR_ENV]?.trim();
-  return custom ? resolve(process.cwd(), custom) : join(process.cwd(), 'kits');
+  // The kits folder is user data read at run time, not part of the build (Turbopack must not trace it).
+  return custom ? resolve(/*turbopackIgnore: true*/ process.cwd(), custom) : join(/*turbopackIgnore: true*/ process.cwd(), 'kits');
 }
 
 export interface KitFileProblem {
@@ -77,7 +78,7 @@ export async function loadKits(options: { dir?: string } = {}): Promise<KitLoadR
 
   let rootStat;
   try {
-    rootStat = await stat(dir);
+    rootStat = await stat(/*turbopackIgnore: true*/ dir);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return empty();
     problems.push({ file: '.', problems: [`Der Kit-Ordner ${dir} ist nicht lesbar (${(error as NodeJS.ErrnoException).code ?? 'Fehler'}).`] });
@@ -91,7 +92,7 @@ export async function loadKits(options: { dir?: string } = {}): Promise<KitLoadR
   // 1. Inventory: file pairs per scope folder, plus a signature for the cache.
   const pairs = new Map<string, Pair>();
   const signature: string[] = [];
-  const rootEntries = (await readdir(dir, { withFileTypes: true })).sort((a, b) => byCodeUnits(a.name, b.name));
+  const rootEntries = (await readdir(/*turbopackIgnore: true*/ dir, { withFileTypes: true })).sort((a, b) => byCodeUnits(a.name, b.name));
   for (const entry of rootEntries) {
     // Every entry name is part of the signature: new folders or stray files change the problems.
     signature.push(`${entry.name}|${entry.isDirectory() ? 'dir' : 'file'}`);
@@ -105,7 +106,7 @@ export async function loadKits(options: { dir?: string } = {}): Promise<KitLoadR
       continue;
     }
     const scope = entry.name;
-    const files = (await readdir(join(dir, scope), { withFileTypes: true })).sort((a, b) => byCodeUnits(a.name, b.name));
+    const files = (await readdir(join(/*turbopackIgnore: true*/ dir, scope), { withFileTypes: true })).sort((a, b) => byCodeUnits(a.name, b.name));
     for (const file of files) {
       const rel = `${scope}/${file.name}`;
       signature.push(`${rel}|${file.isDirectory() ? 'dir' : 'file'}`);
@@ -119,7 +120,7 @@ export async function loadKits(options: { dir?: string } = {}): Promise<KitLoadR
         continue;
       }
       if (ext !== 'schem' && ext !== 'json') continue;
-      const info = await stat(join(dir, scope, file.name));
+      const info = await stat(join(/*turbopackIgnore: true*/ dir, scope, file.name));
       signature.push(`${rel}|${info.size}|${info.mtimeMs}`);
       const name = baseName(file.name);
       const id = `${scope}/${name}`;
@@ -146,7 +147,7 @@ export async function loadKits(options: { dir?: string } = {}): Promise<KitLoadR
       continue;
     }
     try {
-      const [schematic, description] = await Promise.all([readFile(join(dir, pair.scope, pair.schem)), readFile(join(dir, pair.scope, pair.json), 'utf8')]);
+      const [schematic, description] = await Promise.all([readFile(join(/*turbopackIgnore: true*/ dir, pair.scope, pair.schem)), readFile(join(/*turbopackIgnore: true*/ dir, pair.scope, pair.json), 'utf8')]);
       const result = parseKit({ scope: pair.scope, name: pair.name, schematic, description });
       if (result.ok) kits.push(result.kit);
       else problems.push({ file: `${base}.schem`, problems: result.problems });

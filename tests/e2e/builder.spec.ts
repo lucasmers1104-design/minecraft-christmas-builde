@@ -14,7 +14,7 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
     const hash = await waitForRenderedModel(page);
     await expectCanvasHasContent(page);
     await expect(page.getByTestId('model-hash')).toHaveText(hash);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('33 × 15 × 29');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('31 × 19 × 33');
 
     // Material list is consistent: the item rows add up to the displayed item total.
     const total = Number((await page.getByTestId('material-total').innerText()).replace(/\D/g, ''));
@@ -47,7 +47,11 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
     const second = await waitForRenderedModel(page);
     expect(second).not.toBe(first);
     await expect(page.getByTestId('model-hash')).toHaveText(second);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('Seed 2');
+    // Houses show the best candidates: the second variant carries its own seed.
+    const seed = /Seed (\d+)/.exec(await page.getByTestId('variant-1').innerText())?.[1];
+    expect(seed).toBeDefined();
+    await expect(page.getByTestId('preview-dimensions')).toContainText(`Seed ${seed}`);
+    await expect(page.getByTestId('variants-explain')).toContainText('Kandidaten');
 
     const secondFile = await downloadSchematic(page);
     expect(secondFile.report.ok).toBe(true);
@@ -65,7 +69,7 @@ test.describe('Weihnachtshaus: Eingabe → 3D → Materialliste → .schem', () 
     await expect(page.getByTestId('stale-hint')).toHaveCount(0);
     const small = await waitForRenderedModel(page);
     expect(small).not.toBe(medium);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('31 × 15 × 29');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('27 × 17 × 29');
   });
 
   test('alle Bauwerkstypen sind wählbar; Speichern erst nach dem Generieren', async ({ page }) => {
@@ -117,7 +121,7 @@ test.describe('Phase 2: Freitext und Feinparameter', () => {
 
     await page.getByTestId('generate-button').click();
     await waitForRenderedModel(page);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('31 × 15 × 29');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('27 × 17 × 29');
     const table = page.getByTestId('material-table');
     await expect(table).toContainText('minecraft:oak_planks');
     await expect(table).not.toContainText('minecraft:snow_block');
@@ -131,7 +135,7 @@ test.describe('Phase 2: Freitext und Feinparameter', () => {
     await expect(page.getByTestId('parse-conflicts')).toContainText('hat Vorrang');
     await page.getByTestId('generate-button').click();
     await waitForRenderedModel(page);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('37 ×');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('35 ×');
     await page.getByTestId('reset-manual').click();
     await expect(page.getByTestId('control-size')).toContainText('aus Text');
     await expect(page.getByTestId('stale-hint')).toBeVisible();
@@ -144,7 +148,7 @@ test.describe('Phase 2: Freitext und Feinparameter', () => {
     await page.getByTestId('fine-options-materials-roof').selectOption('bricks');
     await page.getByTestId('generate-button').click();
     await waitForRenderedModel(page);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('47 ×');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('45 ×');
     await expect(page.getByTestId('material-table')).toContainText('minecraft:brick_stairs');
     const { report } = await downloadSchematic(page);
     expect(report.ok).toBe(true);
@@ -181,7 +185,7 @@ test.describe('Phase 4: weitere Bauwerkstypen', () => {
     await page.getByTestId('fine-options-porch').selectOption('true');
     await page.getByTestId('generate-button').click();
     await waitForRenderedModel(page);
-    await expect(page.getByTestId('preview-dimensions')).toContainText('36 × 30 × 32');
+    await expect(page.getByTestId('preview-dimensions')).toContainText('34 × 34 × 36');
     await page.getByTestId('control-kind').getByText('Weihnachtsbaum', { exact: true }).click();
     await expect(page.getByTestId('fine-options-tower')).toHaveCount(0);
     await expect(page.getByTestId('fine-options-snow')).toBeVisible();

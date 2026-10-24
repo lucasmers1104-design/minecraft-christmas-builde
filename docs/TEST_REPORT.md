@@ -1,5 +1,75 @@
 # Testbericht
 
+## Ausbaustufe „Profi-Builds“ (Stand 2026-10-24, Arbeits-Laptop)
+
+Auftrag: [`docs/AUFTRAG_PROFI_BUILDS.md`](AUFTRAG_PROFI_BUILDS.md), Phasen 1–7 auf Branch `feature/profi-builds` (nur lokal, Push erst nach Freigabe). Alle Zahlen stammen aus Befehlen auf dem **Arbeits-Laptop** (Windows 10 Home 10.0.19045, Intel i3, 8 GB RAM, Node.js 24.22.1, Microsoft Edge statt Playwright-Chromium).
+
+| Befehl | Ergebnis |
+|---|---|
+| `npx tsc --noEmit` | ✅ keine Fehler |
+| `npx eslint .` | ✅ 0 Fehler, 0 Warnungen |
+| `npx vitest run` (ohne Minecraft-Datei) | ✅ 49 Dateien, **1056 Tests bestanden**, 44 übersprungen (WorldEdit-Reader, echte Client-Datei, Iso-Renderer und KI-Testset als Opt-in); Dauer 215 s |
+| `npm run build` | ✅ Produktions-Build ohne Fehler und ohne Warnungen (Turbopack) |
+| `PW_CHANNEL=msedge npx playwright test --trace=off` gegen den Produktions-Build (`next start`) | ✅ **28 von 28** (Desktop 27, Mobil 1), Dauer 11 min. Vorher: Mit Trace-Aufzeichnung (Standard `retain-on-failure`) liefen auf dem Laptop 10 Tests ins 15-s-Zeitlimit, weil die Bildschirmaufnahme Server und Software-WebGL die CPU nimmt; ohne Trace scheiterten nur noch 8 Maß-Erwartungen (Bauformen und Variantenauswahl ändern die Maße – aus den echten Werten übernommen). Ein weiterer Lauf hatte 4 Zeitüberschreitungen beim Warten auf Generieren + Rendern bzw. Texturaufbereitung, die einzeln grün waren; diese Wartezeiten sind jetzt 45 s statt 15 s. |
+
+### Breitendurchlauf (temporärer Vitest-Lauf, nicht eingecheckt)
+
+Jedes Bauwerk wurde vollständig erzeugt (inklusive Landschaft, Festschicht, Zustandsauflöser und Validator) und mit `lintHouse` (Häuser, Türme) geprüft:
+
+| Umfang | Bauwerke | Reparaturen | Lint-Befunde | Fehler |
+|---|---|---|---|---|
+| Häuser: 8 Stile × 4 Größen × 3 Themen × 3 Detailgrade × Seeds 1–2 × Minecraft 1.21.11 und 1.21.1 | 1152 | 0 | 0 | 0 |
+| Optionen: 10 Sätze (Schnee, Schnee + Fundament 2, Fundament 4, ohne Garten, keine/viele Laternen, viele Fenster + Balkon + Erker, ohne Kamin + Veranda, Rundturm, U-Flügel) × 8 Stile × klein/groß × ohne Thema/Weihnachten × Seeds 1–2 × beide Versionen | 1280 | 0 | 0 | 0 |
+| Weitere Bauwerkstypen: Baum, Marktstand, Bahnhof, Turm × 8 Stile × 4 Größen × 3 Themen × mit/ohne Schnee × beide Versionen | 1280 | 0 | 0 | 0 |
+| Alle 15 Bauformen × 8 Stile × 4 Größen × Seeds 1–3, ohne Thema und Weihnachten | 2880 | 0 | 0 | 0 |
+
+Gefunden und behoben (je ein Regressionstest in `tests/unit/breadthRegression.test.ts`): ein Ersatzfenster überschrieb bei U-Flügeln die Hintertür; das Laibungsfutter eines Ersatzfensters überschrieb an einer Innenecke die Laterne eines tiefen Türportals; Türlaternen fanden neben tiefen Portalen keinen Platz.
+
+**Kennzahlen** (1152 Häuser des ersten Laufs): mittlere Wertung **0,973** (niedrigste 0,823). Anteil im Zielbereich je Kennzahl: Hauptfassaden mit drei Tiefenebenen 0,90, Relief 0,82, Giebeltiefe 0,98, Massen 0,81, Traufhöhen 0,78, Firsthöhen 0,81, Akzente 0,97, Dachanteil 0,97, Hauptmaterial 1,00, Materialfamilien 0,93, Detaildichte 0,84, dichteste Fassade 0,76, Rückseite 0,92, Seiten 0,99, Traufecken mit Licht 0,97, Eingang und Fenster mit Licht 1,00. Generierungszeit je Bauwerk (ein Seed, ohne Variantenauswahl): Median 53 ms, p95 108 ms, höchstens 219 ms.
+
+### Während der Stufe gefundene und behobene Fehler (Auswahl)
+
+- Türen fehlten, wenn die Türachse auf ein einspaltiges Ständerfeld fiel (alter, unentdeckter Fehler): Ständer neben der Tür entfallen, Ersatztür, neuer Lint „eingang“.
+- Außenkamin stand vor einem Fenster und mitten durch einen Balkon; bei vorkragendem Giebel stand er frei vor dem Erdgeschoss.
+- Innentreppen an der Rückwand liefen durch das Türblatt der neuen Hintertür.
+- Große Mini-Tannen schwebten (Stamm fehlte); Bordsteine im mittelalterlichen Stil hatten das Material des Weges; der Zaun der Vogelscheuche war in 1.21.1 ein Block, den es dort nicht gibt.
+- Schneeboden aus Schneeblöcken widersprach der Entscheidung des Creative Directors: jetzt nur Schneeschichten.
+- Die drei Funde des Breitendurchlaufs (siehe oben).
+
+### Kennzahlen je Phase (8 Stile × klein/mittel/groß × Seeds 1–2)
+
+| Stand | mittlere Wertung | 3 Tiefenebenen | Traufecken mit Licht | Rückseite | Massen | Firsthöhen |
+|---|---|---|---|---|---|---|
+| vor der Stufe (Phase 1) | 0,85 | 0,21 | 0,13 | 0,50 | 0,50 | 0,50 |
+| Phase 2 (Bauformen) | 0,87 | – | – | – | 0,79 | 0,79 |
+| Phase 3 (Tiefe, Dachkanten, Licht) | 0,97 | 0,92 | 0,94 | 0,50 | – | – |
+| Phase 4 (Umgebung, Hintertür) | 0,98 | 0,92 | 0,94 | 0,96 | – | – |
+
+Die Untergrenzen hält `tests/unit/buildQuality.test.ts` fest.
+
+### Variantenauswahl: gemessene Zeit (Laptop, warmer Prozess)
+
+| Größe | vorher: 3 Seeds | jetzt: neue Eingabe | jetzt: Seed + 1 / erneut |
+|---|---|---|---|
+| klein (16 Kandidaten) | 182 ms | 462 ms | 186 ms |
+| mittel (16) | 218 ms | 613 ms | 245 ms |
+| groß (12) | 295 ms | 657 ms | 325 ms |
+| riesig (8) | 341 ms | 676 ms | 402 ms |
+
+Eine neue Eingabe kostet auf dem Laptop 0,3–0,4 s mehr; Seed-Schritte und erneutes Generieren nutzen die zwischengespeicherten Bewertungen. Auf dem Haupt-PC **nicht gemessen**.
+
+**Nicht geprüft (Stufe „Profi-Builds“):**
+
+- **Echte Texturen:** Sichtprüfung nur mit dem Farb-Renderer (`tests/integration/renderIso.test.ts`); Screenshots mit echten Texturen (`scripts/screenshots.mjs`) auf dem Haupt-PC nachholen.
+- **WorldEdit-Reader** (`npm run test:worldedit`) und **Einfügen in eine echte Welt** – inklusive Fundament-Offset `[0, −N, 0]`, Kerzen auf Falltüren, hohem Gras, Ranken, Hintertür.
+- **Detail-Kits aus echtem WorldEdit-Export:** nur mit im Test geschriebenen Kits geprüft.
+- **KI-Testset** mit echtem Modell (neues Planfeld `composition`).
+- **Laufzeit auf dem Haupt-PC** (Variantenauswahl) und Playwright mit Trace-Aufzeichnung auf dem Haupt-PC.
+
+**Galerie** vorher/nachher je Stil (Farb-Renderer): als private Artifact-Seite veröffentlicht, Link im Abschlussbericht an den Creative Director.
+
+---
+
 ## Ausbaustufe „OpenRouter und neue Oberfläche“ (Stand 2026-10-23, Arbeits-Laptop)
 
 KI-Planung über OpenRouter (Einstellungsdialog „KI einrichten“, Schlüssel nur lokal, Modellempfehlung), überarbeitete Oberfläche (`docs/UI_DESIGN.md`). Alle Ergebnisse stammen aus Befehlen auf dem **Arbeits-Laptop** (Windows 10 Home, Node.js 24.22.1, Microsoft Edge statt Playwright-Chromium), Branch `feature/openrouter-gui`.

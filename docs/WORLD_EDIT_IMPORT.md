@@ -54,35 +54,42 @@ Auf unebenem Gelände würde ein Bauwerk, dessen unterste Ebene der Boden ist, a
 
 ## Maße der Standard-Bauwerke
 
-Stil „Rustikal“, Thema „Weihnachten“, Seed 1, keine Feinparameter (Breite X × Höhe Y × Tiefe Z, einschließlich Garten, Weg und Dachüberstand):
+Stil „Rustikal“, Thema „Weihnachten“, Seed-Eingabe 1, keine Feinparameter, jeweils die **erste Variante** (Breite X × Höhe Y × Tiefe Z, einschließlich Garten, Weg und Dachüberstand; gemessen am 24.10.2026). Häuser zeigen die beste von mehreren Kandidaten ab Seed 1, deshalb steht ihr eigener Seed dabei:
 
 | Bauwerk | Klein | Mittel | Groß | Riesig |
 |---|---|---|---|---|
-| Haus | 25 × 15 × 24 | 27 × 16 × 26 | 29 × 20 × 26 | 33 × 21 × 35 |
+| Haus | 27 × 17 × 29 (Seed 12) | 31 × 19 × 33 (Seed 2) | 35 × 19 × 37 (Seed 2) | 35 × 29 × 43 (Seed 2) |
 | Weihnachtsbaum | 17 × 15 × 17 | 21 × 21 × 21 | 23 × 29 × 23 | 33 × 43 × 33 |
-| Marktstand | 13 × 14 × 14 | 13 × 14 × 21 | 21 × 20 × 30 | 29 × 20 × 30 |
-| Bahnhof | 33 × 22 × 28 | 35 × 23 × 30 | 39 × 23 × 32 | 43 × 23 × 34 |
-| Turm | 17 × 27 × 20 | 19 × 33 × 22 | 21 × 43 × 24 | 25 × 64 × 28 |
+| Marktstand | 13 × 12 × 16 | 13 × 13 × 21 | 42 × 17 × 23 | 54 × 21 × 23 |
+| Bahnhof | 39 × 27 × 27 | 54 × 28 × 29 | 76 × 30 × 31 | 80 × 30 × 33 |
+| Turm | 17 × 25 × 20 | 19 × 31 × 22 | 23 × 43 × 26 | 25 × 61 × 28 |
+
+Mit „Fundament nach unten“ (N Lagen) wächst die Höhe Y um N.
 
 Andere Stile, Flügel, Türme, Anbauten und eigene Maße ändern das Volumen. Die genauen Maße zeigt die App über der Vorschau und im Bereich „Export“. Die größte erlaubte Box ist 192 × 384 × 192.
 
 ## In-Game-Checkliste nach dem Einfügen
 
-Am Beispiel Haus „Mittel“ mit den Standardwerten oben (27 × 16 × 26, Palette „Blockhaus aus Stämmen“, Satteldach mit First entlang X, Eingang auf der Nordseite). Bitte jeden Punkt abhaken:
+Am Beispiel Haus „Mittel“ mit den Standardwerten oben (erste Variante: Seed 2, 31 × 19 × 33, Bauform „Chalet mit Balkon“, Palette „Fichtenhütte mit heller Ortgangkante“, Satteldach mit dem Giebel zur Straße, Eingang auf der Nordseite, Hintertür auf der Ostseite). Bitte jeden Punkt abhaken:
 
 | | Prüfpunkt | Erwartung |
 |---|---|---|
-| ☐ | Maße | 27 Blöcke in X, 16 in Y, 26 in Z; nichts fehlt am Rand |
+| ☐ | Maße | 31 Blöcke in X, 19 in Y, 33 in Z; nichts fehlt am Rand |
 | ☐ | Eingang | Nordseite (−Z); untere und obere Türhälfte vorhanden, Tür lässt sich öffnen; davor Stufe und Weg, Laternen neben der Tür |
 | ☐ | Treppen | Dachtreppen bilden an Ecken und Kehlen saubere Innen- und Außenecken (keine „falsch gedrehten“ Stufen); Konsolen und Simse sind Kopfüber-Treppen |
 | ☐ | Zäune, Mauern, Scheiben, Gitter | verbinden sich wie in der Vorschau, keine einzelnen Pfosten, wo eine Verbindung zu sehen war |
 | ☐ | Laternen und Ketten | hängende Laternen hängen an Ketten oder unter Blöcken, stehende stehen auf Pfosten; keine fällt beim nächsten Blockupdate ab |
 | ☐ | Laub (Girlanden, Bäume) | verwelkt nach einigen Minuten nicht (persistentes Laub) |
 | ☐ | Leitern | hängen an einer Wand, nicht vor einem Fenster |
-| ☐ | Fenster | Scheiben sitzen in der Wandebene, Rahmen, Simse und Läden stehen davor; von innen frei |
+| ☐ | Fenster | Scheiben sitzen eine Ebene in der Wand (Laibung mit Futter), Rahmen, Simse, Läden oder Blumenkästen stehen davor; von innen frei |
+| ☐ | Hintertür | Rück- oder Seitenseite: Tür öffnet sich, Stufe davor, Laterne daneben, kleiner Weg zum Rand |
+| ☐ | Traufecken | Laternen hängen an Ketten unter den Ecken der Dächer und fallen beim Blockupdate nicht ab |
 | ☐ | Kamin (falls vorhanden) | Lagerfeuer oben raucht, der Rauch steigt frei auf |
 | ☐ | Geschosse | jedes Geschoss hat einen Boden; Treppe oder Leiter führt nach oben |
-| ☐ | Schnee | nur wenn „Schnee“ gewünscht war: Schneeschichten bleiben liegen und schmelzen nicht neben Laternen |
+| ☐ | Schnee | nur wenn „Schnee“ gewünscht war: Schneeschichten (keine Schneeblöcke) bleiben liegen und schmelzen nicht neben Laternen; Wege sind frei |
+| ☐ | Lichterketten (Weihnachten) | bunte Kerzen unter Traufe und Ortgang stehen auf Falltür-Leisten, auf dem First auf Blöcken; keine fällt ab |
+| ☐ | Grün | hohes Gras und große Farne haben beide Hälften, Ranken hängen an Kamin oder Wand |
+| ☐ | Fundament (falls gewählt) | Boden des Grundstücks auf Höhe der Füße, Sockel und Erdreich reichen in den Boden |
 | ☐ | Ebenen | keine verschobenen Ebenen, nichts schwebt |
 | ☐ | Blockarten | stimmen mit der Materialliste der App überein (Items: Türen zählen einmal, doppelte Stufen zweimal) |
 | ☐ | 1.21.1 | mit Zielversion 1.21.1 exportiert: Ketten heißen `chain`, alle Blöcke werden ohne Fehlermeldung eingefügt |
