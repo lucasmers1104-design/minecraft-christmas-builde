@@ -141,6 +141,10 @@ export function BuilderApp() {
   const [plannedBy, setPlannedBy] = useState<PlannedBy>(null);
   const [variants, setVariants] = useState<VoxelModel[]>([]);
   const [selected, setSelected] = useState(0);
+  // Seed the shown variants were generated from (houses show the best candidates, whose own
+  // seeds differ from it) and how many candidates were scored (null: unknown, e.g. a loaded project).
+  const [generatedSeed, setGeneratedSeed] = useState<number | null>(null);
+  const [candidates, setCandidates] = useState<number | null>(null);
   const [status, setStatus] = useState<BuilderStatus>('bereit');
   const [busy, setBusy] = useState<'generate' | 'plan' | 'export' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -164,7 +168,7 @@ export function BuilderApp() {
   }, [description, seed, version, parsed, manual, aiActive, aiPlan]);
   const spec = resolved.spec;
   const model = variants[selected] ?? null;
-  const stale = specChanged(spec, variants[0]?.spec);
+  const stale = specChanged(spec, variants[0] ? { ...variants[0].spec, seed: generatedSeed ?? variants[0].spec.seed } : undefined);
   const title = useMemo(() => (model ? buildingTitle(model.spec.kind, model.spec.style, model.spec.theme) : ''), [model]);
 
   const content: ProjectContent = useMemo(
@@ -227,6 +231,8 @@ export function BuilderApp() {
     setDescription(loaded.description);
     setManual(loaded.manual);
     setSeed(loaded.seed);
+    setGeneratedSeed(loaded.seed);
+    setCandidates(null);
     setVersion(loaded.targetMinecraftVersion);
     setVariants(loaded.variants);
     setEdits(loaded.edits);
@@ -423,6 +429,8 @@ export function BuilderApp() {
       setHistoryFlags({ canUndo: false, canRedo: false });
       setEditorMessage(null);
       setNotes(result.warnings);
+      setGeneratedSeed(target.seed);
+      setCandidates(result.selection.candidates);
       setSelected(0);
       setStatus('generiert');
       setMobileTab('preview');
@@ -646,7 +654,7 @@ export function BuilderApp() {
           </div>
           {variants.length > 0 ? (
             <div className="shrink-0">
-              <VariantSelector variants={variants} selected={selected} onSelect={selectVariant} edits={edits} />
+              <VariantSelector variants={variants} selected={selected} onSelect={selectVariant} edits={edits} candidates={candidates} baseSeed={generatedSeed} />
             </div>
           ) : null}
         </div>

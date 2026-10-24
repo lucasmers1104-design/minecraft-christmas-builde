@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { countMaterials } from '@/core/analysis/materialCounts';
 import { getProfileForVersion } from '@/core/compat/profile';
-import { BuildLimitError, generateVariants, generationNotes, NotImplementedBuildingError, VARIANT_COUNT } from '@/core/generator/generateBuilding';
+import { BuildLimitError, generateSelectedVariants, generationNotes, NotImplementedBuildingError, VARIANT_COUNT } from '@/core/generator/generateBuilding';
 import { buildSpecSchema } from '@/core/schema/buildSpec';
 import { jsonError, readJsonBody, RequestBodyError } from '@/lib/http/apiResponses';
 import { encodeVoxelTransport, type VoxelTransport } from '@/lib/serialization/voxelTransport';
@@ -36,6 +36,11 @@ export interface GenerateResponse {
   generator: 'rule-based';
   profile: { minecraftVersion: string; dataVersion: number; schematic: string };
   variants: GeneratedVariant[];
+  /**
+   * How the variants were chosen: houses score `candidates` consecutive seeds from the requested
+   * one and show the best that differ clearly (scores 0–1, best first); other types: 1 per variant.
+   */
+  selection: { candidates: number; scores: number[] };
   warnings: string[];
 }
 
@@ -61,7 +66,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!profile) return jsonError(400, `Minecraft-Version ${spec.targetMinecraftVersion} wird nicht unterstützt`);
 
   try {
-    const models = generateVariants(spec, variants);
+    const { models, selection } = generateSelectedVariants(spec, variants);
     const response: GenerateResponse = {
       generator: 'rule-based',
       profile: {
@@ -76,6 +81,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         totalBlocks: countMaterials(model).totalBlocks,
         model: encodeVoxelTransport(model),
       })),
+      selection: { candidates: selection.candidates, scores: selection.scores },
       warnings: generationNotes(spec),
     };
     return NextResponse.json(response, { headers: { 'Cache-Control': 'no-store' } });

@@ -162,6 +162,14 @@ export class VoxelBuilder {
     return null;
   }
 
+  /**
+   * The raw grid as a read-only model view: no state resolver, no validator, no canonical
+   * palette, no hash. Cheap enough to measure many candidates (variant selection); never export it.
+   */
+  peek(spec: BuildSpec): VoxelModel {
+    return { schemaVersion: 1, dimensions: { ...this.dimensions }, palette: this.palette, indices: this.cells, origin: { x: 0, y: 0, z: 0 }, spec, hash: '' };
+  }
+
   /** A copy `n` layers taller with everything moved up by `n` (room for a foundation below). */
   raised(n: number): VoxelBuilder {
     const out = new VoxelBuilder({ ...this.dimensions, height: this.dimensions.height + n });

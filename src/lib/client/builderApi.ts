@@ -29,6 +29,7 @@ export interface GeneratedResult {
   variants: VoxelModel[];
   warnings: string[];
   generator: GenerateResponse['generator'];
+  selection: GenerateResponse['selection'];
 }
 
 export async function requestGeneration(spec: BuildSpec, signal?: AbortSignal): Promise<GeneratedResult> {
@@ -42,7 +43,7 @@ export async function requestGeneration(spec: BuildSpec, signal?: AbortSignal): 
   const body = (await response.json()) as GenerateResponse;
   // Decoding re-validates registry, bounds and hash on the client as well.
   const variants = body.variants.map((v) => decodeVoxelTransport(v.model));
-  return { variants, warnings: body.warnings, generator: body.generator };
+  return { variants, warnings: body.warnings, generator: body.generator, selection: body.selection };
 }
 
 export interface ExportedFile {

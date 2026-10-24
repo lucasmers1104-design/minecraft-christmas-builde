@@ -19,7 +19,8 @@ import { extendFoundation } from '@/core/generator/foundation';
 import { buildMarket } from '@/core/generator/marketStall';
 import { buildStation } from '@/core/generator/station';
 import { buildTower, towerDiameter } from '@/core/generator/tower';
-import { getStyle } from '@/core/style/styles';
+import { getStyle, type SizeClass } from '@/core/style/styles';
+import { measureHouse, qualityScore, qualityTargets } from '@/core/analysis/buildQuality';
 import { COMPOSITION_LABELS } from '@/core/style/compositions';
 import { compositionFitsStyle } from '@/core/generator/house/composition';
 import type { Role } from '@/core/style/palettes';
@@ -201,14 +202,32 @@ function buildTreePlot(spec: BuildSpec, rng: SeededRandom): VoxelBuilder {
   return b;
 }
 
-function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult; clear?: Set<string> } {
+/** A house planned and built up to its shell: the first stage of a house generation. */
+interface HouseShell {
+  rng: SeededRandom;
+  input: HouseInput;
+  house: HouseResult;
+}
+
+function houseShell(spec: BuildSpec): HouseShell {
+  const rng = createSeededRandom(spec.seed);
+  try {
+    const input = houseInput(spec, rng);
+    return { rng, input, house: buildHouseV2(input) };
+  } catch (error) {
+    if (error instanceof GeometryError) throw new BuildLimitError(error.message);
+    throw error;
+  }
+}
+
+/** Builds the building; a house may continue from a shell built before (variant selection). */
+function generate(spec: BuildSpec, shell?: HouseShell): { builder: VoxelBuilder; house?: HouseResult; clear?: Set<string> } {
   const rng = createSeededRandom(spec.seed);
   try {
     switch (spec.kind) {
       case 'house': {
-        const input = houseInput(spec, rng);
-        const house = buildHouseV2(input);
-        return { ...finishHouse(spec, input, house, rng), house };
+        const s = shell ?? houseShell(spec);
+        return { ...finishHouse(spec, s.input, s.house, s.rng), house: s.house };
       }
       case 'tower': {
         // Round tower on its own plot; the roof follows the style (cone, dome, battlements).
@@ -265,7 +284,11 @@ function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult
 export function generateBuildingWithReport(input: BuildSpec): GeneratedBuilding {
   const spec = buildSpecSchema.parse(input);
   if (!isImplementedBuildingType(spec.kind)) throw new NotImplementedBuildingError(spec.kind);
-  const generated = generate(spec);
+  return complete(spec, generate(spec));
+}
+
+/** Last stage of every generation: foundation, snow, resolver and validator. */
+function complete(spec: BuildSpec, generated: ReturnType<typeof generate>): GeneratedBuilding {
   const { house, clear } = generated;
   // Foundation below the ground (option, default none): lifts everything, the plan coordinates
   // stay valid relative to the ground layer (see aboveGround).
@@ -284,13 +307,135 @@ export function generateBuilding(input: BuildSpec): VoxelModel {
 
 export const VARIANT_COUNT = 3;
 
+/**
+ * Candidates per size class for houses (Profi-Builds phase 5). Fixed numbers, not a stopwatch:
+ * the same input must always give the same three variants. Chosen from the measured cost of one
+ * candidate (house shell plus quality metrics, ≈ 45–80 ms on the work laptop, see TEST_REPORT).
+ */
+export const CANDIDATES: Readonly<Record<SizeClass, number>> = { small: 16, medium: 16, large: 12, huge: 8 };
+
+/** Consecutive seeds from the base seed (wrapping at MAX_SEED). */
 export function variantSeeds(baseSeed: number, count = VARIANT_COUNT): number[] {
   return Array.from({ length: count }, (_, i) => (baseSeed + i) % (MAX_SEED + 1));
 }
 
-/** One real, independently generated model per seed (seed, seed+1, seed+2). */
-export function generateVariants(spec: BuildSpec, count = VARIANT_COUNT): VoxelModel[] {
-  return variantSeeds(spec.seed, count).map((seed) => generateBuilding({ ...spec, seed }));
+/** True if the building type picks its variants from scored candidates (houses). */
+export function selectsVariants(kind: BuildingType): boolean {
+  return kind === 'house';
+}
+
+export interface Candidate {
+  seed: number;
+  /** Quality score of the house shell (buildQuality.ts), 0–1. */
+  score: number;
+  /** Archetype of the masses ('simple' for the classic box). */
+  composition: string;
+  /** Roof type, tower, number of masses and storeys of the main body. */
+  silhouette: string;
+}
+
+/**
+ * Scores one candidate on its house shell: the same input and seed as the full generation, but
+ * without landscape, festive layer, resolver and validator (they do not change the metrics of the
+ * building itself) – about half the cost of a full generation.
+ */
+export function evaluateCandidate(spec: BuildSpec): Candidate {
+  return scoreShell(buildSpecSchema.parse(spec), houseShell(buildSpecSchema.parse(spec)));
+}
+
+function scoreShell(spec: BuildSpec, shell: HouseShell): Candidate {
+  const { input, house } = shell;
+  // The shell has no foundation yet: measure it from its own ground layer.
+  const model = house.builder.peek({ ...spec, options: { ...spec.options, foundation: 0 } });
+  const composition = input.composition?.id ?? 'simple';
+  const score = qualityScore(measureHouse(model, house), qualityTargets(spec.style, spec.size, input.composition?.id)).total;
+  const main = house.plan.masses[0]!;
+  const tower = house.plan.masses.find((m) => m.kind === 'tower');
+  const silhouette = [main.roofType, tower ? (tower.round ? 'round' : 'square') : 'none', house.plan.masses.length, main.floors].join('|');
+  return { seed: spec.seed, score, composition, silhouette };
+}
+
+/**
+ * The best candidates that differ clearly: the best first, then the best with another archetype,
+ * else with another silhouette, else simply the next best. Ties go to the lower seed.
+ */
+export function chooseVariants(candidates: readonly Candidate[], count = VARIANT_COUNT): Candidate[] {
+  const order = [...candidates].sort((a, b) => b.score - a.score || a.seed - b.seed);
+  const picks: Candidate[] = [];
+  while (picks.length < count && picks.length < order.length) {
+    const left = order.filter((c) => !picks.includes(c));
+    const next =
+      left.find((c) => picks.every((p) => p.composition !== c.composition && p.silhouette !== c.silhouette)) ??
+      left.find((c) => picks.every((p) => p.composition !== c.composition)) ??
+      left.find((c) => picks.every((p) => p.silhouette !== c.silhouette)) ??
+      left[0]!;
+    picks.push(next);
+  }
+  return picks;
+}
+
+export interface VariantSelection {
+  /** Seeds of the shown variants, best first. */
+  seeds: number[];
+  /** How many candidates were scored (1 = no selection for this building type). */
+  candidates: number;
+  /** Scores of the shown variants (houses only). */
+  scores: number[];
+}
+
+/**
+ * Which seeds become the shown variants. Houses: CANDIDATES[size] consecutive seeds from the base
+ * seed are scored, the best that differ clearly are shown. Other building types: consecutive seeds.
+ */
+export function selectVariantSeeds(input: BuildSpec, count = VARIANT_COUNT): VariantSelection {
+  return select(buildSpecSchema.parse(input), count).selection;
+}
+
+/**
+ * Scores of house candidates already seen (pure function of the spec): a seed step or a second
+ * generation of the same input re-uses them. Bounded; the oldest entries go first.
+ */
+const CANDIDATE_CACHE = new Map<string, Candidate>();
+const CANDIDATE_CACHE_SIZE = 512;
+
+function select(spec: BuildSpec, count: number): { selection: VariantSelection; shells: Map<number, HouseShell> } {
+  const shells = new Map<number, HouseShell>();
+  if (!selectsVariants(spec.kind)) return { selection: { seeds: variantSeeds(spec.seed, count), candidates: count, scores: [] }, shells };
+  const n = Math.max(count, CANDIDATES[spec.size]);
+  const candidates = variantSeeds(spec.seed, n).map((seed) => {
+    const s: BuildSpec = { ...spec, seed };
+    const key = JSON.stringify(s);
+    const hit = CANDIDATE_CACHE.get(key);
+    if (hit) return hit;
+    const shell = houseShell(s);
+    const c = scoreShell(s, shell);
+    shells.set(seed, shell);
+    CANDIDATE_CACHE.set(key, c);
+    if (CANDIDATE_CACHE.size > CANDIDATE_CACHE_SIZE) CANDIDATE_CACHE.delete(CANDIDATE_CACHE.keys().next().value!);
+    return c;
+  });
+  const picks = chooseVariants(candidates, count);
+  return { selection: { seeds: picks.map((c) => c.seed), candidates: n, scores: picks.map((c) => c.score) }, shells };
+}
+
+/**
+ * Real, independently generated models of the selected seeds (best first). A chosen house goes
+ * on from the shell its candidate was scored on – the same blocks as a fresh generation.
+ */
+export function generateVariants(input: BuildSpec, count = VARIANT_COUNT): VoxelModel[] {
+  return generateSelectedVariants(input, count).models;
+}
+
+/** The variants and how they were chosen (for the API and the interface). */
+export function generateSelectedVariants(input: BuildSpec, count = VARIANT_COUNT): { models: VoxelModel[]; selection: VariantSelection } {
+  const spec = buildSpecSchema.parse(input);
+  if (!isImplementedBuildingType(spec.kind)) throw new NotImplementedBuildingError(spec.kind);
+  const { selection, shells } = select(spec, count);
+  const models = selection.seeds.map((seed) => {
+    const s: BuildSpec = { ...spec, seed };
+    return complete(s, generate(s, shells.get(seed))).model;
+  });
+  return { models, selection };
 }
 
 /** Roof types with a fixed cross-section: the chosen profile cannot change them. */

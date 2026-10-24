@@ -1,7 +1,7 @@
 'use client';
 
 import { PROFILES } from '@/core/compat/profile';
-import { variantSeeds } from '@/core/generator/generateBuilding';
+import { CANDIDATES, selectsVariants, variantSeeds } from '@/core/generator/generateBuilding';
 import {
   BUILD_SIZES,
   BUILDING_TYPES,
@@ -153,7 +153,11 @@ export function StyleControls({
           <Field
             label="Seed (Startwert)"
             htmlFor="seed"
-            hint={`Gleiche Zahl, gleiches Ergebnis. Erzeugt werden drei Varianten mit Seed ${variantSeeds(spec.seed).join(', ')}.`}
+            hint={
+              selectsVariants(spec.kind)
+                ? `Gleiche Zahl, gleiches Ergebnis. Die App bewertet ${CANDIDATES[spec.size]} Kandidaten (Seed ${spec.seed} bis ${variantSeeds(spec.seed, CANDIDATES[spec.size]).at(-1)}) nach Bauqualität und zeigt die drei besten, die sich deutlich unterscheiden.`
+                : `Gleiche Zahl, gleiches Ergebnis. Erzeugt werden drei Varianten mit Seed ${variantSeeds(spec.seed).join(', ')}.`
+            }
           >
             <TextInput
               id="seed"

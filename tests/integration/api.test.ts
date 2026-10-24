@@ -4,7 +4,7 @@ import { POST as generateRoute, type GenerateResponse } from '@/app/api/generate
 import { validateSchematic } from '@/core/export/validateSchematic';
 import { DEFAULT_HOUSE_SPEC } from '@/core/schema/buildSpec';
 import { decodeVoxelTransport, encodeVoxelTransport, MAX_TRANSPORT_REQUEST_BYTES } from '@/lib/serialization/voxelTransport';
-import { generateBuilding } from '@/core/generator/generateBuilding';
+import { generateBuilding, selectVariantSeeds } from '@/core/generator/generateBuilding';
 import { largeBuildingModel } from '../helpers/largeModels';
 
 /**
@@ -17,9 +17,9 @@ vi.mock('@/core/generator/generateBuilding', async (importOriginal) => {
   const { BuildLimitError } = await import('@/core/generator/generateBuilding');
   return {
     ...actual,
-    generateVariants: (...args: Parameters<typeof actual.generateVariants>) => {
+    generateSelectedVariants: (...args: Parameters<typeof actual.generateSelectedVariants>) => {
       if (limit.exceed) throw new BuildLimitError('Das Haus wäre 400×10×10 Blöcke groß und passt nicht in die Grenzen');
-      return actual.generateVariants(...args);
+      return actual.generateSelectedVariants(...args);
     },
   };
 });
@@ -32,13 +32,18 @@ const post = (body: unknown, raw?: string, headers: Record<string, string> = {})
   });
 
 describe('POST /api/generate', () => {
-  it('liefert drei vollständige, verlustfreie Varianten (RLE-kodiert)', async () => {
+  it('liefert die drei besten von 16 Kandidaten als vollständige, verlustfreie Varianten (RLE-kodiert)', async () => {
     const res = await generateRoute(post({ spec: DEFAULT_HOUSE_SPEC }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as GenerateResponse;
     expect(body.generator).toBe('rule-based');
     expect(body.profile).toEqual({ minecraftVersion: '1.21.11', dataVersion: 4671, schematic: 'Sponge Schematic v3' });
-    expect(body.variants.map((v) => v.seed)).toEqual([1, 2, 3]);
+    // Houses: the best of CANDIDATES[size] consecutive seeds, chosen the same way every time.
+    expect(body.selection.candidates).toBe(16);
+    expect(body.variants.map((v) => v.seed)).toEqual(selectVariantSeeds(DEFAULT_HOUSE_SPEC).seeds);
+    expect(new Set(body.variants.map((v) => v.seed)).size).toBe(3);
+    for (const v of body.variants) expect(v.seed >= 1 && v.seed <= 16).toBe(true);
+    expect(body.selection.scores).toHaveLength(3);
     for (const v of body.variants) {
       expect(v.model.indexEncoding).toBe('rle-varint-base64');
       const model = decodeVoxelTransport(v.model);

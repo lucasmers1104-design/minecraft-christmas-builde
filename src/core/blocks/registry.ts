@@ -184,7 +184,14 @@ export function checkBlockState(state: string, minecraftVersion?: string): Block
  * filling registry defaults. Throws on anything invalid – generator code must never
  * produce an unregistered block. Unknown override keys are an error, too.
  */
+/** Canonical states already built (pure function of id and overrides; invalid input is never cached). */
+const STATE_CACHE = new Map<string, string>();
+
 export function blockState(shortOrFullId: string, overrides: Readonly<Record<string, string>> = {}): string {
+  let key = shortOrFullId;
+  for (const name in overrides) key += `|${name}=${overrides[name]}`;
+  const hit = STATE_CACHE.get(key);
+  if (hit !== undefined) return hit;
   const id = shortOrFullId.includes(':') ? shortOrFullId : `minecraft:${shortOrFullId}`;
   const def = BY_ID.get(id);
   if (!def) throw new Error(`Block nicht in der Registry: ${id}`);
@@ -192,6 +199,7 @@ export function blockState(shortOrFullId: string, overrides: Readonly<Record<str
   const state = formatBlockState(id, properties);
   const check = checkBlockState(state);
   if (!check.ok) throw new Error(check.reason);
+  STATE_CACHE.set(key, check.canonical);
   return check.canonical;
 }
 

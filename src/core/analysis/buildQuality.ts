@@ -388,10 +388,12 @@ function samplePalette(model: VoxelModel, house: HouseResult): QualityMetrics['p
   const outside = new Uint8Array(W * H * L);
   const idx = (x: number, y: number, z: number) => x + W * (z + L * y);
   const stack: number[] = [];
+  // Index comparison instead of state strings: this flood fill visits the whole volume.
+  const air = model.palette.indexOf(AIR);
   const push = (x: number, y: number, z: number) => {
     if (x < 0 || y < 0 || z < 0 || x >= W || y >= H || z >= L) return;
     const i = idx(x, y, z);
-    if (outside[i] || blockAt(model, x, y, z) !== AIR) return;
+    if (outside[i] || model.indices[i] !== air) return;
     outside[i] = 1;
     stack.push(i);
   };
@@ -415,28 +417,20 @@ function samplePalette(model: VoxelModel, house: HouseResult): QualityMetrics['p
   const zone = buildingZone(house);
   const counts = new Map<string, number>();
   let total = 0;
+  // Per palette entry: does it count for the hull (no plants, snow, lights, decoration)?
+  const counted = model.palette.map((s) => {
+    if (s === AIR) return false;
+    const c = definitionOf(s).category;
+    return c !== 'nature' && c !== 'winter' && c !== 'light' && c !== 'deco';
+  });
+  const open = (nx: number, ny: number, nz: number) => nx < 0 || ny < 0 || nz < 0 || nx >= W || ny >= H || nz >= L || outside[idx(nx, ny, nz)] === 1;
   for (let y = 1; y < H; y++)
     for (let z = Math.max(0, zone.z0); z <= Math.min(L - 1, zone.z1); z++)
       for (let x = Math.max(0, zone.x0); x <= Math.min(W - 1, zone.x1); x++) {
-        const s = blockAt(model, x, y, z);
-        if (s === AIR) continue;
-        const def = definitionOf(s);
-        if (def.category === 'nature' || def.category === 'winter' || def.category === 'light' || def.category === 'deco') continue;
-        const visible = [
-          [1, 0, 0],
-          [-1, 0, 0],
-          [0, 1, 0],
-          [0, -1, 0],
-          [0, 0, 1],
-          [0, 0, -1],
-        ].some(([dx, dy, dz]) => {
-          const nx = x + dx!;
-          const ny = y + dy!;
-          const nz = z + dz!;
-          if (nx < 0 || ny < 0 || nz < 0 || nx >= W || ny >= H || nz >= L) return true;
-          return outside[idx(nx, ny, nz)] === 1;
-        });
-        if (!visible) continue;
+        const p = model.indices[idx(x, y, z)]!;
+        if (!counted[p]) continue;
+        if (!(open(x + 1, y, z) || open(x - 1, y, z) || open(x, y + 1, z) || open(x, y - 1, z) || open(x, y, z + 1) || open(x, y, z - 1))) continue;
+        const s = model.palette[p]!;
         const m = materialOf(blockIdOf(s));
         counts.set(m, (counts.get(m) ?? 0) + 1);
         total++;
