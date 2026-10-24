@@ -3,10 +3,11 @@ import { AIR, blockIdOf, definitionOf, propsOf } from '@/core/blocks/registry';
 import type { ShapeClass } from '@/core/blocks/shapes';
 import type { HouseResult } from '@/core/generator/house/buildHouse';
 import { floorY, joinedAt, storeyRect, wallTopOf, type MassKind } from '@/core/generator/house/plan';
+import { planRoofs } from '@/core/generator/roof/roofEngine';
 import { coveredColumns, facadeOf, facadePos } from '@/core/generator/house/walls';
 import type { SizeClass, StyleId } from '@/core/style/styles';
 import type { CompositionId } from '@/core/style/compositions';
-import { listMaterials } from '@/core/style/materials';
+import { getMaterial, hasMaterial, listMaterials } from '@/core/style/materials';
 import { blockAt, type VoxelModel } from '@/core/schema/voxelModel';
 
 /**
@@ -126,7 +127,7 @@ export interface QualityMetrics {
     peaks: number;
   };
   palette: {
-    /** Materials with at least 3 % of the visible hull. */
+    /** Material families (wood, log, stone, brick, plaster …) with at least 3 % of the hull. */
     materials: number;
     /** Share of the most used material and of the three most used together. */
     dominant: number;
@@ -441,8 +442,13 @@ function samplePalette(model: VoxelModel, house: HouseResult): QualityMetrics['p
         total++;
       }
   const shares = [...counts.entries()].map(([m, n]): [string, number] => [m, total > 0 ? n / total : 0]).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const families = new Map<string, number>();
+  for (const [m, s] of shares) {
+    const family = hasMaterial(m) ? getMaterial(m).family : m;
+    families.set(family, (families.get(family) ?? 0) + s);
+  }
   return {
-    materials: shares.filter(([, s]) => s >= 0.03).length,
+    materials: [...families.values()].filter((s) => s >= 0.03).length,
     dominant: shares[0]?.[1] ?? 0,
     top3: shares.slice(0, 3).reduce((a, [, s]) => a + s, 0),
     shares,
@@ -588,6 +594,9 @@ export function measureHouse(model: VoxelModel, house: HouseResult): QualityMetr
     if (top > -Infinity) ridgeOf.set(m.id, top);
   }
   const mainRidge = ridgeOf.get(main.id) ?? wallTopOf(plan, main);
+  // Roof share without ornaments (raised gable tips): the roof body itself.
+  const mainSections = sections.filter((s) => s.id === main.id || s.id === `${main.id}-gable`).map((s) => ({ ...s, edge: undefined }));
+  const roofBody = mainSections.length > 0 && !main.round ? planRoofs(mainSections).topY : mainRidge;
   const mainTop = wallTopOf(plan, main);
   let chimneys = 0;
   for (let y = mainTop; y < model.dimensions.height; y++)
@@ -613,7 +622,7 @@ export function measureHouse(model: VoxelModel, house: HouseResult): QualityMetr
       eaveHeights: eaves.size,
       ridgeHeights: new Set(ridgeOf.values()).size,
       accents: towers + chimneys + dormers,
-      roofShare: mainRidge > mainTop ? (mainRidge - mainTop) / mainRidge : 0,
+      roofShare: roofBody > mainTop ? (roofBody - mainTop) / roofBody : 0,
       peaks: skylinePeaks(model, house),
     },
     palette: samplePalette(model, house),
@@ -688,13 +697,18 @@ export function qualityTargets(style: StyleId, size: SizeClass, composition?: Co
     // Research 19 L3: from large on at least two eave heights (a Zwerchhaus keeps the main eave).
     eaveHeights: [big ? 2 : 1, 5],
     ridgeHeights: [cascade && style !== 'modern' ? 2 : 1, 6],
-    accents: [style === 'modern' ? 0 : 1, big ? 6 : 4],
+    // Chimney, tower or dormer; modern and Japanese houses have none of them by design.
+    accents: [style === 'modern' || style === 'japanese' || style === 'cherry' ? 0 : 1, big ? 6 : 4],
     // A chalet carries a wide, shallow roof (research 13: 25–35 % of the height).
     roofShare: composition === 'chalet' ? [0.22, 0.42] : ROOF_SHARE[style],
     dominant: [0.2, 0.55],
-    materials: [3, 7],
-    density: style === 'modern' ? [0.03, 0.18] : [0.08, 0.35],
-    maxSide: [0, style === 'modern' ? 0.3 : 0.6],
+    // Research 19 T13 / palette lints: three to five material families.
+    materials: [3, 5],
+    // Micro blocks per facade cell (research 19 L7: 0.08–0.30, an estimate). Window boxes or
+    // shutters at every window, as in the references, reach about 0.4; Japanese shoji lattices
+    // are trapdoor grids and count as micro detail although they are the wall itself.
+    density: style === 'modern' ? [0.03, 0.18] : style === 'japanese' || style === 'cherry' ? [0.08, 0.7] : [0.08, 0.45],
+    maxSide: [0, style === 'modern' ? 0.3 : style === 'japanese' || style === 'cherry' ? 0.95 : 0.7],
     back: [0.5, 2],
     side: [0.3, 2],
     entrance: [1, 1],

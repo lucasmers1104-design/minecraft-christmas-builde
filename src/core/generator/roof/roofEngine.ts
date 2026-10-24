@@ -72,6 +72,10 @@ export interface RoofSectionSpec {
    * under the main eave instead of leaving a gap; pagoda rings under the tier above).
    */
   layer?: number;
+  /** Edge shaping: raised verge boards, kicked verge feet, Japanese corner upturns, ridge sag (shapeEdge). */
+  edge?: { verge?: 'raised'; kick?: number; corners?: boolean; sag?: boolean };
+  /** Roof surface: darker course rows, a living moss/azalea roof or thatch lumps (see texturePass). */
+  texture?: 'courses' | 'living' | 'thatch';
 }
 
 interface Column {
@@ -90,6 +94,8 @@ interface Column {
   eave: boolean;
   lowest: number;
   layer: number;
+  /** Slope columns of the section (eave to ridge). */
+  n: number;
 }
 
 export interface EaveCell {
@@ -278,6 +284,9 @@ function blendedRoof(s: RoofSectionSpec, x: number, z: number, l: Layout): strin
   // Coordinate along the eave of this slope face: one streak length per eave column.
   const a = l.facing === 'north' || l.facing === 'south' ? x : z;
   const face = ['north', 'east', 'south', 'west'].indexOf(l.facing);
+  // Course rows (research 06 R23): every third row from the eave in the darker (or lighter)
+  // partner, a few columns skipped so the line reads as hand-laid.
+  if (s.texture === 'courses' && l.d >= 2 && l.d < l.n - 1 && l.d % 3 === 2 && hash(s.blendSeed!, a, face, 3) >= 1 / 6) return blend.darker ?? blend.lighter ?? s.materials.roof;
   if (blend.darker) {
     const r = hash(s.blendSeed!, a, face, 1);
     let streak = 0;
@@ -341,13 +350,100 @@ function baseY(s: RoofSectionSpec, t: readonly number[]): number {
   return s.wallTop + 1 - Math.floor((atWall - 1) / 2);
 }
 
+const OUTWARD: Readonly<Record<HorizontalDirection, HorizontalDirection>> = { north: 'south', south: 'north', east: 'west', west: 'east' };
+
+/**
+ * Edge shaping (research 05/06, the creative director's references 19098029, 18791820 and
+ * 19864998): roofs whose edges have a shape of their own instead of a recoloured row.
+ *
+ * - **Raised verge:** the barge board stands one block above the roof surface (full block plus
+ *   a stair of the trim material); at the apex it rises one block above the ridge.
+ * - **Kicked verge foot:** at the eave end of the verge the board turns up (full block, then a
+ *   stair facing outwards; two blocks for fantasy) – the "tips up" of the references.
+ * - **Corner upturn (Japanese):** on roofs that start with two half steps (flared, bell,
+ *   shallow) the outer corner of the lowest rings rises like a horn, the cells beside it in
+ *   half steps; lanterns hang under it.
+ *
+ * Only the pieces of the column change; the union of sections, `planRoofs` and the lints see
+ * the shaped tops. Returns the new top in half blocks.
+ */
+function shapeEdge(s: RoofSectionSpec, l: Layout, at: { x: number; z: number; X0: number; X1: number; Z0: number; Z1: number }, trim: boolean, t: readonly number[], base: number, pieces: { y: number; state: string }[], topHalf: number): number {
+  const e = s.edge;
+  if (!e || pieces.length === 0 || s.type === 'flat' || s.type === 'shed' || s.type === 'skirt') return topHalf;
+  const m = s.materials;
+  const topY = Math.max(...pieces.map((p) => p.y));
+  const top = pieces.find((p) => p.y === topY)!;
+  if (trim && (e.kick ?? 0) > 0 && l.d === 0 && !l.ridge && l.facing) {
+    top.state = full(m.trim);
+    for (let k = 1; k < e.kick!; k++) pieces.push({ y: topY + k, state: full(m.trim) });
+    pieces.push({ y: topY + e.kick!, state: stairs(m.trim, OUTWARD[l.facing], 'bottom') });
+    return (topY + e.kick!) * 2 + 2;
+  }
+  if (trim && e.verge === 'raised') {
+    if (l.ridge) {
+      pieces.push({ y: topY + 1, state: full(m.trim) });
+      return (topY + 1) * 2 + 2;
+    }
+    if (!l.facing) return topHalf;
+    const props = propsOf(top.state);
+    const raisedTop = props.type ? (topY + 1) * 2 + 1 : (topY + 1) * 2 + 2;
+    top.state = full(m.trim);
+    pieces.push({ y: topY + 1, state: props.type === 'top' ? slab(m.trim, 'bottom') : props.type === 'bottom' ? slab(m.trim, 'bottom') : stairs(m.trim, l.facing, 'bottom') });
+    return raisedTop;
+  }
+  if (e.corners && !trim && (s.type === 'hip' || s.type === 'pyramid') && t[0] === 1 && t[1] === 2 && l.d <= 1) {
+    const dx = Math.min(at.x - at.X0, at.X1 - at.x);
+    const dz = Math.min(at.z - at.Z0, at.Z1 - at.z);
+    const c = Math.abs(dx - dz);
+    const longX = at.X1 - at.X0 >= at.Z1 - at.Z0;
+    const outward: HorizontalDirection = longX ? (at.x - at.X0 < at.X1 - at.x ? 'west' : 'east') : at.z - at.Z0 < at.Z1 - at.z ? 'north' : 'south';
+    const mat = l.d === 0 && c <= 1 ? m.trim : m.roof;
+    const set = (list: { y: number; state: string }[]) => pieces.splice(0, pieces.length, ...list);
+    if (l.d === 0 && c === 0) {
+      set([{ y: base, state: full(mat) }, { y: base + 1, state: stairs(mat, outward, 'bottom') }]);
+      return (base + 1) * 2 + 2;
+    }
+    if (l.d === 0 && c === 1) {
+      set([{ y: base, state: slab(mat, 'top') }, { y: base + 1, state: slab(mat, 'bottom') }]);
+      return (base + 1) * 2 + 1;
+    }
+    if (l.d === 0 && c === 2) {
+      set([{ y: base, state: slab(mat, 'top') }]);
+      return base * 2 + 2;
+    }
+    if (l.d === 1 && c === 0) {
+      set([{ y: base, state: slab(mat, 'top') }, { y: base + 1, state: full(mat) }]);
+      return (base + 2) * 2;
+    }
+    if (l.d === 1 && c === 1) {
+      set([{ y: base, state: slab(mat, 'top') }, { y: base + 1, state: slab(mat, 'bottom') }]);
+      return (base + 1) * 2 + 1;
+    }
+  }
+  return topHalf;
+}
+
+/** Tops of a slope one block lower at the ridge (last Δ ≥ 4 → −2, or a final 2,2 → 1,1). */
+function sagTops(t: readonly number[]): number[] | null {
+  const d = t.map((v, i) => v - (i === 0 ? 0 : t[i - 1]!));
+  const n = d.length;
+  if (n < 4) return null;
+  if (d[n - 1]! >= 4) d[n - 1] = d[n - 1]! - 2;
+  else if (d[n - 1] === 2 && d[n - 2] === 2) {
+    d[n - 1] = 1;
+    d[n - 2] = 1;
+  } else return null;
+  return tops(d);
+}
+
 function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<string, Column>; base: number } {
   const columns = new Map<string, Column>();
   const { X0, X1, Z0, Z1 } = outer(s);
   const sample = layoutAt(s, X0, Z0);
   const n = sample?.n ?? 0;
-  const t = s.type === 'flat' ? [] : sectionTops(s, Math.max(n, 1));
-  const base = s.type === 'flat' ? s.wallTop + 1 : baseY(s, t);
+  const tBase = s.type === 'flat' ? [] : sectionTops(s, Math.max(n, 1));
+  const base = s.type === 'flat' ? s.wallTop + 1 : baseY(s, tBase);
+  const tSag = GABLE_LIKE.has(s.type) && s.edge?.sag ? sagTops(tBase) : null;
   const m = s.materials;
   const ridgeStyle = s.ridgeStyle ?? 'slab';
   for (let x = X0; x <= X1; x++)
@@ -356,6 +452,11 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
       const l = layoutAt(s, x, z);
       if (!l) continue;
       const outside = x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1;
+      // Organic sag (fantasy, research 05 R13): the middle third of the ridge dips one block.
+      const along = s.ridgeAxis === 'x' ? x : z;
+      const [a0, a1] = s.ridgeAxis === 'x' ? [s.x0, s.x1] : [s.z0, s.z1];
+      const third = Math.floor((a1 - a0 + 1) / 3);
+      const t = s.edge?.sag && tSag && along >= a0 + third && along <= a1 - third ? tSag : tBase;
       // Contrast only as a thin barge board on the outermost verge column; the eaves stay in
       // the roof material (research 06: a full contrast ring covered 36–43 % of the roof).
       const trim = l.verge && (s.ridgeAxis === 'x' || s.type === 'shed' ? x === X0 || x === X1 : z === Z0 || z === Z1);
@@ -407,6 +508,7 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
         for (const p of columnPieces(tPrev, tCol)) pieces.push({ y: base + p.y, state: pieceState(p, material, l.facing) });
         topHalf = base * 2 + tCol;
       }
+      topHalf = shapeEdge(s, l, { x, z, X0, X1, Z0, Z1 }, trim, t, base, pieces, topHalf);
       if (pieces.length === 0) continue;
       columns.set(key(x, z), {
         section: index,
@@ -420,6 +522,7 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
         eave: outside && !l.verge,
         lowest: Math.min(...pieces.map((p) => p.y)),
         layer: s.layer ?? 0,
+        n: l.n,
       });
     }
   return { columns, base };
@@ -504,6 +607,32 @@ export function buildRoofs(builder: VoxelBuilder, sections: readonly RoofSection
     const priority = sections[under.section]!.priority ?? Priority.ROOF;
     for (const p of under.pieces) if (p.y < w.lowest && builder.inside(x, p.y, z)) builder.setBlock(x, p.y, z, p.state, priority);
   }
+
+  // Roof surface (research 06 R23, 09 T12, 13 P3): living roofs get moss blocks in the slope,
+  // azalea clumps and moss carpet on top; thatch gets lumps (a stair becomes a full block of
+  // the same material). Deterministic per column; never on trim, ridge, eave row or diagonals.
+  sections.forEach((s, i) => {
+    if (s.texture !== 'living' && s.texture !== 'thatch') return;
+    const seed = s.blendSeed ?? 0;
+    for (const [k, c] of all[i]!.columns) {
+      if (winners.get(k) !== c || c.trim || c.ridge || c.d === 0 || !c.facing || c.d >= c.n - 1) continue;
+      const [x, z] = k.split(',').map(Number) as [number, number];
+      const y = Math.max(...c.pieces.map((p) => p.y));
+      if (!builder.inside(x, y + 1, z)) continue;
+      const state = builder.getBlock(x, y, z);
+      const r = hash(seed, x, y, z, 5);
+      if (s.texture === 'thatch') {
+        if (r < 0.08 && state.includes('_stairs[') && builder.isAir(x, y + 1, z)) builder.setBlock(x, y, z, full(s.materials.roof), s.priority ?? Priority.ROOF);
+        continue;
+      }
+      const p = c.d <= 1 ? 0.3 : c.d >= c.n - 2 ? 0 : 0.14;
+      if (r >= p || !builder.isAir(x, y + 1, z)) continue;
+      builder.setBlock(x, y, z, blockState('moss_block'), s.priority ?? Priority.ROOF);
+      const r2 = hash(seed, x, y, z, 6);
+      if (r2 < 0.3) builder.setBlock(x, y + 1, z, blockState(r2 < 0.12 ? 'flowering_azalea_leaves' : 'azalea_leaves', { persistent: 'true' }), Priority.DECOR);
+      else if (r2 < 0.65) builder.setBlock(x, y + 1, z, blockState('moss_carpet'), Priority.DECOR);
+    }
+  });
 
   // Soffits: cornice under the eaves, boards under the verges.
   sections.forEach((s, i) => {

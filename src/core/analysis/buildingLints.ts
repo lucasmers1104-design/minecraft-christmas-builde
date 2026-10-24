@@ -144,7 +144,8 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
     if (main.kind !== 'tower' && s.type !== 'a_frame' && s.type !== 'flat') {
       const rise = planRoofs([s]).topY - s.wallTop;
       const cap = s.type === 'shed' ? 7 : (s.maxRise ?? 7);
-      if (rise > cap + 1) issues.push({ rule: 'anstieg', message: `${s.id}: Dachanstieg ${rise} Blöcke` });
+      // A raised verge lifts the gable tip one block above the ridge (an ornament, not roof).
+      if (rise > cap + 1 + (s.edge?.verge === 'raised' ? 1 : 0)) issues.push({ rule: 'anstieg', message: `${s.id}: Dachanstieg ${rise} Blöcke` });
     }
     // Closed roof: every column of the footprint (incl. overhang) carries roof blocks.
     for (let x = s.x0 - s.overhang; x <= s.x1 + s.overhang; x++)

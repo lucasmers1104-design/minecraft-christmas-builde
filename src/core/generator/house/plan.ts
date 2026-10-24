@@ -125,6 +125,8 @@ export interface Mass {
   setback?: number;
   /** Own footprint of the upper storeys (stacked, shifted cube); replaces the jetty. */
   upper?: Rect;
+  /** Square tower helm: a flared skirt, an open drum and a slender spire (reference 19664420). */
+  cap?: 'tiered';
 }
 
 export interface HousePlan {
@@ -494,6 +496,7 @@ export function planHouse(input: HouseInput, rng: SeededRandom): HousePlan {
         kind: 'tower',
         rect: at(pos),
         floors,
+        ...(comp?.tower?.cap === 'tiered' && input.roofType !== 'flat' ? { cap: 'tiered' as const } : {}),
         jetty: {},
         joins: {},
         ridgeAxis: 'x',
@@ -575,10 +578,45 @@ export function roofSection(plan: HousePlan, mass: Mass, materials: RoleMaterial
     ...(mass.shedHigh ? { shedHigh: mass.shedHigh } : {}),
     // The annex roof runs on under the main eave where both meet.
     ...(mass.kind === 'annex' ? { layer: 1 } : {}),
+    ...roofLook(plan, mass),
     maxRise: mass.maxRise ?? (mass.kind === 'tower' ? 12 : roofRiseCap(plan, mass)),
     // Weathered roof blend (dark streaks from the eave); modern roofs stay uniform.
     ...(plan.input.styleId === 'modern' ? {} : { blendSeed: (plan.input.seed ^ [...mass.id].reduce((h, ch) => Math.imul(h, 31) + ch.charCodeAt(0), 7)) >>> 0 }),
   };
+}
+
+/**
+ * Edge shaping and roof surface per style (phase 3, research 05/06/09/13 and the references):
+ * raised, kicked verges for the timber and log styles, corner upturns for Japanese roofs, course
+ * rows on shingle and tile roofs, a living roof on cottages, lumps on thatch.
+ */
+function roofLook(plan: HousePlan, mass: Mass): Pick<RoofSectionSpec, 'edge' | 'texture'> {
+  const style = plan.input.styleId;
+  const edge: RoofSectionSpec['edge'] =
+    style === 'medieval' || style === 'rustic' || style === 'nordic'
+      ? { verge: 'raised', kick: 1 }
+      : style === 'fantasy'
+        ? { verge: 'raised', kick: 2, sag: mass.kind === 'main' && Math.max(mass.rect.x1 - mass.rect.x0, mass.rect.z1 - mass.rect.z0) >= 8 }
+        : style === 'japanese' || style === 'cherry'
+          ? { corners: true }
+          : undefined;
+  const living = plan.input.composition?.livingRoof && mass.kind !== 'tower';
+  const texture: RoofSectionSpec['texture'] = living ? 'living' : plan.input.paletteId === 'rustic_thatch' ? 'thatch' : style === 'modern' || style === 'japanese' || style === 'cherry' ? undefined : 'courses';
+  return { ...(edge ? { edge } : {}), ...(texture ? { texture } : {}) };
+}
+
+/**
+ * Roof of a square tower with a stepped helm: a flared skirt ring over the tower walls, then a
+ * slender pyramid on a two-row drum one block in (the drum is built by buildTowerDrum).
+ */
+export function towerCapSections(plan: HousePlan, mass: Mass, materials: RoleMaterials): RoofSectionSpec[] {
+  const base = roofSection(plan, mass, materials);
+  const r = mass.rect;
+  const inner = { x0: r.x0 + 1, z0: r.z0 + 1, x1: r.x1 - 1, z1: r.z1 - 1 };
+  return [
+    { ...base, id: `${mass.id}-tier1`, type: 'hip', profile: 'flared', overhang: 1, hole: inner, maxRise: 2, gables: false, edge: undefined, texture: undefined },
+    { ...base, ...inner, wallTop: wallTopOf(plan, mass) + 2, type: 'pyramid', profile: 'steep', overhang: 1, maxRise: 12, edge: undefined, texture: undefined },
+  ];
 }
 
 /** Style rise cap for a mass: about one to two storeys of roof, relative to its wall height. */

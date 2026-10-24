@@ -1,4 +1,4 @@
-import type { HorizontalDirection } from '@/core/blocks/directions';
+import { VECTOR, type HorizontalDirection } from '@/core/blocks/directions';
 import { supportsCenter } from '@/core/blocks/faces';
 import { blockIdOf, blockState, definitionOf, propsOf } from '@/core/blocks/registry';
 import { Priority, type VoxelBuilder } from '@/core/generator/geometry';
@@ -176,8 +176,10 @@ function windowSills(b: VoxelBuilder, house: HouseResult): (Cell & { side: Horiz
         if (mass.joins[side]) continue;
         const f = facadeOf(rect, side);
         for (let u = 0; u < f.length; u++) {
-          const w = facadePos(f, u, 0);
-          const front = facadePos(f, u, 1);
+          // A recessed pane (reveal, d = −1): the candle stands in the reveal on the wall below.
+          const recessed = glass(facadePos(f, u, -1).x, y0 + 1, facadePos(f, u, -1).z) || glass(facadePos(f, u, -1).x, y0 + 2, facadePos(f, u, -1).z);
+          const w = facadePos(f, u, recessed ? -1 : 0);
+          const front = facadePos(f, u, recessed ? 0 : 1);
           for (let y = y0; y <= y1; y++) {
             if (!glass(w.x, y, w.z) || glass(w.x, y - 1, w.z)) continue;
             if (!b.inside(front.x, y, front.z) || !b.isAir(front.x, y, front.z)) continue;
@@ -354,7 +356,8 @@ export function decorateHouseFestive(
   decorateFestive(
     builder,
     rng.fork('festive'),
-    { eaves: house.roof.eaveCells, doors: house.openings.doors, sills: [...house.openings.sills, ...windowSills(builder, house)], yard, gables: house.roof.gableCells, reserved: house.openings.reserved },
+    // Doors in a niche count from the wall plane (the festive props stand in front of it).
+    { eaves: house.roof.eaveCells, doors: house.openings.doors.map((d) => (d.niche ? { ...d, x: d.x + VECTOR[d.outward][0], z: d.z + VECTOR[d.outward][2] } : d)), sills: [...house.openings.sills, ...windowSills(builder, house)], yard, gables: house.roof.gableCells, reserved: house.openings.reserved },
     {
       theme: spec.theme,
       intensity: spec.detailLevel,

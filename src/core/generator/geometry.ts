@@ -98,6 +98,17 @@ export class VoxelBuilder {
     return this.getBlock(x, y, z) === AIR;
   }
 
+  /**
+   * Empties a cell and gives it free again (priority 0): a window reveal is cut out of the wall,
+   * but candles or other decoration may stand in it later.
+   */
+  vacate(x: number, y: number, z: number): void {
+    this.assertInside(x, y, z);
+    const i = linearIndex(this.dimensions, x, y, z);
+    this.cells[i] = 0;
+    this.priorities[i] = 0;
+  }
+
   /** Reserve a cell as air so no lower-priority operation can fill it later. */
   clear(x: number, y: number, z: number, priority: PriorityValue = Priority.CLEARANCE): boolean {
     return this.setBlock(x, y, z, AIR, priority);

@@ -1,9 +1,9 @@
 import { OPPOSITE, type HorizontalDirection } from '@/core/blocks/directions';
-import { blockState } from '@/core/blocks/registry';
+import { blockState, definitionOf } from '@/core/blocks/registry';
 import { Priority } from '@/core/generator/geometry';
 import type { RoofSectionSpec } from '@/core/generator/roof/roofEngine';
-import { floorY, occupiedByOther, storeyRect, wallTopOf, type Mass } from '@/core/generator/house/plan';
-import { facadeOf, facadePos, type Ctx } from '@/core/generator/house/walls';
+import { floorY, nearRoundTower, occupiedByOther, storeyRect, wallTopOf, type Mass } from '@/core/generator/house/plan';
+import { facadeOf, facadePos, isMasonry, type Ctx } from '@/core/generator/house/walls';
 import { rightOf } from '@/core/templates/place';
 
 /**
@@ -81,6 +81,8 @@ export function planDormers(ctx: Ctx, mass: Mass, section: RoofSectionSpec, coun
           ridgeStyle: 'slab',
           gables: false,
           maxRise: 3,
+          edge: undefined,
+          texture: undefined,
         },
       });
     }
@@ -296,8 +298,10 @@ function chimneyHead(ctx: Ctx, flue: readonly { x: number; z: number }[], yTop: 
  * base up to the first floor line with stair shoulders, and a corbelled head with the fire
  * sunk into the crown. Rustic cottages keep the classic centred stack; the other styles move
  * it off the gable axis so the centre stays free for gable windows and ornament (research 20).
+ * Returns the footprint ("x,z" → top y): the openings keep away from it, so no window or
+ * balcony ends up behind the stack.
  */
-export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: HorizontalDirection, surface?: ReadonlyMap<string, number>): void {
+export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: HorizontalDirection, surface?: ReadonlyMap<string, number>): Map<string, number> {
   const { builder, blocks, plan } = ctx;
   const top = storeyRect(mass, mass.floors - 1);
   const f = facadeOf(side === 'east' || side === 'west' ? mass.rect : top, side);
@@ -311,7 +315,11 @@ export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: Horizon
   let local = ridgeY;
   if (surface && offset > 0) local = Math.max(...shaft.map((p) => surface.get(`${p.x},${p.z}`) ?? ridgeY));
   const yTop = Math.min(builder.dimensions.height - 4, Math.max(offset > 0 ? Math.max(local + 2, ridgeY) : ridgeY + 2, wallTopOf(plan, mass) + 3));
-  for (const p of shaft) for (let y = 1; y < yTop; y++) builder.setBlock(p.x, y, p.z, blocks.weathered('chimney', p.x, y, p.z, { height: y - 1 }), Priority.CHIMNEY);
+  const footprint = new Map<string, number>();
+  for (const p of shaft) {
+    for (let y = 1; y < yTop; y++) builder.setBlock(p.x, y, p.z, blocks.weathered('chimney', p.x, y, p.z, { height: y - 1 }), Priority.CHIMNEY);
+    footprint.set(`${p.x},${p.z}`, yTop);
+  }
   // Base one wider on each side up to the first floor line, closed by stair shoulders.
   const baseTop = floorY(plan, 1) - 1;
   const leftward = OPPOSITE[rightOf(f.side)] as HorizontalDirection;
@@ -322,8 +330,10 @@ export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: Horizon
     const q = facadePos(f, uu, d);
     for (let y = 1; y <= baseTop; y++) builder.setBlock(q.x, y, q.z, blocks.weathered('chimney', q.x, y, q.z, { height: y - 1 }), Priority.CHIMNEY);
     builder.setBlock(q.x, baseTop + 1, q.z, blocks.stairs('chimney', toward, 'bottom'), Priority.CHIMNEY);
+    footprint.set(`${q.x},${q.z}`, baseTop + 1);
   }
   chimneyHead(ctx, shaft, yTop);
+  return footprint;
 }
 
 /**
@@ -347,5 +357,112 @@ export function buildEaveLanterns(ctx: Ctx, eaves: readonly { x: number; y: numb
     // A short chain under the eave (chains need no support), the lantern hanging from it.
     builder.setBlock(c.x, c.y, c.z, blocks.fixed('iron_chain', { axis: 'y' }), Priority.DECOR);
     builder.setBlock(c.x, c.y - 1, c.z, blocks.fixed(plan.input.lantern, { hanging: 'true' }), Priority.DECOR);
+  }
+}
+
+/**
+ * Lanterns at the eave corners (research 18, reference builds 19098029 and 19864998: light at
+ * every corner frames the house at night). Each free outer corner of a roof section gets a
+ * lantern on a chain under the corner piece; chains need no support, the lantern hangs at least
+ * three blocks above the ground and keeps away from other lights, doors and windows.
+ * Density: few = every free corner of the main body, normal = also the masses in front and the
+ * tower, many = every mass (Japanese roofs: always every corner, also the pagoda rings).
+ */
+export function buildCornerLanterns(ctx: Ctx, sections: readonly RoofSectionSpec[], surface: ReadonlyMap<string, number>, reserved: ReadonlySet<string>, eaves: readonly { x: number; y: number; z: number; outward: HorizontalDirection }[] = []): number {
+  const { builder, blocks, plan } = ctx;
+  const density = plan.input.lanternDensity;
+  if (density === 'none') return 0;
+  const japanese = plan.input.styleId === 'japanese' || plan.input.styleId === 'cherry';
+  const main = plan.masses[0]!;
+  const massOf = (id: string) => plan.masses.find((m) => m.id === id.replace(/-(gable|tier\d+)$/, ''));
+  const covered = (x: number, z: number, own: RoofSectionSpec) =>
+    sections.some((s) => s !== own && massOf(s.id) !== massOf(own.id) && x >= s.x0 - s.overhang && x <= s.x1 + s.overhang && z >= s.z0 - s.overhang && z <= s.z1 + s.overhang);
+  const lights: { x: number; y: number; z: number }[] = [];
+  const nearLight = (x: number, y: number, z: number) => {
+    for (const l of lights) if (Math.abs(l.x - x) + Math.abs(l.z - z) + Math.abs(l.y - y) < 4) return true;
+    for (let dx = -2; dx <= 2; dx++)
+      for (let dz = -2; dz <= 2; dz++)
+        for (let dy = -2; dy <= 2; dy++) if (builder.inside(x + dx, y + dy, z + dz) && definitionOf(builder.getBlock(x + dx, y + dy, z + dz)).light >= 10) return true;
+    return false;
+  };
+  let placed = 0;
+  for (const s of sections) {
+    const mass = massOf(s.id);
+    if (!mass || mass.round || s.type === 'flat' || s.id.endsWith('-gable')) continue;
+    const isMain = mass === main;
+    const front = mass.kind === 'cross';
+    if (!japanese && density === 'few' && !isMain) continue;
+    if (!japanese && density === 'normal' && !isMain && !front && mass.kind !== 'tower') continue;
+    for (const x of [s.x0 - s.overhang, s.x1 + s.overhang])
+      for (const z of [s.z0 - s.overhang, s.z1 + s.overhang]) {
+        // The helm of a round tower (brim up to two blocks beyond its wall) is built later, over it.
+        if (covered(x, z, s) || nearRoundTower(plan, x, z, 4)) continue;
+        const top = surface.get(`${x},${z}`);
+        if (top === undefined) continue;
+        // First free cell under the corner piece(s).
+        let y = top;
+        while (y > 0 && builder.inside(x, y, z) && !builder.isAir(x, y, z)) y--;
+        if (y < 4 || ![y, y - 1].every((yy) => builder.inside(x, yy, z) && builder.isAir(x, yy, z) && !reserved.has(`${x},${yy},${z}`))) continue;
+        if (nearLight(x, y - 1, z)) continue;
+        builder.setBlock(x, y, z, blocks.fixed('iron_chain', { axis: 'y' }), Priority.DECOR);
+        builder.setBlock(x, y - 1, z, blocks.fixed(plan.input.lantern, { hanging: 'true' }), Priority.DECOR);
+        lights.push({ x, y: y - 1, z });
+        placed++;
+      }
+  }
+  // Many lanterns: also one in the middle of every long eave (runs of at least nine cells).
+  if (density === 'many') {
+    const runs = new Map<string, { x: number; y: number; z: number }[]>();
+    for (const c of eaves) {
+      const k = `${c.outward}|${c.y}|${c.outward === 'north' || c.outward === 'south' ? c.z : c.x}`;
+      runs.set(k, [...(runs.get(k) ?? []), c]);
+    }
+    for (const [k, run] of runs) {
+      if (run.length < 9) continue;
+      const alongX = k.startsWith('north') || k.startsWith('south');
+      run.sort((p, q) => (alongX ? p.x - q.x : p.z - q.z));
+      const c = run[Math.floor(run.length / 2)]!;
+      if (nearRoundTower(plan, c.x, c.z, 4)) continue;
+      if (c.y < 4 || ![c.y, c.y - 1].every((yy) => builder.inside(c.x, yy, c.z) && builder.isAir(c.x, yy, c.z) && !reserved.has(`${c.x},${yy},${c.z}`))) continue;
+      if (nearLight(c.x, c.y - 1, c.z)) continue;
+      builder.setBlock(c.x, c.y, c.z, blocks.fixed('iron_chain', { axis: 'y' }), Priority.DECOR);
+      builder.setBlock(c.x, c.y - 1, c.z, blocks.fixed(plan.input.lantern, { hanging: 'true' }), Priority.DECOR);
+      lights.push({ x: c.x, y: c.y - 1, z: c.z });
+      placed++;
+    }
+  }
+  return placed;
+}
+
+/**
+ * Drum of a stepped tower helm (towerCapSections): two rows of wall one block in from the tower
+ * walls, standing on the tower's ceiling, with an open bay in the middle of every side (belfry)
+ * and a lantern on a chain under the spire, so the tower is lit at night (research 18).
+ */
+export function buildTowerDrum(ctx: Ctx, mass: Mass): void {
+  const { builder, blocks, plan } = ctx;
+  if (mass.cap !== 'tiered') return;
+  const r = mass.rect;
+  const y0 = wallTopOf(plan, mass) + 1;
+  const inner = { x0: r.x0 + 1, z0: r.z0 + 1, x1: r.x1 - 1, z1: r.z1 - 1 };
+  const cx = Math.round((inner.x0 + inner.x1) / 2);
+  const cz = Math.round((inner.z0 + inner.z1) / 2);
+  const wall = isMasonry(plan.input.materials.wall) ? 'wall' : 'plinth';
+  for (let x = inner.x0; x <= inner.x1; x++)
+    for (let z = inner.z0; z <= inner.z1; z++) {
+      const edgeX = x === inner.x0 || x === inner.x1;
+      const edgeZ = z === inner.z0 || z === inner.z1;
+      if (!edgeX && !edgeZ) continue;
+      const corner = edgeX && edgeZ;
+      const bay = (edgeX && z === cz) || (edgeZ && x === cx);
+      for (let y = y0; y <= y0 + 1; y++) {
+        if (!builder.inside(x, y, z)) continue;
+        if (bay) builder.clear(x, y, z, Priority.STRUCTURE);
+        else builder.setBlock(x, y, z, corner && mass.frames ? blocks.log('frame', 'y') : blocks.block(wall), Priority.STRUCTURE);
+      }
+    }
+  if (builder.inside(cx, y0 + 1, cz) && builder.isAir(cx, y0, cz) && builder.isAir(cx, y0 + 1, cz)) {
+    builder.setBlock(cx, y0 + 1, cz, blocks.fixed('iron_chain', { axis: 'y' }), Priority.DECOR);
+    builder.setBlock(cx, y0, cz, blocks.fixed(plan.input.lantern, { hanging: 'true' }), Priority.DECOR);
   }
 }

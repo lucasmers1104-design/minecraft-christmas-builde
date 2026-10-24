@@ -283,8 +283,9 @@ export function decorateFestive(b: VoxelBuilder, rng: SeededRandom, t: FestiveTa
       for (let i = every; i < run.length - 1; i += every) picks.add(i);
       for (const i of picks) {
         const c = run[i]!;
+        // At most two cells below the eave cell (never down into a window reveal or a doorway).
         let y = c.y;
-        while (y > 1 && !free(b, c.x, y, c.z)) y--;
+        while (y > Math.max(1, c.y - 2) && !free(b, c.x, y, c.z)) y--;
         if (!open(c.x, y, c.z) || !open(c.x, y - 1, c.z) || !free(b, c.x, y - 2, c.z) || clearance.has(key(c.x, y - 2, c.z))) continue;
         const above = b.getBlock(c.x, y + 1, c.z);
         if (above.includes('_leaves')) continue; // lanterns never hang from leaves

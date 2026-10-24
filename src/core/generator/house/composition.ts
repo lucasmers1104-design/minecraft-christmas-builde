@@ -48,7 +48,7 @@ export interface CompositionPlan {
   wings?: Wings;
   cross: CrossPart[];
   annex?: { side: 'left' | 'right' | 'back'; width: number; depthRatio: number } | null;
-  tower?: { kind: 'square' | 'round'; position: TowerPosition; size?: number } | null;
+  tower?: { kind: 'square' | 'round'; position: TowerPosition; size?: number; cap?: 'tiered' } | null;
   /** Upper storeys step in by this many blocks per side and storey (pagoda tiers). */
   setback?: number;
   /** Modern stacked cube: upper storeys get their own, shifted footprint. */
@@ -169,7 +169,7 @@ function stairTower(c: Ctx): CompositionPlan {
     main: bySize(c.size, sizes[c.style] ?? sizes.medieval!),
     ...(c.style === 'medieval' ? { roofProfile: 'steep' as const } : {}),
     cross: [],
-    tower: { kind: round ? 'round' : 'square', position: r.pick(['back_left', 'back_right', 'front_left', 'front_right'] as const), size: c.size === 'huge' ? 7 : 5 },
+    tower: { kind: round ? 'round' : 'square', position: r.pick(['back_left', 'back_right', 'front_left', 'front_right'] as const), size: c.size === 'huge' ? 7 : 5, ...(r.chance(0.5) ? { cap: 'tiered' as const } : {}) },
     door: 'side',
     symmetry: 'asymmetric',
   };
@@ -187,7 +187,7 @@ function chapel(c: Ctx): CompositionPlan {
     roofType: 'gable',
     cross: [],
     porch: 'canopy',
-    tower: { kind: 'square', position: c.rng.fork('tower').chance(0.5) ? 'front_left' : 'front_right', size: c.size === 'huge' ? 7 : 5 },
+    tower: { kind: 'square', position: c.rng.fork('tower').chance(0.5) ? 'front_left' : 'front_right', size: c.size === 'huge' ? 7 : 5, cap: 'tiered' },
     chimney: false,
     dormers: 0,
     door: 'centre',

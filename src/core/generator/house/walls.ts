@@ -97,7 +97,8 @@ export function facadePanels(f: Facade, framed: boolean): { posts: number[]; pan
   return { posts, panels };
 }
 
-function wallRole(mass: Mass, storey: number, plan: HousePlan): Role {
+/** Palette role of the wall plane of a storey (also the lining of window reveals). */
+export function wallRole(mass: Mass, storey: number, plan: HousePlan): Role {
   // Towers are masonry from top to bottom (stone or brick of the wall, else the plinth stone).
   if (mass.kind === 'tower') return isMasonry(plan.input.materials.wall) ? 'wall' : 'plinth';
   const timberStorey = mass.timber && (plan.input.timber === 'all' || storey > 0);

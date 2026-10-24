@@ -2,7 +2,9 @@ import type { HorizontalDirection } from '@/core/blocks/directions';
 import { AIR, definitionOf } from '@/core/blocks/registry';
 import { Priority } from '@/core/generator/geometry';
 import { doorMassOf, floorY, joinedAt, nearRoundTower, storeyRect, type HousePlan, type Mass } from '@/core/generator/house/plan';
-import { addBraces, coveredColumns, facadeOf, facadePos, isTimberStorey, type Ctx, type Facade, type Panel } from '@/core/generator/house/walls';
+import { addBraces, coveredColumns, facadeOf, facadePos, isTimberStorey, wallRole, type Ctx, type Facade, type Panel } from '@/core/generator/house/walls';
+import { isNiche, nicheDoor, revealWindow } from '@/core/generator/house/reveal';
+import type { Role } from '@/core/style/palettes';
 import { BALCONY_TEMPLATES } from '@/core/templates/balcony';
 import { baseTemplateId, getTemplate, templateBounds, templatesByIds } from '@/core/templates/catalog';
 import { FALLBACK_DOOR } from '@/core/templates/doors';
@@ -19,7 +21,8 @@ import type { FacadeTemplate } from '@/core/templates/types';
  */
 
 export interface OpeningsResult {
-  doors: { x: number; y: number; z: number; outward: HorizontalDirection; width: number }[];
+  /** Door leaves (lower half); `niche`: the leaf stands one block deep in the wall (d = −1). */
+  doors: { x: number; y: number; z: number; outward: HorizontalDirection; width: number; niche?: boolean }[];
   sills: { x: number; y: number; z: number }[];
   windows: number;
   /** Ids of the placed templates (one entry per placement). */
@@ -31,6 +34,16 @@ export interface OpeningsResult {
 }
 
 const key = (x: number, y: number, z: number) => `${x},${y},${z}`;
+/** Winter and Christmas: evergreen stand-ins for the flowers of window boxes and pots. */
+const WINTER_PLANTS: Readonly<Record<string, string>> = {
+  red_tulip: 'fern',
+  oxeye_daisy: 'fern',
+  poppy: 'fern',
+  cornflower: 'fern',
+  potted_red_tulip: 'potted_spruce_sapling',
+  potted_poppy: 'potted_spruce_sapling',
+  potted_dandelion: 'potted_fern',
+};
 /** Template parts that may meet an existing post or beam (the post takes their place). */
 const FRAME_ROLES = new Set(['frame', 'beam', 'roof', 'roofTrim', 'soffit']);
 
@@ -81,7 +94,9 @@ function placeIfFits(
       }
     }
     // Lanterns follow the style (soul lanterns for fantasy).
-    const styled = cell.block === 'lantern' ? { ...cell, block: plan.input.lantern } : cell;
+    // Flowers do not bloom in winter (research 14): boxes and pots get fern and fir instead.
+    const winter = plan.input.theme !== 'none' && cell.block ? WINTER_PLANTS[cell.block] : undefined;
+    const styled = cell.block === 'lantern' ? { ...cell, block: plan.input.lantern } : winter ? { ...cell, block: winter } : cell;
     const state = cellState(styled, frame, plan.input.materials, plan.input.minecraftVersion);
     if (state === null) return null;
     out.push({ ...p, state, cell });
@@ -94,13 +109,28 @@ function commit(ctx: Ctx, cells: NonNullable<ReturnType<typeof placeIfFits>>): v
 }
 
 /** Simple fallback: recessed pane column with a sill (never an empty hole). */
-function plainWindow(ctx: Ctx, f: Facade, u: number, y0: number, height: number, sills: OpeningsResult['sills']): void {
+function plainWindow(ctx: Ctx, f: Facade, u: number, y0: number, height: number, sills: OpeningsResult['sills'], lining: Role | null = null, reserved?: Set<string>): void {
   const { builder, blocks } = ctx;
   const c = facadePos(f, u, 0);
   if (!ctx.plan.masses[0]!.round && nearRoundTower(ctx.plan, c.x, c.z, 1)) return;
+  const depth = lining ? -1 : 0;
   for (let dy = 0; dy < height; dy++) {
-    const p = facadePos(f, u, 0);
+    const p = facadePos(f, u, depth);
     builder.setBlock(p.x, y0 + dy, p.z, blocks.pane(), Priority.OPENING);
+    if (!lining) continue;
+    // Reveal: open wall plane in front, lining beside the pane, free room behind it.
+    builder.vacate(c.x, y0 + dy, c.z);
+    for (const du of [-1, 1]) {
+      const q = facadePos(f, u + du, -1);
+      builder.setBlock(q.x, y0 + dy, q.z, blocks.block(lining), Priority.OPENING);
+      reserved?.add(key(q.x, y0 + dy, q.z));
+    }
+    reserved?.add(key(p.x, y0 + dy, p.z));
+  }
+  if (lining) {
+    const p = facadePos(f, u, -1);
+    builder.setBlock(p.x, y0 - 1, p.z, blocks.block(lining), Priority.OPENING);
+    builder.setBlock(p.x, y0 + height, p.z, blocks.block(lining), Priority.OPENING);
   }
   const s = facadePos(f, u, 1);
   if (builder.inside(s.x, y0 - 1, s.z) && builder.isAir(s.x, y0 - 1, s.z)) {
@@ -181,10 +211,6 @@ function axesIn(from: number, to: number, width: number, gap: number, density: H
 }
 
 /**
- * Window axes (leftmost column of each opening footprint) on a facade without stud grid:
- * symmetric, at least gap + 1 from the corners, and on both sides of the door (never in it).
- */
-/**
  * Window axes on the free stretches of a facade: the door span and the columns covered by other
  * masses are cut out, every remaining stretch gets its own evenly spaced axes.
  */
@@ -203,6 +229,10 @@ function axesAround(length: number, width: number, gap: number, density: HousePl
   return out;
 }
 
+/**
+ * Window axes (leftmost column of each opening footprint) on a facade without stud grid:
+ * symmetric, at least gap + 1 from the corners, and on both sides of the door (never in it).
+ */
 function axesFor(length: number, width: number, gap: number, density: HousePlan['input']['windows'], avoid: [number, number] | null): number[] {
   // The footprint already contains shutters and frames: one free column to the corner.
   if (!avoid) return axesIn(0, length, width, gap, density, 1, 1);
@@ -241,10 +271,13 @@ function placeFeature(ctx: Ctx, f: Facade, y: number, templates: readonly Facade
  * Entrance at facade column `uDoor` (door leaf bottom at `y`): the first door template that
  * fits, clearance in front and behind, lanterns beside it. Returns the occupied columns.
  */
-export function placeDoor(ctx: Ctx, f: Facade, uDoor: number, y: number, doors: readonly FacadeTemplate[], result: OpeningsResult): [number, number] | null {
-  for (const t of [...doors, FALLBACK_DOOR]) {
+export function placeDoor(ctx: Ctx, f: Facade, uDoor: number, y: number, doors: readonly FacadeTemplate[], result: OpeningsResult, lining: Role | null = null): [number, number] | null {
+  for (const raw of [...doors, FALLBACK_DOOR]) {
+    // Door niche (research 01 T2): the leaf one block deep, lining beside and above it.
+    const t = lining ? nicheDoor(raw, lining) : raw;
+    const niche = isNiche(t);
     const startU = uDoor - Math.floor((t.width - 1) / 2);
-    if (t === FALLBACK_DOOR) {
+    if (raw === FALLBACK_DOOR) {
       // Last resort: whatever stands right in front of the door leaf gives way.
       for (const d of [1, 2]) for (const dy of [0, 1]) {
         const q = facadePos(f, startU, d);
@@ -258,13 +291,13 @@ export function placeDoor(ctx: Ctx, f: Facade, uDoor: number, y: number, doors: 
     }
     commit(ctx, cells);
     result.templates.push(t.id);
-    const p = facadePos(f, startU, 0);
-    result.doors.push({ x: p.x, y, z: p.z, outward: f.side, width: t.width });
+    const p = facadePos(f, startU, niche ? -1 : 0);
+    result.doors.push({ x: p.x, y, z: p.z, outward: f.side, width: t.width, ...(niche ? { niche } : {}) });
     // Keep the way in free: two cells in front, one behind. Roofs are built before the
     // openings, so a low eave cornice may already hang there (one-storey houses with a steep
     // eave): the clearance wins and takes it out.
     for (let w = 0; w < t.width; w++)
-      for (const d of [-1, 1, 2]) {
+      for (const d of niche ? [-2, 0, 1, 2] : [-1, 1, 2]) {
         const q = facadePos(f, startU + w, d);
         for (const dy of [0, 1]) {
           result.reserved.add(key(q.x, y + dy, q.z));
@@ -283,10 +316,37 @@ export function emptyOpenings(): OpeningsResult {
   return { doors: [], sills: [], windows: 0, templates: [], reserved: new Set(), doorRejections: [] };
 }
 
-export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirection, Panel[]>[]>): OpeningsResult {
+/**
+ * Columns of a storey facade with an outside chimney in front (up to three blocks out, the
+ * stack reaching into the storey): no window or balcony behind the stack.
+ */
+function behindStack(f: Facade, y0: number, stack: ReadonlyMap<string, number>): Set<number> {
+  const out = new Set<number>();
+  if (stack.size === 0) return out;
+  for (let u = -1; u <= f.length; u++)
+    for (const d of [1, 2, 3]) {
+      const p = facadePos(f, u, d);
+      if ((stack.get(`${p.x},${p.z}`) ?? -1) > y0) out.add(u);
+    }
+  return out;
+}
+
+export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirection, Panel[]>[]>, stack: ReadonlyMap<string, number> = new Map()): OpeningsResult {
   const { plan } = ctx;
   const result = emptyOpenings();
-  const windows = templatesByIds('window', plan.input.windowTemplates);
+  // Shutters and flower boxes by the style's probabilities (research 03; details.shutters and
+  // details.flowerBoxes were never read before): decided once per house, so all windows match.
+  // An explicitly wished window family keeps its own order.
+  const dl = plan.input.detailLevel;
+  const scale = (p: number) => Math.min(1, p * (dl === 1 ? 0.5 : dl === 3 ? 1.4 : 1));
+  const deco = ctx.rng.fork('windowDeco');
+  const boxes = deco.fork('boxes').chance(scale(plan.input.style.details.flowerBoxes));
+  const shutters = deco.fork('shutters').chance(scale(plan.input.style.details.shutters));
+  // One of the two (research 19 T13: at most two micro types per facade; sills come with both).
+  const prefer = plan.input.windowWish.length > 0 ? [] : boxes ? ['W05', 'W05b'] : shutters ? ['W04', 'W04b'] : [];
+  const variants = templatesByIds('window', [...new Set(prefer.map(baseTemplateId))]);
+  const preferred = prefer.map((id) => variants.find((t) => t.id === id)).filter((t): t is FacadeTemplate => t !== undefined);
+  const windows = [...preferred, ...templatesByIds('window', plan.input.windowTemplates).filter((t) => !prefer.includes(t.id))];
   const doors = templatesByIds('door', plan.input.doorTemplates);
   const doorMass = doorMassOf(plan);
 
@@ -301,7 +361,8 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
     const place = (templates: readonly FacadeTemplate[], y: number, label: string) => {
       for (const side of ['north', 'south', 'east', 'west'] as const) {
         if (featureSpans.has(side) || joinedAt(plan, main, side, 1)) continue;
-        const span = placeFeature(ctx, facadeOf(rect, side), y, templates, label, result, coveredColumns(plan, main, side, 1));
+        const f = facadeOf(rect, side);
+        const span = placeFeature(ctx, f, y, templates, label, result, new Set([...coveredColumns(plan, main, side, 1), ...behindStack(f, y0, stack)]));
         if (span) {
           featureSpans.set(side, span);
           return;
@@ -324,24 +385,37 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
         if (joinedAt(plan, mass, side, k)) continue;
         const f = facadeOf(rect, side);
         const facadePanels = perStorey[k]?.get(side) ?? [];
-        // Columns in front of which another mass stands (cross gable, wing, annex): no openings.
-        const covered = coveredColumns(plan, mass, side, k);
+        // Columns in front of which another mass (cross gable, wing, annex) or the chimney
+        // stands: no openings.
+        const stackCols = mass === main ? behindStack(f, y0, stack) : new Set<number>();
+        const covered = new Set([...coveredColumns(plan, mass, side, k), ...stackCols]);
         const blocked = (a: number, b: number) => {
           for (let u = a; u <= b; u++) if (covered.has(u)) return true;
           return false;
         };
         // Door: ground storey, front of the door mass.
-        let doorSpan = k === 0 && mass === doorMass && side === 'north' ? placeDoor(ctx, f, f.origin.x - plan.door.x, y0 + 1, doors, result) : null;
+        let doorSpan = k === 0 && mass === doorMass && side === 'north' ? placeDoor(ctx, f, f.origin.x - plan.door.x, y0 + 1, doors, result, wallRole(mass, k, plan)) : null;
         // Oriel on the front of the first upper storey, balcony on the front (or the back if
         // the front has the oriel); windows keep clear of both like of the door.
         if (k === 1 && mass === main) doorSpan = featureSpans.get(side) ?? doorSpan;
         // Windows: in stud-grid panels, or on symmetric axes for plain walls.
-        const density = plan.input.windows;
+        // Towers: a window on every second storey from the top (a slender shaft, not a lattice).
+        if (mass.kind === 'tower' && f.length < 6 && (mass.floors - 1 - k) % 2 === 1) continue;
+        const density = mass.kind === 'tower' ? 'few' : plan.input.windows;
         const candidates = windows.filter((t) => t.height <= rows - 1 || (rows <= 3 && t.height <= rows));
         // Centred in the panel by the template's own width (research 03: centring by the panel
         // width left narrower windows hugging the left post).
+        // Reveal: glass one block deep with a lining of the storey's wall material (research 01 T2).
+        const lining = wallRole(mass, k, plan);
+        const reserveGlass = (cells: NonNullable<ReturnType<typeof placeIfFits>>) => {
+          // The open wall plane of a reveal stays free for decoration (candles in the window).
+          for (const c of cells) if (c.cell.role === 'air' && c.cell.d === 0 && c.cell.y >= 0) ctx.builder.vacate(c.x, c.y, c.z);
+          // Recessed panes and their lining stand in the room's first row: stairs and ladders keep away.
+          for (const c of cells) if (c.cell.d === -1) result.reserved.add(key(c.x, c.y, c.z));
+        };
         const tryWindow = (panelU0: number, panelWidth: number, maxWidth: number): boolean => {
-          for (const t of candidates) {
+          for (const t0 of candidates) {
+            const t = revealWindow(t0, lining);
             if (t.width > maxWidth) continue;
             const yBottom = rows >= t.height + 2 ? y0 + 2 : y0 + 1;
             const frame = frameAt(f, panelU0 + Math.floor((panelWidth - t.width) / 2), yBottom);
@@ -349,6 +423,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
             if (!cells) continue;
             if (cells.some((c) => result.reserved.has(key(c.x, c.y, c.z)))) continue;
             commit(ctx, cells);
+            reserveGlass(cells);
             for (const c of cells) if (c.cell.d === 1 && c.cell.y === -1 && c.cell.form === 'stairs') result.sills.push({ x: c.x, y: c.y, z: c.z });
             result.windows++;
             result.templates.push(t.id);
@@ -371,7 +446,8 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
           free.forEach((panel, i) => {
             const width = panel.u1 - panel.u0 + 1;
             const brace = () => {
-              if (timber) addBraces(ctx, f, panel, y0, floorY(plan, k + 1));
+              // Japanese framing has no European braces (research 11): the panel stays a plain wall.
+              if (timber && plan.input.styleId !== 'japanese' && plan.input.styleId !== 'cherry') addBraces(ctx, f, panel, y0, floorY(plan, k + 1));
             };
             if (doorSpan && panel.u1 >= doorSpan[0] && panel.u0 <= doorSpan[1]) return;
             if (rhythm && (i === 0 || i === n - 1)) return brace();
@@ -379,7 +455,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
             if (density !== 'many' && width < 2 && n > 3) return brace();
             if (!tryWindow(panel.u0, width, Math.min(width, width >= 4 ? 2 : width))) {
               const yBottom = rows >= 4 ? y0 + 2 : y0 + 1;
-              plainWindow(ctx, f, panel.u0 + Math.floor((width - 1) / 2), yBottom, Math.min(2, rows - 1), result.sills);
+              plainWindow(ctx, f, panel.u0 + Math.floor((width - 1) / 2), yBottom, Math.min(2, rows - 1), result.sills, lining, result.reserved);
               result.windows++;
             }
           });
@@ -387,7 +463,8 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
           // Plain walls: one recurring window type per facade, on symmetric axes computed from
           // the template's full footprint (shutters, frames included).
           let placedAny = false;
-          for (const t of candidates) {
+          for (const t0 of candidates) {
+            const t = revealWindow(t0, lining);
             const b = templateBounds(t);
             const outer = b.maxX - b.minX + 1;
             const gap = Math.max(1, t.spacing);
@@ -399,6 +476,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
             if (placements.some((c) => !c || c.some((cell) => result.reserved.has(key(cell.x, cell.y, cell.z))))) continue;
             for (const cells of placements) {
               commit(ctx, cells!);
+              reserveGlass(cells!);
               result.templates.push(t.id);
               for (const c of cells!) if (c.cell.d === 1 && c.cell.y === -1 && c.cell.form === 'stairs') result.sills.push({ x: c.x, y: c.y, z: c.z });
               result.windows++;
@@ -408,8 +486,36 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
           }
           if (!placedAny) {
             for (const u0 of axesAround(f.length, 1, 2, density, doorSpan, covered).filter((pos) => !blocked(pos - 1, pos + 1))) {
-              plainWindow(ctx, f, u0, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills);
+              plainWindow(ctx, f, u0, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills, lining, result.reserved);
               result.windows++;
+            }
+          }
+        }
+        // Beside an outside chimney: a small window in the wall next to the stack where that
+        // stretch got none (the classic chimney gable) – one wall column between, one to the corner.
+        if (stackCols.size > 0) {
+          const s0 = Math.min(...stackCols);
+          const s1 = Math.max(...stackCols);
+          const framed = mass.frames && facadePanels.length > 1;
+          const inPanel = (u: number) => !framed || facadePanels.some((p) => u >= p.u0 && u <= p.u1);
+          const hasGlass = (a: number, b: number) => {
+            for (let u = a; u <= b; u++)
+              for (const d of [-1, 0]) {
+                const q = facadePos(f, u, d);
+                for (let y = y0 + 1; y < floorY(plan, k + 1); y++) if (ctx.builder.inside(q.x, y, q.z) && ctx.builder.getBlock(q.x, y, q.z).includes('glass')) return true;
+              }
+            return false;
+          };
+          for (const [from, to, step] of [
+            [s0 - 2, 1, -1],
+            [s1 + 2, f.length - 2, 1],
+          ] as const) {
+            if (hasGlass(Math.min(from, to), Math.max(from, to))) continue;
+            for (let u = from; step < 0 ? u >= to : u <= to; u += step) {
+              if (!inPanel(u) || blocked(u - 1, u + 1) || (doorSpan && u + 1 >= doorSpan[0] && u - 1 <= doorSpan[1])) continue;
+              plainWindow(ctx, f, u, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills, lining, result.reserved);
+              result.windows++;
+              break;
             }
           }
         }

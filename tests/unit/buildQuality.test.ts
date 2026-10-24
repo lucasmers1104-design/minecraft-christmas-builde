@@ -78,29 +78,31 @@ describe('Kennzahlen der Bauqualität', () => {
  * two depth levels, unlit eave corners, one mass from medium on, weak back sides). Phase 2
  * (archetypes): masses 0.50 → 0.79, ridge heights 0.50 → 0.79, roof share 0.81 → 1.00, mean
  * score 0.87; the back side and the busiest facade dropped slightly (more parts in front) and
- * are the subject of phases 3 and 4.
+ * are the subject of phases 3 and 4. Phase 3 (depth and roofs): glass and doors in a reveal,
+ * shutters or window boxes, lanterns at the eave corners, shaped roof edges – main facades with
+ * three depth levels 0.21 → 0.92, lit eave corners 0.13 → 0.94, mean score 0.97.
  */
 const PASS_FLOORS: Readonly<Record<keyof QualityTargets, number>> = {
-  minLevelsMain: 0.2,
-  relief: 0.65,
+  minLevelsMain: 0.9,
+  relief: 0.8,
   minLevelsGable: 0.95,
   masses: 0.75,
   eaveHeights: 0.8,
   ridgeHeights: 0.75,
-  accents: 0.7,
+  accents: 0.95,
   roofShare: 0.95,
-  dominant: 0.9,
-  materials: 0.45,
-  density: 0.6,
-  maxSide: 0.65,
-  back: 0.4,
-  side: 0.85,
+  dominant: 0.95,
+  materials: 0.9,
+  density: 0.8,
+  maxSide: 0.75,
+  back: 0.45,
+  side: 0.95,
   entrance: 1,
-  eaveCorners: 0.1,
+  eaveCorners: 0.9,
   windowsLit: 1,
 };
 /** Lowest mean score per style. */
-const SCORE_FLOOR = 0.8;
+const SCORE_FLOOR = 0.94;
 
 describe('Regression: Kennzahlen je Stil', () => {
   const samples = STYLE_IDS.flatMap((style) =>

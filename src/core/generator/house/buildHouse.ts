@@ -3,10 +3,10 @@ import { buildRoofs, housePitch, irimoyaSections, planRoofs, slopeColumns, type 
 import { ladderRise } from '@/core/generator/roof/profiles';
 import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRandom';
 import { Blocks } from '@/core/generator/house/materials';
-import { doorMassOf, floorY, nearRoundTower, planHouse, roofSection, storeyRect, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
+import { doorMassOf, floorY, nearRoundTower, planHouse, roofSection, storeyRect, towerCapSections, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { buildRoundTower, roundTowerTop } from '@/core/generator/house/roundTower';
 import { buildPassages, buildPlinth, buildStairs, buildStorey, buildStringCourses, buildTierDecks, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
-import { buildChimney, buildDormer, buildEaveLanterns, buildEngawa, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
+import { buildChimney, buildCornerLanterns, buildTowerDrum, buildDormer, buildEaveLanterns, buildEngawa, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
 import { buildOpenings, type OpeningsResult } from '@/core/generator/house/openings';
 import { buildGables } from '@/core/generator/house/gables';
 import { buildInteriorLight } from '@/core/generator/house/interiorLight';
@@ -106,14 +106,18 @@ export function shiftPlan(plan: HousePlan, dx: number, dz: number): HousePlan {
 export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRandom) {
   // An irimoya roof is a hip section plus a shortened gable section (see irimoyaSections).
   const sections = squareMasses(plan).flatMap((m) => {
+    if (m.cap === 'tiered') return towerCapSections(plan, m, input.materials);
     const s = roofSection(plan, m, input.materials);
     return s.type === 'irimoya' ? irimoyaSections(s) : [s];
   });
   const main = plan.masses[0]!;
   const probe = { builder: null as never, plan, blocks: null as never, rng };
-  // Dormers keep clear of a round tower.
+  // Dormers keep clear of towers and of the masses in front or behind (they would cut into them).
+  const others = plan.masses.filter((m) => m !== main && !m.round);
+  const hits = (d: { section: RoofSectionSpec }) =>
+    others.some((m) => d.section.x0 - 2 <= m.rect.x1 && d.section.x1 + 2 >= m.rect.x0 && d.section.z0 - 2 <= m.rect.z1 && d.section.z1 + 2 >= m.rect.z0);
   const dormers = planDormers(probe, main, sections[0]!, input.dormers).filter(
-    (d) => ![d.section.x0, d.section.x1].some((x) => [d.section.z0, d.section.z1].some((z) => nearRoundTower(plan, x, z, 2))),
+    (d) => !hits(d) && ![d.section.x0, d.section.x1].some((x) => [d.section.z0, d.section.z1].some((z) => nearRoundTower(plan, x, z, 2))),
   );
   // Engawa decks need no roof of their own: the wide eave covers them.
   const porch = input.porch && input.porchKind !== 'engawa' ? porchSection(probe, doorMassOf(plan), plan.door.x, input.porchKind) : null;
@@ -154,7 +158,7 @@ export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRand
       s.pitch = pitch;
       s.maxRise = Math.max(s.maxRise ?? 7, ladderRise(pitch, slopeColumns(s)));
       // The planned rise incl. ridge piece and eave lift is the real height; keep the cap honest.
-      const rise = planRoofs([s]).topY - s.wallTop;
+      const rise = planRoofs([{ ...s, edge: undefined }]).topY - s.wallTop;
       if (rise > s.maxRise + 1) s.maxRise = rise - 1;
     }
   // Hierarchy (research 19 T1/L2): no wing, cross gable or annex reaches the main ridge. Where
@@ -165,6 +169,9 @@ export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRand
     const m = plan.masses.find((x) => x.id === s.id);
     if (!m || m === main || m.kind === 'tower' || s.type === 'flat') continue;
     for (let guard = 0; guard < 10 && planRoofs([s]).topY >= mainTop && (s.maxRise ?? 7) > 2; guard++) s.maxRise = (s.maxRise ?? 7) - 1;
+    // Keep the cap honest where the profile cannot get any lower.
+    const rise = planRoofs([{ ...s, edge: undefined }]).topY - s.wallTop;
+    if (rise > (s.maxRise ?? 7) + 1) s.maxRise = rise - 1;
   }
   sections.push(...dormers.map((d) => d.section), ...(porch ? [porch] : []));
   return { sections, dormers, porch };
@@ -175,7 +182,7 @@ export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRand
  * `plainGables` ("sectionId:side") keeps gable fields free of windows and timber, e.g. for the
  * station clock in the hall gable.
  */
-export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: HouseInput, rng: SeededRandom, opts: { plainGables?: readonly string[] } = {}): HouseResult {
+export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: HouseInput, rng: SeededRandom, opts: { plainGables?: readonly string[]; cornerLanterns?: boolean } = {}): HouseResult {
   const { sections, dormers, porch } = planSections(plan, input, rng);
   const blocks = new Blocks(input.materials, input.minecraftVersion, input.seed);
   const ctx: Ctx = { builder, plan, blocks, rng };
@@ -195,25 +202,35 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
 
   for (const d of dormers) buildDormer(ctx, d);
   const roof = buildRoofs(builder, sections);
+  for (const m of squareMasses(plan)) buildTowerDrum(ctx, m);
   if (porch) buildPorch(ctx, porch, plan.door.x);
   let chimney: { x: number; z: number } | null = null;
+  let stack = new Map<string, number>();
   if (input.chimney && main.roofType !== 'flat') {
     const tower = plan.masses.find((m) => m.round);
     const towerSide = tower ? (tower.rect.x0 + tower.rect.x1 > main.rect.x0 + main.rect.x1 ? 'east' : 'west') : null;
     const free = (['east', 'west'] as const).filter((s) => s !== towerSide);
     const side = main.ridgeAxis === 'x' ? (free.length === 1 ? free[0]! : rng.fork('chimney').chance(0.5) ? 'east' : 'west') : 'south';
     // Without a gable on that side an outside stack would stand free beside the hip: through the
-    // roof instead. Nordic houses never have an outside stack (research 10 E8).
-    const throughRoof = ['hip', 'pyramid', 'mansard', 'half_hip', 'irimoya'].includes(main.roofType) || input.styleId === 'nordic';
+    // roof instead. Nordic houses never have an outside stack (research 10 E8). A jettied gable
+    // neither: the stack would stand free in front of the ground storey (town houses have their
+    // chimney inside).
+    const ground = storeyRect(main, 0);
+    const top = storeyRect(main, main.floors - 1);
+    const jettied = side === 'south' ? top.z1 !== ground.z1 : side === 'east' ? top.x1 !== ground.x1 : top.x0 !== ground.x0;
+    const throughRoof = ['hip', 'pyramid', 'mansard', 'half_hip', 'irimoya'].includes(main.roofType) || input.styleId === 'nordic' || jettied;
     if (throughRoof) chimney = buildRoofChimney(ctx, main, roof.surface, side === 'south' ? 'east' : side);
-    else buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
+    else stack = buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
   }
-  const openings = buildOpenings(ctx, panels);
+  const openings = buildOpenings(ctx, panels, stack);
   if (input.porch && input.porchKind === 'engawa') buildEngawa(ctx, main, plan.door.x, openings.reserved);
   buildStringCourses(ctx, squareMasses(plan));
   // Gable fields (timber, windows) and ridge finials, after the chimney so nothing hides behind it.
   openings.windows += buildGables(ctx, roof, sections, opts.plainGables ?? []).windows;
-  if (input.lanternDensity === 'many') buildEaveLanterns(ctx, roof.eaveCells, openings.reserved);
+  // Lanterns at the eave corners (houses); buildings with their own light plan keep the old rule.
+  if (opts.cornerLanterns === false) {
+    if (input.lanternDensity === 'many') buildEaveLanterns(ctx, roof.eaveCells, openings.reserved);
+  } else buildCornerLanterns(ctx, sections, roof.surface, openings.reserved, roof.eaveCells);
   const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;
   buildStairs(ctx, main, (x, z) => nearChimney(x, z) || nearRoundTower(plan, x, z, 1) || [...openings.reserved].some((k) => k.startsWith(`${x},`) && k.endsWith(`,${z}`)));
   // Pendant lanterns in every storey and a lantern in the attic (after the stairs).
