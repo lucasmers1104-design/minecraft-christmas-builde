@@ -11,6 +11,7 @@ import { BORDER_INSET } from '@/core/generator/borders';
 import { createSeededRandom } from '@/core/generator/seededRandom';
 import { LAMP_DESIGNS, lampCells, lightHeight } from '@/core/templates/lampPosts';
 import { formOf } from '@/core/style/materials';
+import { blockAt } from '@/core/schema/voxelModel';
 import { DEFAULT_HOUSE_SPEC, STYLE_IDS, type BuildSpec } from '@/core/schema/buildSpec';
 import type { SizeClass, StyleId, Theme } from '@/core/style/styles';
 
@@ -407,13 +408,26 @@ describe('Boden nach Ursache und aufgelöster Rand (Bericht 15, Empfehlungen 1 u
     }
   });
 
-  it('Schnee nur auf Wunsch: Schneeboden, aber nicht unter den Traufen und nicht auf dem Weg', () => {
+  it('Schnee nur auf Wunsch und nur als Schneeschicht: Boden bleibt Gras, Wege und Traufbereich frei', () => {
     for (const style of ['nordic', 'medieval', 'japanese'] as const) {
+      // The landscape itself never lays snow blocks (CD decision 23.10.2026).
       const r = run(style, 'medium', 'winter', 1, { snow: true });
-      const { width: W, length: L } = r.b.dimensions;
-      for (const c of r.report.path!.cells.values()) expect(short(r.b.getBlock(c.x, 0, c.z)), style).not.toBe('snow_block');
-      for (let x = 0; x < W; x++) for (let z = 0; z < L; z++) if (r.report.site.covered[x + W * z] && r.report.site.owned[x + W * z]) expect(short(r.b.getBlock(x, 0, z)), style).not.toBe('snow_block');
-      expect(changes(r).some(([, y, , s]) => y === 0 && short(s) === 'snow_block'), style).toBe(true);
+      expect(changes(r).some(([, , , s]) => short(s) === 'snow_block'), style).toBe(false);
+      // The finished building: snow layers on the lawn, none on the cleared path or under the eaves.
+      const g = generateBuildingWithReport(spec({ style, size: 'medium', theme: 'winter', seed: 1 }, { snow: true }));
+      expect(g.repairs, style).toEqual([]);
+      expect(g.model.palette.some((s) => blockIdOf(s) === 'minecraft:snow_block'), style).toBe(false);
+      const { width: W, length: L } = g.model.dimensions;
+      let lawn = 0;
+      for (let x = 0; x < W; x++) for (let z = 0; z < L; z++) if (blockIdOf(blockAt(g.model, x, 1, z)) === 'minecraft:snow' && blockIdOf(blockAt(g.model, x, 0, z)) === 'minecraft:grass_block') lawn++;
+      expect(lawn, style).toBeGreaterThan(20);
+      // Cleared paths: no snow on the path block (snow between stepping stones is fine).
+      for (let x = 0; x < W; x++)
+        for (let z = 0; z < L; z++)
+          if (blockAt(g.model, x, 0, z) === r.pathBlock) expect(blockIdOf(blockAt(g.model, x, 1, z)), `${style} ${x},${z}`).not.toBe('minecraft:snow');
+      for (let x = 0; x < W; x++)
+        for (let z = 0; z < L; z++)
+          if (r.report.site.covered[x + W * z] && r.report.site.owned[x + W * z]) expect(blockIdOf(blockAt(g.model, x, 1, z)), `${style} ${x},${z}`).not.toBe('minecraft:snow');
     }
   });
 });

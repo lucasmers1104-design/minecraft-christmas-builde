@@ -21,8 +21,11 @@ import type { FacadeTemplate } from '@/core/templates/types';
  */
 
 export interface OpeningsResult {
-  /** Door leaves (lower half); `niche`: the leaf stands one block deep in the wall (d = −1). */
-  doors: { x: number; y: number; z: number; outward: HorizontalDirection; width: number; niche?: boolean }[];
+  /**
+   * Door leaves (lower half), the entrance first; `niche`: the leaf stands one block deep in the
+   * wall (d = −1); `back`: back or side door (`mass` is the mass it belongs to).
+   */
+  doors: { x: number; y: number; z: number; outward: HorizontalDirection; width: number; niche?: boolean; back?: boolean; mass?: string }[];
   sills: { x: number; y: number; z: number }[];
   windows: number;
   /** Ids of the placed templates (one entry per placement). */
@@ -271,7 +274,16 @@ function placeFeature(ctx: Ctx, f: Facade, y: number, templates: readonly Facade
  * Entrance at facade column `uDoor` (door leaf bottom at `y`): the first door template that
  * fits, clearance in front and behind, lanterns beside it. Returns the occupied columns.
  */
-export function placeDoor(ctx: Ctx, f: Facade, uDoor: number, y: number, doors: readonly FacadeTemplate[], result: OpeningsResult, lining: Role | null = null): [number, number] | null {
+export function placeDoor(
+  ctx: Ctx,
+  f: Facade,
+  uDoor: number,
+  y: number,
+  doors: readonly FacadeTemplate[],
+  result: OpeningsResult,
+  lining: Role | null = null,
+  back: { mass: string } | null = null,
+): [number, number] | null {
   for (const raw of [...doors, FALLBACK_DOOR]) {
     // Door niche (research 01 T2): the leaf one block deep, lining beside and above it.
     const t = lining ? nicheDoor(raw, lining) : raw;
@@ -292,19 +304,21 @@ export function placeDoor(ctx: Ctx, f: Facade, uDoor: number, y: number, doors: 
     commit(ctx, cells);
     result.templates.push(t.id);
     const p = facadePos(f, startU, niche ? -1 : 0);
-    result.doors.push({ x: p.x, y, z: p.z, outward: f.side, width: t.width, ...(niche ? { niche } : {}) });
+    result.doors.push({ x: p.x, y, z: p.z, outward: f.side, width: t.width, ...(niche ? { niche } : {}), ...(back ? { back: true, mass: back.mass } : {}) });
     // Keep the way in free: two cells in front, one behind. Roofs are built before the
     // openings, so a low eave cornice may already hang there (one-storey houses with a steep
     // eave): the clearance wins and takes it out.
     for (let w = 0; w < t.width; w++)
-      for (const d of niche ? [-2, 0, 1, 2] : [-1, 1, 2]) {
+      for (const d of niche ? [-2, -1, 0, 1, 2] : [-1, 0, 1, 2]) {
         const q = facadePos(f, startU + w, d);
         for (const dy of [0, 1]) {
+          // The leaf itself too: stairs along the back wall must not run through a back door.
           result.reserved.add(key(q.x, y + dy, q.z));
           if (d > 0 && ctx.builder.inside(q.x, y + dy, q.z)) ctx.builder.clear(q.x, y + dy, q.z, Priority.CLEARANCE);
         }
       }
-    if (!ctx.plan.input.porch) buildStoop(ctx, f, startU, t.width, y);
+    // The porch covers the entrance only: a back door always gets its own step.
+    if (back || !ctx.plan.input.porch) buildStoop(ctx, f, startU, t.width, y);
     if (ctx.plan.input.lanternDensity !== 'none') addDoorLanterns(ctx, f, startU, t.width, y, result.reserved);
     // Door leaf plus jambs; parts in front of the wall are checked by placeIfFits.
     return [startU - 1, startU + t.width];
@@ -331,7 +345,53 @@ function behindStack(f: Facade, y0: number, stack: ReadonlyMap<string, number>):
   return out;
 }
 
-export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirection, Panel[]>[]>, stack: ReadonlyMap<string, number> = new Map()): OpeningsResult {
+/**
+ * Back or side door (research 19 T12/T14: no house without a back side). Ground storey, first on
+ * the back (south) of the main body or another mass, else on a side of the main body: in a free
+ * stretch away from other masses, the chimney and the corners; framed walls take the centre of a
+ * panel at least three wide (posts stay, they frame the door), off-centre near a third of the
+ * facade; plain walls take a spot near a corner, so the window axes keep the long stretch. Not on
+ * detail level 1.
+ */
+function chooseBackDoor(
+  ctx: Ctx,
+  panels: Map<string, Map<HorizontalDirection, Panel[]>[]>,
+  stack: ReadonlyMap<string, number>,
+): { mass: Mass; side: HorizontalDirection; u: number } | null {
+  const { plan } = ctx;
+  if (plan.input.detailLevel < 2) return null;
+  const main = plan.masses[0]!;
+  const front = doorMassOf(plan);
+  const candidates: [Mass, HorizontalDirection][] = [
+    ...plan.masses.filter((m) => !m.round && m.kind !== 'tower').map((m): [Mass, HorizontalDirection] => [m, 'south']),
+    [main, 'east'],
+    [main, 'west'],
+  ];
+  const third = ctx.rng.fork('backDoor').chance(0.5) ? 1 / 3 : 2 / 3;
+  for (const [mass, side] of candidates) {
+    if ((mass === front && side === 'north') || joinedAt(plan, mass, side, 0)) continue;
+    const f = facadeOf(storeyRect(mass, 0), side);
+    if (f.length < 5) continue;
+    const covered = new Set([...coveredColumns(plan, mass, side, 0), ...(mass === main ? behindStack(f, floorY(plan, 0), stack) : [])]);
+    const free = (u: number) => {
+      if (u < 2 || u > f.length - 3) return false;
+      for (let v = u - 2; v <= u + 2; v++) if (covered.has(v)) return false;
+      return true;
+    };
+    const facadePanels = panels.get(mass.id)?.[0]?.get(side) ?? [];
+    const spots: number[] = [];
+    if (mass.frames && facadePanels.length > 1) {
+      for (const p of facadePanels) if (p.u1 - p.u0 >= 2 && free(p.u0 + Math.floor((p.u1 - p.u0) / 2))) spots.push(p.u0 + Math.floor((p.u1 - p.u0) / 2));
+    } else for (let u = 2; u <= f.length - 3; u++) if (free(u)) spots.push(u);
+    if (spots.length === 0) continue;
+    const framed = mass.frames && facadePanels.length > 1;
+    const aim = framed ? (f.length - 1) * third : third < 0.5 ? 0 : f.length - 1;
+    return { mass, side, u: spots.reduce((a, b) => (Math.abs(b - aim) < Math.abs(a - aim) ? b : a)) };
+  }
+  return null;
+}
+
+export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirection, Panel[]>[]>, stack: ReadonlyMap<string, number> = new Map(), withBackDoor = true): OpeningsResult {
   const { plan } = ctx;
   const result = emptyOpenings();
   // Shutters and flower boxes by the style's probabilities (research 03; details.shutters and
@@ -349,6 +409,9 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
   const windows = [...preferred, ...templatesByIds('window', plan.input.windowTemplates).filter((t) => !prefer.includes(t.id))];
   const doors = templatesByIds('door', plan.input.doorTemplates);
   const doorMass = doorMassOf(plan);
+  const back = withBackDoor ? chooseBackDoor(ctx, panels, stack) : null;
+  // The back door is the plain one of the style (narrowest template first).
+  const backDoors = [...doors].sort((a, b) => a.width - b.width);
 
   // Oriel and balcony on the first upper storey of the main body: on the front where they fit,
   // else on the back or a side (research 19 T14: details on all four sides); one per facade.
@@ -395,6 +458,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
         };
         // Door: ground storey, front of the door mass.
         let doorSpan = k === 0 && mass === doorMass && side === 'north' ? placeDoor(ctx, f, f.origin.x - plan.door.x, y0 + 1, doors, result, wallRole(mass, k, plan)) : null;
+        if (!doorSpan && k === 0 && back && back.mass === mass && back.side === side) doorSpan = placeDoor(ctx, f, back.u, y0 + 1, backDoors, result, wallRole(mass, k, plan), { mass: mass.id });
         // Oriel on the front of the first upper storey, balcony on the front (or the back if
         // the front has the oriel); windows keep clear of both like of the door.
         if (k === 1 && mass === main) doorSpan = featureSpans.get(side) ?? doorSpan;
@@ -492,27 +556,35 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
           }
         }
         // Beside an outside chimney: a small window in the wall next to the stack where that
-        // stretch got none (the classic chimney gable) – one wall column between, one to the corner.
+        // stretch got none (the classic chimney gable) – one wall column between where there is
+        // room, else right beside the stack; never in the corner column.
         if (stackCols.size > 0) {
           const s0 = Math.min(...stackCols);
           const s1 = Math.max(...stackCols);
           const framed = mass.frames && facadePanels.length > 1;
           const inPanel = (u: number) => !framed || facadePanels.some((p) => u >= p.u0 && u <= p.u1);
+          // Glass of this facade: in the wall plane, or recessed behind an open wall plane.
           const hasGlass = (a: number, b: number) => {
-            for (let u = a; u <= b; u++)
-              for (const d of [-1, 0]) {
-                const q = facadePos(f, u, d);
-                for (let y = y0 + 1; y < floorY(plan, k + 1); y++) if (ctx.builder.inside(q.x, y, q.z) && ctx.builder.getBlock(q.x, y, q.z).includes('glass')) return true;
+            for (let u = Math.max(1, a); u <= Math.min(f.length - 2, b); u++)
+              for (let y = y0 + 1; y < floorY(plan, k + 1); y++) {
+                const w = facadePos(f, u, 0);
+                const r = facadePos(f, u, -1);
+                if (!ctx.builder.inside(w.x, y, w.z)) continue;
+                const wall = ctx.builder.getBlock(w.x, y, w.z);
+                if (wall.includes('glass') || (wall === AIR && ctx.builder.getBlock(r.x, y, r.z).includes('glass'))) return true;
               }
             return false;
           };
-          for (const [from, to, step] of [
-            [s0 - 2, 1, -1],
-            [s1 + 2, f.length - 2, 1],
-          ] as const) {
-            if (hasGlass(Math.min(from, to), Math.max(from, to))) continue;
-            for (let u = from; step < 0 ? u >= to : u <= to; u += step) {
-              if (!inPanel(u) || blocked(u - 1, u + 1) || (doorSpan && u + 1 >= doorSpan[0] && u - 1 <= doorSpan[1])) continue;
+          const doorNear = (u: number) => !!doorSpan && u + 1 >= doorSpan[0] && u - 1 <= doorSpan[1];
+          for (const side of [-1, 1] as const) {
+            const edge = side < 0 ? s0 : s1;
+            const corner = side < 0 ? 1 : f.length - 2;
+            if (hasGlass(Math.min(edge + side, corner), Math.max(edge + side, corner))) continue;
+            const spots: { u: number; free: [number, number] }[] = [];
+            for (let u = edge + 2 * side; side < 0 ? u >= corner : u <= corner; u += side) spots.push({ u, free: [u - 1, u + 1] });
+            spots.push({ u: edge + side, free: side < 0 ? [edge - 2, edge - 1] : [edge + 1, edge + 2] });
+            for (const { u, free } of spots) {
+              if (u < 1 || u > f.length - 2 || !inPanel(u) || blocked(free[0], free[1]) || doorNear(u)) continue;
               plainWindow(ctx, f, u, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills, lining, result.reserved);
               result.windows++;
               break;
@@ -522,6 +594,8 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
       }
     }
   }
+  // The entrance first (a back door on an earlier mass was placed before it).
+  result.doors.sort((a, b) => Number(!!a.back) - Number(!!b.back));
   // Say so when a chosen window or door family found no place (the style's own was used).
   const placed = new Set(result.templates.map(baseTemplateId));
   const { windowWish, doorWish } = plan.input;

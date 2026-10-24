@@ -80,7 +80,9 @@ describe('Kennzahlen der Bauqualität', () => {
  * score 0.87; the back side and the busiest facade dropped slightly (more parts in front) and
  * are the subject of phases 3 and 4. Phase 3 (depth and roofs): glass and doors in a reveal,
  * shutters or window boxes, lanterns at the eave corners, shaped roof edges – main facades with
- * three depth levels 0.21 → 0.92, lit eave corners 0.13 → 0.94, mean score 0.97.
+ * three depth levels 0.21 → 0.92, lit eave corners 0.13 → 0.94, mean score 0.97. Phase 4
+ * (environment): a back or side door with its own path, ivy, a kitchen garden and windows beside
+ * the chimney – back sides in range 0.50 → 0.96, mean score 0.98.
  */
 const PASS_FLOORS: Readonly<Record<keyof QualityTargets, number>> = {
   minLevelsMain: 0.9,
@@ -95,7 +97,7 @@ const PASS_FLOORS: Readonly<Record<keyof QualityTargets, number>> = {
   materials: 0.9,
   density: 0.8,
   maxSide: 0.75,
-  back: 0.45,
+  back: 0.9,
   side: 0.95,
   entrance: 1,
   eaveCorners: 0.9,

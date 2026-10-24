@@ -31,6 +31,8 @@ export type ShapeClass =
   | 'potted'
   | 'plant'
   | 'sapling'
+  /** Two-block plant (tall grass, large fern): lower half on the ground, upper half above. */
+  | 'tall_plant'
   | 'carpet'
   | 'button'
   | 'campfire'
@@ -382,6 +384,11 @@ export const SHAPES: Readonly<Record<ShapeClass, ShapeSpec>> = {
   },
   plant: { properties: {}, defaults: {}, boxes: () => one([3, 0, 3, 13, 13, 13], 'plant') },
   sapling: { properties: { stage: ['0', '1'] }, defaults: { stage: '0' }, boxes: () => one([3, 0, 3, 13, 13, 13], 'plant') },
+  tall_plant: {
+    properties: { half: ['upper', 'lower'] },
+    defaults: { half: 'lower' },
+    boxes: (p) => one(p.half === 'lower' ? [2, 0, 2, 14, 16, 14] : [2, 0, 2, 14, 14, 14], 'plant'),
+  },
   carpet: { properties: {}, defaults: {}, boxes: () => one([0, 0, 0, 16, 1, 16]) },
   button: {
     properties: { face: ['floor', 'wall', 'ceiling'], facing: FACING4, powered: BOOL },

@@ -8,6 +8,7 @@ import type { EaveCell, RoofResult } from '@/core/generator/roof/roofEngine';
 import { festiveKit, leavesFor, type FestiveKit } from '@/core/generator/festiveKits';
 import { buildCandyCane, buildFarolito, buildJulenek, buildKadomatsu, buildShimekazari, isPlainWall, standingY, type Cell } from '@/core/generator/festiveProps';
 import { placePresentGroup, type PresentSpot } from '@/core/generator/presents';
+import { placeStringLights, STRING_LIGHTS, type RoofLine } from '@/core/generator/festiveLights';
 import { circle } from '@/core/geometry';
 import type { SizeClass, StyleId, Theme } from '@/core/style/styles';
 
@@ -30,6 +31,8 @@ import type { SizeClass, StyleId, Theme } from '@/core/style/styles';
  * - **Presents** at the entrance: one group beside the steps, outside the clearance.
  * - **Door extras** of the kits: kadomatsu pair and shimekazari (japanese, cherry), julenek
  *   (nordic), farolitos along the path (mediterranean).
+ * - **Light chains (Profi-Builds phase 4):** coloured candles along eaves, verges and ridges
+ *   (festiveLights.ts).
  * - No snow on roofs and no icicles of any kind (user decision); never a lantern or candle
  *   on leaves. Intensity 1–3 follows the detail level.
  */
@@ -53,6 +56,9 @@ export interface FestiveTargets {
   gables?: RoofResult['gableCells'];
   /** Cells that must stay free (door clearance of the openings). */
   reserved?: ReadonlySet<string>;
+  /** Verge and ridge cells of the gable roofs (light chains, festiveLights.ts). */
+  verges?: readonly RoofLine[];
+  ridges?: readonly Cell[];
 }
 
 export interface FestiveOptions {
@@ -192,17 +198,21 @@ export function decorateFestive(b: VoxelBuilder, rng: SeededRandom, t: FestiveTa
   // Garlands and lanterns under the eaves.
   const runs = eaveRuns(t.eaves);
   const lit = new Set<EaveCell[]>(); // runs with garland light: no extra lanterns there
+  const garlanded = new Set<EaveCell[]>();
+  // Styles with a light chain keep the garland at the entrance, the chain runs along the rest.
+  const chains = christmas && STRING_LIGHTS[o.style ?? 'rustic'] !== null;
   if (christmas && o.garland && o.intensity >= 2) {
     const front = runs.filter((r) => r[0]!.outward === 'north' && r.length >= 3);
     const longest = [...runs].sort((p, q) => q.length - p.length).slice(0, 2);
     const chosen =
-      kit.garlandFrontOnly || o.intensity === 2
+      kit.garlandFrontOnly || o.intensity === 2 || chains
         ? front.length > 0
           ? front
           : longest.filter((r) => r.length >= 3)
         : runs.filter((r) => r.length >= 5 || (r[0]!.outward === 'north' && r.length >= 3));
     const gr = rng.fork('garland');
     for (const run of chosen) {
+      garlanded.add(run);
       const outward = run[0]!.outward;
       const [ox, , oz] = VECTOR[outward];
       const alongX = outward === 'north' || outward === 'south';
@@ -271,6 +281,12 @@ export function decorateFestive(b: VoxelBuilder, rng: SeededRandom, t: FestiveTa
       });
       if (lights > 0 || lanternMode) lit.add(run);
     }
+  }
+
+  // Colourful light chains (christmas): eaves without garland; level 3 also verges and ridges.
+  if (christmas) {
+    const strung = placeStringLights(b, rng.fork('stringLights'), { runs: runs.filter((r) => !garlanded.has(r)), verges: t.verges ?? [], ridges: t.ridges ?? [], style: o.style ?? 'rustic', intensity: o.intensity, open, opensBehind: (c, y) => opensBehind(b, c, y) });
+    for (const run of strung) lit.add(run);
   }
 
   // Lanterns on chains under the remaining eaves: corners, every 6 (normal) or 4 (many).
@@ -627,7 +643,7 @@ function placeEntrancePresents(b: VoxelBuilder, rng: SeededRandom, d: FestiveDoo
  * stairs, top slabs, leaves), not next to a light that would melt it. Sloped stair roofs
  * stay mostly bare: a stair's upper face is not full, so vanilla snow would not stay there.
  */
-export function addSnowCover(b: VoxelBuilder): number {
+export function addSnowCover(b: VoxelBuilder, clear: ReadonlySet<string> = new Set(), ground = 0): number {
   const { width: W, height: H, length: L } = b.dimensions;
   const get = (x: number, y: number, z: number) => (b.inside(x, y, z) ? b.getBlock(x, y, z) : 'minecraft:air');
   const snow = blockState('snow', { layers: '1' });
@@ -636,7 +652,8 @@ export function addSnowCover(b: VoxelBuilder): number {
     for (let z = 0; z < L; z++) {
       let y = H - 2;
       while (y > 0 && b.isAir(x, y, z)) y--;
-      if (y <= 0) continue;
+      // The ground too, except the cleared paths.
+      if (b.isAir(x, y, z) || (y === ground && clear.has(`${x},${z}`))) continue;
       if (!snowCanRestOn(b.getBlock(x, y, z)) || strongLightAt(get, x, y + 1, z) >= 12) continue;
       if (b.setBlock(x, y + 1, z, snow, Priority.DECOR)) placed++;
     }

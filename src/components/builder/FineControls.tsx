@@ -108,6 +108,7 @@ function currentValue(spec: BuildSpec, path: SettingPath): unknown {
 /** What the style would choose for this option if it were left automatic. */
 function automaticValue(spec: BuildSpec, path: SettingPath): string {
   const [, key, sub] = path.split(".");
+  if (key === "foundation") return "aus";
   if (spec.kind !== "house" && spec.kind !== "tower") return "Standard";
   const options: BuildOptions = { ...spec.options };
   if (key === "materials" && sub) options.materials = { ...options.materials, [sub]: undefined };
@@ -297,6 +298,20 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
             {shows("lanternDensity") ? enumField("lanternDensity", "Laternen") : null}
             {FLAGS.filter(([key]) => shows(key)).map(([key, label]) => field(`options.${key}`, label, flagChoices, (v) => v === "true"))}
           </fieldset>
+          {shows("foundation") ? (
+            <fieldset className={grid}>
+              {legend("Grundstück & Einfügen")}
+              {field(
+                "options.foundation",
+                "Fundament nach unten",
+                range(FOOTPRINT_LIMITS.foundation.min, FOOTPRINT_LIMITS.foundation.max).map((n) => ({ value: String(n), label: n === 0 ? "aus" : `${n} Lage${n > 1 ? "n" : ""}` })),
+                Number,
+              )}
+              <p className="col-span-2 text-xs leading-snug text-fg-subtle">
+                Verlängert Sockel und Erdreich unter das Bodenniveau, damit das Bauwerk auf unebenem Gelände nicht schwebt. Der Einfügepunkt der .schem wandert mit: Der Boden liegt beim Einfügen weiter auf Höhe deiner Füße.
+              </p>
+            </fieldset>
+          ) : null}
           {shows("materials") ? (
             <fieldset className="grid min-w-0 grid-cols-1 gap-3">
               {legend("Palette & Material")}

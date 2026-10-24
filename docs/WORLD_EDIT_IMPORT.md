@@ -32,6 +32,7 @@
    - Deine Position wird zur **Ecke mit den kleinsten X-, Y- und Z-Werten** des Bauwerks.
    - Das Bauwerk erstreckt sich von dort nach **+X (Osten)**, **+Y (oben)** und **+Z (Süden)**.
    - Die unterste Ebene (Fundament, Gleisbett bzw. Boden) liegt auf Höhe deiner Füße.
+   - Mit der Option **„Fundament nach unten“** (siehe unten) liegt weiterhin der **Boden des Grundstücks** auf Höhe deiner Füße; das Fundament reicht entsprechend viele Lagen tiefer ins Gelände.
 5. Einfügen:
    ```text
    //paste
@@ -39,6 +40,17 @@
    - Ohne Flags fügt `//paste` auch die Luftblöcke ein. Was im Volumen des Bauwerks steht, wird also ersetzt. Das ist gewollt, damit Innenräume frei sind.
    - `//paste -a` würde Luft überspringen. Gelände im Bauraum bliebe dann stehen.
    - `//undo` macht das Einfügen rückgängig.
+
+## Fundament nach unten (Option)
+
+Auf unebenem Gelände würde ein Bauwerk, dessen unterste Ebene der Boden ist, an den tieferen Stellen schweben. Unter **„Feinparameter → Grundstück & Einfügen → Fundament nach unten“** wählst du 1 bis 4 Lagen (Standard: aus):
+
+- Unter Mauern und Sockel geht der Sockelstein nach unten weiter, unter Rasen, Wegen und Böden liegt Erde (meist Erde, etwas grobe Erde und Wurzelerde).
+- Am Rand des Grundstücks entsteht eine Böschung: grobe Erde, Erde und etwas Stein an den Seiten, und wo der Rand ausgefranst ist, treppt das Gelände mit Gras obendrauf eine Lage pro Ring ab.
+- Die Datei bekommt den WorldEdit-Offset `[0, −N, 0]` (N = gewählte Lagen). `//paste` setzt die Ecke mit den kleinsten Koordinaten an deine Füße **plus** diesen Offset, also N Blöcke tiefer: Der Boden des Grundstücks landet genau dort, wo er ohne Fundament läge.
+- Die Höhe des Bauwerks (Y) wächst um N. Breite und Tiefe bleiben gleich.
+
+> **Ehrlicher Stand:** Der Offset folgt der Sponge-v3-Spezifikation und dem Quellcode von WorldEdit 7.3.18/7.4.x. Im Spiel ist das Einfügen mit Fundament noch **nicht** von Hand geprüft – bitte zuerst in einer Testwelt ausprobieren und mit `//undo` zurücknehmen, falls etwas nicht passt.
 
 ## Maße der Standard-Bauwerke
 

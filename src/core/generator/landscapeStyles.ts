@@ -31,6 +31,8 @@ export interface PathStyle {
   curve: 0 | 1 | 2;
   /** Plants beside the path (cherry: petals), empty for none. */
   edgePlants: Mix;
+  /** Curb stones on the lawn beside the paved path (≈ 70 % of the cells), null for none. */
+  curb: Mix | null;
 }
 
 export interface GroundStyle {
@@ -177,6 +179,7 @@ export const LANDSCAPE_STYLES: Readonly<Record<StyleId, LandscapeStyle>> = {
       landing: 'stone_bricks',
       curve: 1,
       edgePlants: [],
+      curb: [['stone_bricks', 3], ['mossy_stone_bricks', 1]],
     },
     ground: {
       wear: [['coarse_dirt', 3], ['dirt_path', 1]],
@@ -224,6 +227,7 @@ export const LANDSCAPE_STYLES: Readonly<Record<StyleId, LandscapeStyle>> = {
       landing: 'mossy_cobblestone',
       curve: 2,
       edgePlants: [],
+      curb: [['mossy_stone_bricks', 1]],
     },
     ground: {
       wear: [['rooted_dirt', 2], ['coarse_dirt', 1]],
@@ -272,6 +276,7 @@ export const LANDSCAPE_STYLES: Readonly<Record<StyleId, LandscapeStyle>> = {
       landing: 'path',
       curve: 2,
       edgePlants: [],
+      curb: [['cobblestone', 1]],
     },
     ground: {
       wear: [['coarse_dirt', 3], ['dirt_path', 1], ['packed_mud', 1]],
@@ -320,6 +325,7 @@ export const LANDSCAPE_STYLES: Readonly<Record<StyleId, LandscapeStyle>> = {
       landing: 'path',
       curve: 1,
       edgePlants: [],
+      curb: [['cobbled_deepslate', 1]],
     },
     ground: {
       wear: [['coarse_dirt', 3], ['dirt_path', 1]],
@@ -364,6 +370,7 @@ export const LANDSCAPE_STYLES: Readonly<Record<StyleId, LandscapeStyle>> = {
       landing: 'polished_andesite',
       curve: 1,
       edgePlants: [],
+      curb: null,
     },
     ground: {
       wear: [['gravel', 1]],
@@ -412,6 +419,7 @@ export const LANDSCAPE_STYLES: Readonly<Record<StyleId, LandscapeStyle>> = {
       landing: 'path',
       curve: 1,
       edgePlants: [['pink_petals', 1]],
+      curb: [['stone_bricks', 1]],
     },
     ground: {
       wear: [['coarse_dirt', 1], ['rooted_dirt', 1]],
@@ -455,6 +463,7 @@ export const LANDSCAPE_STYLES: Readonly<Record<StyleId, LandscapeStyle>> = {
       landing: 'path',
       curve: 0,
       edgePlants: [],
+      curb: null,
     },
     ground: {
       wear: [['gravel', 1]],
@@ -502,6 +511,7 @@ export const LANDSCAPE_STYLES: Readonly<Record<StyleId, LandscapeStyle>> = {
       landing: 'cut_sandstone',
       curve: 1,
       edgePlants: [],
+      curb: [['cut_sandstone', 1]],
     },
     ground: {
       wear: [['coarse_dirt', 3], ['packed_mud', 1]],

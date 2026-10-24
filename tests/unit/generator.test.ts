@@ -188,12 +188,13 @@ describe('Thema: Weihnachten und Winter', () => {
     expect(m.palette.some((s) => blockIdOf(s) === 'minecraft:end_rod' && propsOf(s).facing === 'down')).toBe(false);
   });
 
-  it('Schnee nur auf ausdrücklichen Wunsch – dann Bodenfläche und Schneeschichten, wo sie im Spiel liegen bleiben', () => {
+  it('Schnee nur auf ausdrücklichen Wunsch – dann nur Schneeschichten, wo sie im Spiel liegen bleiben (nie Schneeblöcke)', () => {
     expect(ids(generateBuilding(spec())).has('minecraft:snow_block')).toBe(false);
     expect(ids(generateBuilding(spec())).has('minecraft:snow')).toBe(false);
     for (const style of STYLE_IDS) {
       const r = generateBuildingWithReport(spec({ style, theme: 'winter' }, { snow: true }));
-      expect(ids(r.model).has('minecraft:snow_block'), style).toBe(true);
+      // CD decision 23.10.2026: snow only as layers, the ground stays grass under them.
+      expect(ids(r.model).has('minecraft:snow_block'), style).toBe(false);
       expect(ids(r.model).has('minecraft:snow'), style).toBe(true);
       // No layer melts or falls off: the validator had nothing to repair.
       expect(r.repairs, style).toEqual([]);

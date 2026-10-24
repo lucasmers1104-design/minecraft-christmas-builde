@@ -3,7 +3,7 @@ import { blockState } from '@/core/blocks/registry';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import { valueNoise } from '@/core/generator/seededRandom';
 import { cellHash, clusteredAssign, frontLine, pickBy, plantable, Use, type PlotFrame, type Site, type UseValue } from '@/core/generator/landscapeSite';
-import { WINTER_BED, type LandscapeStyle } from '@/core/generator/landscapeStyles';
+import { WINTER_BED, type LandscapeStyle, type PropKind } from '@/core/generator/landscapeStyles';
 import type { LandscapeMaterials } from '@/core/generator/landscapeMaterials';
 import type { Entrance } from '@/core/generator/paths';
 import { barrels, bush, hayPile, rock, tree, woodpile, type NaturePiece, type TreeKind } from '@/core/templates/nature';
@@ -381,16 +381,16 @@ export function placeRocks(site: Site, frame: PlotFrame, ls: LandscapeStyle, rng
 }
 
 /** Wood of the house frame for woodpiles (logs only; spruce otherwise). */
-function pileWood(m: LandscapeMaterials): string {
+export function pileWood(m: LandscapeMaterials): string {
   const id = m.postId().replace(/^stripped_/, '').replace(/_(log|wood)$/, '');
   return ['oak', 'spruce', 'birch', 'dark_oak', 'jungle', 'acacia', 'mangrove', 'cherry'].includes(id) ? id : 'spruce';
 }
 
 /** Props where work happens (T17): woodpile under the eaves, hay at the back, barrels by the wall. */
-export function placeProps(site: Site, frame: PlotFrame, ls: LandscapeStyle, m: LandscapeMaterials, o: GardenOptions, rng: SeededRandom): number {
+export function placeProps(site: Site, frame: PlotFrame, ls: LandscapeStyle, m: LandscapeMaterials, o: GardenOptions, rng: SeededRandom): PropKind[] {
   const front = frame.front;
   const vh = frontLine(site, frame);
-  let placed = 0;
+  const placed: PropKind[] = [];
   const chance = o.detailLevel >= 3 ? 0.85 : 0.6;
   for (const kind of ls.garden.props) {
     const r = rng.fork(kind);
@@ -414,7 +414,7 @@ export function placeProps(site: Site, frame: PlotFrame, ls: LandscapeStyle, m: 
         const piece = woodpile(len, run.along, r, pileWood(m));
         if (!fits(site, piece, run.x, run.z, { avoidWindows: true })) continue;
         place(site, piece, run.x, run.z, Use.PROP);
-        placed++;
+        placed.push(kind);
         break;
       }
       continue;
@@ -428,7 +428,7 @@ export function placeProps(site: Site, frame: PlotFrame, ls: LandscapeStyle, m: 
     for (const [x, z] of r.shuffle(cells)) {
       if (!fits(site, piece, x, z, { avoidWindows: true })) continue;
       place(site, piece, x, z, Use.PROP);
-      placed++;
+      placed.push(kind);
       break;
     }
   }

@@ -5,10 +5,11 @@ import { Priority, type VoxelBuilder } from '@/core/generator/geometry';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import { valueNoise } from '@/core/generator/seededRandom';
 import { BORDER_INSET, buildBorder, type BorderResult } from '@/core/generator/borders';
-import { placePond, placeProps, placeRocks, plantBeds, plantBushes, plantState, plantTrees, reserveAnchor, type GardenOptions, type PlacedTree } from '@/core/generator/garden';
+import { pileWood, placePond, placeProps, placeRocks, plantBeds, plantBushes, plantState, plantTrees, reserveAnchor, type GardenOptions, type PlacedTree } from '@/core/generator/garden';
+import { flowerDrifts, kitchenGarden, placeCurbs, plinthBushes, tallGrass } from '@/core/generator/gardenLife';
 import { cellHash, clusteredAssign, pickBy, plantable, plotFrame, Site, Use, type PlotFrame } from '@/core/generator/landscapeSite';
 import { LandscapeMaterials } from '@/core/generator/landscapeMaterials';
-import { landscapeStyle, type LandscapeStyle } from '@/core/generator/landscapeStyles';
+import { landscapeStyle, type LandscapeStyle, type PropKind } from '@/core/generator/landscapeStyles';
 import { paintPath, planPath, rowCells, type Entrance, type PathPlan } from '@/core/generator/paths';
 import { LAMP_DESIGNS, lampCells, rotateOffset } from '@/core/templates/lampPosts';
 import type { RoleMaterials } from '@/core/templates/place';
@@ -20,15 +21,19 @@ export type { Entrance } from '@/core/generator/paths';
  * Landscape around a building (research note 15_gelaende_gaerten_wege.md; lamp posts after
  * 18_beleuchtung.md; winter rules after 14_winter_weihnachten.md). Order of work:
  *
- * 1. ground layer wherever the building left y = 0 empty (snow block only on request, never
- *    under the eaves),
+ * 1. grass wherever the building left y = 0 empty (snow only as snow layers on request, laid
+ *    last by addSnowCover; never snow blocks – CD decision 23.10.2026),
  * 2. the main path from the door to the plot edge (paths.ts),
  * 3. lamp posts from the style's catalogue at the gate and in a rhythm of 8–12 along the path,
  * 4. the border with its gate (borders.ts),
  * 5. room for a christmas tree, flower beds, trees, props, bushes, rocks, a frozen pond in
  *    winter (garden.ts),
- * 6. ground texture by cause (wear, shade, soft patches), a dissolved plot edge (outer rings
- *    only grass, ragged, never straight for more than 6) and lawn plants.
+ * 6. ground texture by cause (wear, shade, soft patches), curbs beside the paths, a dissolved
+ *    plot edge (outer rings only grass, ragged, never straight for more than 6), flower drifts,
+ *    tall grass at the edges and lawn plants.
+ *
+ * Phase 4 of Profi-Builds added bushes at the plinth, a kitchen garden with a scarecrow behind
+ * the house and a second path from the back door (gardenLife.ts).
  *
  * All landscape writes use DECOR priority, so nothing here can block a door clearance or
  * replace a part of the building. Same seed ⇒ same landscape (every part has its own fork).
@@ -40,6 +45,7 @@ export interface LandscapeOptions {
   garden: boolean;
   lantern: 'lantern' | 'soul_lantern';
   lanternDensity: 'none' | 'few' | 'normal' | 'many';
+  /** Snow wished: the paths are cleared (thinned-out cells paved too). */
   snowGround: boolean;
   /** Palette materials of the building (path, frame, beam, wall, plinth, shutter …). */
   materials: RoleMaterials;
@@ -68,6 +74,8 @@ export interface LandscapeReport {
   border: BorderResult | null;
   trees: PlacedTree[];
   anchor: [number, number] | null;
+  /** Props the garden placed (the festive layer adds no second woodpile). */
+  props: PropKind[];
 }
 
 export function buildLandscape(b: VoxelBuilder, rng: SeededRandom, entrances: readonly Entrance[], o: LandscapeOptions): LandscapeResult {
@@ -78,18 +86,15 @@ export function buildLandscape(b: VoxelBuilder, rng: SeededRandom, entrances: re
   const frame = plotFrame(site.W, site.L, main?.outward ?? 'north');
   const flowers = o.theme === 'none';
 
-  // 1. Ground: snow only where it would lie in the game (not under the eaves).
+  // 1. Ground: grass. Snow comes last as snow layers where it stays in the game.
   for (let x = 0; x < site.W; x++)
-    for (let z = 0; z < site.L; z++) {
-      if (!site.owned[site.i(x, z)]) continue;
-      site.set(x, 0, z, blockState(o.snowGround && !site.covered[site.i(x, z)] ? 'snow_block' : 'grass_block'));
-    }
+    for (let z = 0; z < site.L; z++) if (site.owned[site.i(x, z)]) site.set(x, 0, z, blockState('grass_block'));
 
   const r = rng.fork('landscape');
   if (!o.garden || !main) {
     const anchor = o.christmasTree && main ? reserveAnchor(site, frame, main, r, o.treeRadius, o.treeHeight) : null;
     dissolveEdge(site, r.fork('edge'), new Set());
-    return { yard: yardCells(site, main, anchor), report: { site, path: null, lamps: [], border: null, trees: [], anchor } };
+    return { yard: yardCells(site, main, anchor), report: { site, path: null, lamps: [], border: null, trees: [], anchor, props: [] } };
   }
 
   // 2. Paths: the main path crosses the front border line at the gate.
@@ -113,16 +118,20 @@ export function buildLandscape(b: VoxelBuilder, rng: SeededRandom, entrances: re
   // 5. Garden.
   const anchor = o.christmasTree ? reserveAnchor(site, frame, main, r, o.treeRadius, o.treeHeight) : null;
   const g: GardenOptions = { detailLevel: o.detailLevel, minecraftVersion: o.minecraftVersion, flowers };
+  // Bushes at the plinth first: the beds fill the ring around them.
+  plinthBushes(site, ls, g, o.size, r.fork('plinthBushes'));
   plantBeds(site, ls, g, r.fork('beds'));
   // Winter: the frozen pond is the second anchor, before trees take the space.
   if (o.theme !== 'none') placePond(site, frame, r.fork('pond'));
   const trees = plantTrees(site, frame, ls, g, r.fork('trees'));
-  placeProps(site, frame, ls, m, g, r.fork('props'));
+  kitchenGarden(site, frame, ls, g, o.size, pileWood(m), m.state(m.fenceId()), entrances[1] ?? null, r.fork('kitchen'));
+  const props = placeProps(site, frame, ls, m, g, r.fork('props'));
   plantBushes(site, ls, g, border.gatePosts, r.fork('bushes'));
   placeRocks(site, frame, ls, r.fork('rocks'));
 
   // 6. Ground texture, plot edge, lawn plants.
   textureGround(site, ls, r.fork('ground'));
+  placeCurbs(site, ls, blockState(m.pathBlock()), r.fork('curbs'));
   const borderEdges = new Set<number>();
   for (const [x, z] of border.cells) {
     if (z === BORDER_INSET) borderEdges.add(0);
@@ -131,10 +140,12 @@ export function buildLandscape(b: VoxelBuilder, rng: SeededRandom, entrances: re
     if (site.W - 1 - x === BORDER_INSET) borderEdges.add(3);
   }
   dissolveEdge(site, r.fork('edge'), borderEdges);
+  flowerDrifts(site, ls, g, r.fork('drifts'));
+  tallGrass(site, ls, g, TALL_FERNS[o.style], r.fork('tallGrass'));
   plantLawn(site, ls, o, r.fork('lawn'));
   fixPathsUnderSolids(site);
   dropUnrootedPlants(site);
-  return { yard: yardCells(site, main, anchor), report: { site, path: plan, lamps: lampPosts, border, trees, anchor } };
+  return { yard: yardCells(site, main, anchor), report: { site, path: plan, lamps: lampPosts, border, trees, anchor, props } };
 }
 
 /** Step of the entrance's axis that lies on the front border line (needs a path of ≥ 3 steps first). */
@@ -147,6 +158,9 @@ function stepToFrontLine(site: Site, frame: PlotFrame, e: Entrance, inset: numbe
     if (frame.toPlot(x, z)[1] === inset) return s >= 3 ? s : null;
   }
 }
+
+/** Share of large ferns among the tall plants (the rest is tall grass). */
+const TALL_FERNS: Readonly<Record<StyleId, number>> = { medieval: 0.2, fantasy: 0.3, rustic: 0.4, nordic: 0.6, japanese: 0.5, cherry: 0.2, modern: 0, mediterranean: 0 };
 
 export interface LampPost {
   x: number;
@@ -425,6 +439,9 @@ function dropUnrootedPlants(site: Site): void {
       const s = b.getBlock(x, 1, z);
       if (s === AIR) continue;
       const shape = definitionOf(s).shape;
-      if ((shape === 'plant' || shape === 'petals') && !plantable(b.getBlock(x, 0, z))) b.setBlock(x, 1, z, AIR, Priority.DECOR);
+      if ((shape === 'plant' || shape === 'petals' || shape === 'tall_plant') && !plantable(b.getBlock(x, 0, z))) {
+        b.setBlock(x, 1, z, AIR, Priority.DECOR);
+        if (shape === 'tall_plant') b.setBlock(x, 2, z, AIR, Priority.DECOR);
+      }
     }
 }

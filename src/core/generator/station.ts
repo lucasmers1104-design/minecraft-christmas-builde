@@ -212,7 +212,7 @@ export function buildStation(input: HouseInput, rng: SeededRandom): { builder: V
   for (let x = 0; x < width; x++) for (let z = 0; z < length; z++) builder.setBlock(x, 0, z, blockState('grass_block'), Priority.DECOR);
 
   // The hall gable stays plain: the station clock goes there.
-  const house = buildHouseInto(builder, plan, input, r, { plainGables: ['main:north'], cornerLanterns: false });
+  const house = buildHouseInto(builder, plan, input, r, { plainGables: ['main:north'], cornerLanterns: false, backDoor: false });
 
   // --- House platform: directly at the building, edge and safety line (C2, rec. 7 and 10).
   const pz0 = main.rect.z1 + 1;

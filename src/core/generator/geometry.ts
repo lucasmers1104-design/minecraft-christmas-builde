@@ -162,6 +162,16 @@ export class VoxelBuilder {
     return null;
   }
 
+  /** A copy `n` layers taller with everything moved up by `n` (room for a foundation below). */
+  raised(n: number): VoxelBuilder {
+    const out = new VoxelBuilder({ ...this.dimensions, height: this.dimensions.height + n });
+    for (const state of this.palette.slice(1)) out.paletteIndex(state);
+    const layer = this.dimensions.width * this.dimensions.length;
+    out.cells.set(this.cells, n * layer);
+    out.priorities.set(this.priorities, n * layer);
+    return out;
+  }
+
   countState(state: string): number {
     const index = this.paletteLookup.get(state);
     if (index === undefined) return 0;

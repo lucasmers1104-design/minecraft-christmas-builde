@@ -8,7 +8,7 @@ import { coveredColumns, facadeOf, facadePos } from '@/core/generator/house/wall
 import type { SizeClass, StyleId } from '@/core/style/styles';
 import type { CompositionId } from '@/core/style/compositions';
 import { getMaterial, hasMaterial, listMaterials } from '@/core/style/materials';
-import { blockAt, type VoxelModel } from '@/core/schema/voxelModel';
+import { aboveGround, blockAt, type VoxelModel } from '@/core/schema/voxelModel';
 
 /**
  * Build quality metrics (stage "Profi-Builds", phase 1). "Better" has to be measurable: the
@@ -555,7 +555,8 @@ function sampleLight(model: VoxelModel, house: HouseResult, facades: readonly Fa
   };
 }
 
-export function measureHouse(model: VoxelModel, house: HouseResult): QualityMetrics {
+export function measureHouse(full: VoxelModel, house: HouseResult): QualityMetrics {
+  const model = aboveGround(full);
   const { plan, roof, sections } = house;
   const facades = sampleFacades(model, house);
   const gables = sampleGables(model, house);

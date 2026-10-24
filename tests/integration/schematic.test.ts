@@ -191,12 +191,23 @@ describe('Negative Fälle', () => {
     });
     expect(validateSchematic(dataVersion).issues.join()).toMatch(/DataVersion/);
 
-    // An index just past the palette (one or two VarInt bytes, depending on the palette size).
+    // An index just past the palette (one or two VarInt bytes, depending on the palette size),
+    // written over the first VarInt of the same length so the number of values stays the same.
     const badIndex = tamper((r) => {
       const data = blocks(r).Data as nbt.ByteArray;
       const v = house.palette.length;
       const bytes = v < 128 ? [v] : [(v & 0x7f) | 0x80, v >> 7];
-      data.value = data.value.map((b, i) => (i < bytes.length ? (bytes[i]! << 24) >> 24 : b));
+      let at = 0;
+      for (let i = 0; i < data.value.length; ) {
+        let len = 1;
+        while (data.value[i + len - 1]! & 0x80) len++;
+        if (len === bytes.length) {
+          at = i;
+          break;
+        }
+        i += len;
+      }
+      data.value = data.value.map((b, i) => (i >= at && i < at + bytes.length ? (bytes[i - at]! << 24) >> 24 : b));
     });
     expect(validateSchematic(badIndex).issues.join()).toMatch(/verweist auf keinen Paletteneintrag/);
 

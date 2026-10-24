@@ -1,6 +1,6 @@
 import { buildSpecSchema, isImplementedBuildingType, MAX_SEED, type BuildingType, type BuildSpec } from '@/core/schema/buildSpec';
 import type { BuildOptions } from '@/core/schema/buildOptions';
-import type { VoxelModel } from '@/core/schema/voxelModel';
+import { groundLevel, type VoxelModel } from '@/core/schema/voxelModel';
 import { isFaceFull } from '@/core/blocks/faces';
 import { AIR, blockState, definitionOf } from '@/core/blocks/registry';
 import type { Repair } from '@/core/blocks/validator';
@@ -11,8 +11,11 @@ import { resolveHouseInput, type HouseWishes } from '@/core/generator/house/reso
 import { doorMassOf, type HouseInput } from '@/core/generator/house/plan';
 import { decorateHouseFestive, decorateTreePlot, gardenTreeFootprint, TREE_PLOT_HEIGHT, treePlotHalf } from '@/core/generator/festiveLayer';
 import { festiveChoices } from '@/core/generator/festiveKits';
-import { buildLandscape } from '@/core/generator/landscape';
+import { buildLandscape, type Entrance } from '@/core/generator/landscape';
+import { VECTOR } from '@/core/blocks/directions';
+import { Use } from '@/core/generator/landscapeSite';
 import { addSnowCover } from '@/core/generator/festive';
+import { extendFoundation } from '@/core/generator/foundation';
 import { buildMarket } from '@/core/generator/marketStall';
 import { buildStation } from '@/core/generator/station';
 import { buildTower, towerDiameter } from '@/core/generator/tower';
@@ -66,6 +69,7 @@ const HOUSE_OPTIONS: readonly (keyof BuildOptions)[] = [
   'presents',
   'snow',
   'garden',
+  'foundation',
   'palette',
   'materials',
 ];
@@ -73,11 +77,11 @@ const HOUSE_OPTIONS: readonly (keyof BuildOptions)[] = [
 /** Options each building type actually uses; everything else is reported as ignored. */
 export const APPLICABLE_OPTIONS: Record<BuildingType, readonly (keyof BuildOptions)[]> = {
   house: HOUSE_OPTIONS,
-  tree: ['presents', 'lanternDensity', 'soulLanterns', 'garden', 'snow'],
+  tree: ['presents', 'lanternDensity', 'soulLanterns', 'garden', 'snow', 'foundation'],
   // The market's huts use their own style tables (templates/stalls.ts); explicit materials apply.
-  market_stall: ['materials', 'garland', 'presents', 'lanternDensity', 'soulLanterns', 'snow'],
-  station: ['width', 'depth', 'floors', 'floorHeight', 'roofProfile', 'overhang', 'windows', 'windowFamily', 'doorFamily', 'chimney', 'garland', 'lanternDensity', 'soulLanterns', 'palette', 'materials', 'snow'],
-  tower: ['floors', 'floorHeight', 'roofType', 'roofProfile', 'windows', 'doorFamily', 'garland', 'christmasTree', 'presents', 'lanternDensity', 'soulLanterns', 'palette', 'materials', 'garden', 'snow'],
+  market_stall: ['materials', 'garland', 'presents', 'lanternDensity', 'soulLanterns', 'snow', 'foundation'],
+  station: ['width', 'depth', 'floors', 'floorHeight', 'roofProfile', 'overhang', 'windows', 'windowFamily', 'doorFamily', 'chimney', 'garland', 'lanternDensity', 'soulLanterns', 'palette', 'materials', 'snow', 'foundation'],
+  tower: ['floors', 'floorHeight', 'roofType', 'roofProfile', 'windows', 'doorFamily', 'garland', 'christmasTree', 'presents', 'lanternDensity', 'soulLanterns', 'palette', 'materials', 'garden', 'snow', 'foundation'],
 };
 
 const OPTION_LABELS: Partial<Record<keyof BuildOptions, string>> = {
@@ -97,6 +101,7 @@ const OPTION_LABELS: Partial<Record<keyof BuildOptions, string>> = {
   dormers: 'Gauben',
   christmasTree: 'Weihnachtsbaum',
   garden: 'Garten',
+  foundation: 'Fundament nach unten',
   materials: 'Materialien',
   palette: 'Palette',
 };
@@ -134,14 +139,24 @@ function houseInput(spec: BuildSpec, rng: SeededRandom, overrides: HouseWishes =
   return resolveHouseInput(spec.style, spec.theme, spec.size, spec.detailLevel, spec.seed, spec.targetMinecraftVersion, { ...houseWishes(spec), ...overrides }, rng);
 }
 
-function finishHouse(spec: BuildSpec, input: HouseInput, house: HouseResult, rng: SeededRandom): VoxelBuilder {
+/** Landscape and festive layer of a house; returns the builder and the path cells (kept free of snow). */
+function finishHouse(spec: BuildSpec, input: HouseInput, house: HouseResult, rng: SeededRandom): { builder: VoxelBuilder; clear: Set<string> } {
   const { builder, plan } = house;
   const doorMass = doorMassOf(plan);
   const doorZ = doorMass.rect.z0 - (doorMass.frames ? 3 : 2);
   // The landscape keeps a spot of the right size free for the festive garden tree.
   const tree = festiveChoices(spec.style, spec.theme, spec.detailLevel, spec.options).tree;
   const footprint = gardenTreeFootprint(spec);
-  const { yard, report } = buildLandscape(builder, rng.fork('landscape'), [{ x: plan.door.x, z: doorZ, outward: 'north' }], {
+  // Entrances: the front door first, then a back or side door with its own small path.
+  const entrances: Entrance[] = [{ x: plan.door.x, z: doorZ, outward: 'north' }];
+  for (const d of house.openings.doors) {
+    if (!d.back) continue;
+    const mass = plan.masses.find((m) => m.id === d.mass);
+    const [ox, , oz] = VECTOR[d.outward];
+    const k = (d.niche ? 1 : 0) + (mass?.frames ? 3 : 2);
+    entrances.push({ x: d.x + ox * k, z: d.z + oz * k, outward: d.outward });
+  }
+  const { yard, report } = buildLandscape(builder, rng.fork('landscape'), entrances, {
     style: input.styleId,
     theme: input.theme,
     garden: input.garden,
@@ -156,9 +171,12 @@ function finishHouse(spec: BuildSpec, input: HouseInput, house: HouseResult, rng
     treeRadius: footprint.radius,
     treeHeight: footprint.height,
   });
-  decorateHouseFestive(builder, rng, spec, input, house, yard, report.anchor);
+  decorateHouseFestive(builder, rng, spec, input, house, yard, report.anchor, report.props.includes('woodpile'));
   hardenCoveredPaths(builder);
-  return builder;
+  const { site } = report;
+  const clear = new Set<string>();
+  for (let z = 0; z < site.L; z++) for (let x = 0; x < site.W; x++) if (site.use[site.i(x, z)] === Use.PATH) clear.add(`${x},${z}`);
+  return { builder, clear };
 }
 
 /**
@@ -178,19 +196,19 @@ function buildTreePlot(spec: BuildSpec, rng: SeededRandom): VoxelBuilder {
   const height = TREE_PLOT_HEIGHT[spec.size];
   const half = treePlotHalf(height);
   const b = new VoxelBuilder({ width: 2 * half + 1, height: height + 3, length: 2 * half + 1 });
-  for (let x = 0; x <= 2 * half; x++) for (let z = 0; z <= 2 * half; z++) b.setBlock(x, 0, z, blockState(spec.options.snow ? 'snow_block' : 'grass_block'), Priority.DECOR);
+  for (let x = 0; x <= 2 * half; x++) for (let z = 0; z <= 2 * half; z++) b.setBlock(x, 0, z, blockState('grass_block'), Priority.DECOR);
   decorateTreePlot(b, rng, spec, half);
   return b;
 }
 
-function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult } {
+function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult; clear?: Set<string> } {
   const rng = createSeededRandom(spec.seed);
   try {
     switch (spec.kind) {
       case 'house': {
         const input = houseInput(spec, rng);
         const house = buildHouseV2(input);
-        return { builder: finishHouse(spec, input, house, rng), house };
+        return { ...finishHouse(spec, input, house, rng), house };
       }
       case 'tower': {
         // Round tower on its own plot; the roof follows the style (cone, dome, battlements).
@@ -199,7 +217,7 @@ function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult
         const roofType = spec.options.roofType === 'flat' ? 'flat' : 'gable';
         const input = houseInput(spec, rng, { width: d, depth: d, floors, roofType, wings: 'none', annex: 'none', tower: 'none', porch: false, dormers: 0, chimney: false, jetty: false, composition: 'none' });
         const house = buildTower(input, d, rng.fork('tower'), spec.options.roofProfile !== undefined);
-        return { builder: finishHouse(spec, input, house, rng), house };
+        return { ...finishHouse(spec, input, house, rng), house };
       }
       case 'tree':
         return { builder: buildTreePlot(spec, rng) };
@@ -247,9 +265,14 @@ function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult
 export function generateBuildingWithReport(input: BuildSpec): GeneratedBuilding {
   const spec = buildSpecSchema.parse(input);
   if (!isImplementedBuildingType(spec.kind)) throw new NotImplementedBuildingError(spec.kind);
-  const { builder, house } = generate(spec);
+  const generated = generate(spec);
+  const { house, clear } = generated;
+  // Foundation below the ground (option, default none): lifts everything, the plan coordinates
+  // stay valid relative to the ground layer (see aboveGround).
+  const ground = groundLevel(spec);
+  const builder = extendFoundation(generated.builder, ground, createSeededRandom(spec.seed).fork('foundation').int(0, 2 ** 31 - 1));
   // Snow only on explicit request, last, so every light that would melt it is known.
-  if (spec.options.snow === true) addSnowCover(builder);
+  if (spec.options.snow === true) addSnowCover(builder, clear, ground);
   const { model, repairs } = builder.finalize(spec);
   return { model, repairs, notes: [...generationNotes(spec), ...(house ? houseNotes(spec, house) : [])], ...(house ? { house } : {}) };
 }

@@ -203,6 +203,22 @@ export function createVoxelModel(
   return model;
 }
 
+/**
+ * Layers below the ground (option „Fundament nach unten“): the ground layer of the plot is at
+ * y = groundLevel, the generator plans everything from there.
+ */
+export function groundLevel(spec: Pick<BuildSpec, 'options'>): number {
+  return spec.options.foundation ?? 0;
+}
+
+/** The model from its ground layer up, in the coordinates of the generator's plan (a view, no copy). */
+export function aboveGround<M extends Pick<VoxelModel, 'dimensions' | 'indices' | 'spec'>>(model: M): M {
+  const n = groundLevel(model.spec);
+  if (n === 0) return model;
+  const { width, height, length } = model.dimensions;
+  return { ...model, dimensions: { width, height: height - n, length }, indices: model.indices.subarray(n * width * length) };
+}
+
 export function blockAt(model: Pick<VoxelModel, 'dimensions' | 'palette' | 'indices'>, x: number, y: number, z: number): string {
   if (!isInside(model.dimensions, x, y, z)) return AIR;
   return model.palette[model.indices[linearIndex(model.dimensions, x, y, z)]!]!;

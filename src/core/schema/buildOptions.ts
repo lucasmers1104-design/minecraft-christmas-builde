@@ -30,6 +30,7 @@ export const FOOTPRINT_LIMITS = {
   floorHeight: { min: 4, max: 6 },
   overhang: { min: 0, max: 3 },
   dormers: { min: 0, max: 6 },
+  foundation: { min: 0, max: 4 },
 } as const;
 
 const oddInt = (limits: { min: number; max: number }, message: string) =>
@@ -70,6 +71,8 @@ export const buildOptionsSchema = z
     /** Snow only on explicit request, and only where it holds (user decision). */
     snow: z.boolean().optional(),
     garden: z.boolean().optional(),
+    /** Layers of foundation and earth below the ground (0 = none); the export keeps the ground level. */
+    foundation: int(FOOTPRINT_LIMITS.foundation).optional(),
     /** Palette id of the style (see src/core/style/palettes.ts). */
     palette: z.string().max(40).optional(),
     materials: z

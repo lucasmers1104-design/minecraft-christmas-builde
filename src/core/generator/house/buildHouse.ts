@@ -6,7 +6,7 @@ import { Blocks } from '@/core/generator/house/materials';
 import { doorMassOf, floorY, nearRoundTower, planHouse, roofSection, storeyRect, towerCapSections, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { buildRoundTower, roundTowerTop } from '@/core/generator/house/roundTower';
 import { buildPassages, buildPlinth, buildStairs, buildStorey, buildStringCourses, buildTierDecks, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
-import { buildChimney, buildCornerLanterns, buildTowerDrum, buildDormer, buildEaveLanterns, buildEngawa, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
+import { buildChimney, buildVines, buildCornerLanterns, buildTowerDrum, buildDormer, buildEaveLanterns, buildEngawa, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
 import { buildOpenings, type OpeningsResult } from '@/core/generator/house/openings';
 import { buildGables } from '@/core/generator/house/gables';
 import { buildInteriorLight } from '@/core/generator/house/interiorLight';
@@ -182,7 +182,7 @@ export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRand
  * `plainGables` ("sectionId:side") keeps gable fields free of windows and timber, e.g. for the
  * station clock in the hall gable.
  */
-export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: HouseInput, rng: SeededRandom, opts: { plainGables?: readonly string[]; cornerLanterns?: boolean } = {}): HouseResult {
+export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: HouseInput, rng: SeededRandom, opts: { plainGables?: readonly string[]; cornerLanterns?: boolean; backDoor?: boolean } = {}): HouseResult {
   const { sections, dormers, porch } = planSections(plan, input, rng);
   const blocks = new Blocks(input.materials, input.minecraftVersion, input.seed);
   const ctx: Ctx = { builder, plan, blocks, rng };
@@ -206,6 +206,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
   if (porch) buildPorch(ctx, porch, plan.door.x);
   let chimney: { x: number; z: number } | null = null;
   let stack = new Map<string, number>();
+  let stackSide: HorizontalDirection | null = null;
   if (input.chimney && main.roofType !== 'flat') {
     const tower = plan.masses.find((m) => m.round);
     const towerSide = tower ? (tower.rect.x0 + tower.rect.x1 > main.rect.x0 + main.rect.x1 ? 'east' : 'west') : null;
@@ -220,9 +221,12 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
     const jettied = side === 'south' ? top.z1 !== ground.z1 : side === 'east' ? top.x1 !== ground.x1 : top.x0 !== ground.x0;
     const throughRoof = ['hip', 'pyramid', 'mansard', 'half_hip', 'irimoya'].includes(main.roofType) || input.styleId === 'nordic' || jettied;
     if (throughRoof) chimney = buildRoofChimney(ctx, main, roof.surface, side === 'south' ? 'east' : side);
-    else stack = buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
+    else {
+      stack = buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
+      stackSide = side;
+    }
   }
-  const openings = buildOpenings(ctx, panels, stack);
+  const openings = buildOpenings(ctx, panels, stack, opts.backDoor !== false);
   if (input.porch && input.porchKind === 'engawa') buildEngawa(ctx, main, plan.door.x, openings.reserved);
   buildStringCourses(ctx, squareMasses(plan));
   // Gable fields (timber, windows) and ridge finials, after the chimney so nothing hides behind it.
@@ -231,6 +235,8 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
   if (opts.cornerLanterns === false) {
     if (input.lanternDensity === 'many') buildEaveLanterns(ctx, roof.eaveCells, openings.reserved);
   } else buildCornerLanterns(ctx, sections, roof.surface, openings.reserved, roof.eaveCells);
+  // Ivy on the chimney and on full wall stretches (no theme only).
+  buildVines(ctx, squareMasses(plan), stack, stackSide, openings.reserved);
   const nearChimney = (x: number, z: number) => !!chimney && Math.abs(x - chimney.x) <= 1 && Math.abs(z - chimney.z) <= 1;
   buildStairs(ctx, main, (x, z) => nearChimney(x, z) || nearRoundTower(plan, x, z, 1) || [...openings.reserved].some((k) => k.startsWith(`${x},`) && k.endsWith(`,${z}`)));
   // Pendant lanterns in every storey and a lantern in the attic (after the stairs).

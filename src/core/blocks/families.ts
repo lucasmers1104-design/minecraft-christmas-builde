@@ -338,6 +338,8 @@ const MISC: readonly BlockSeed[] = [
   { id: 'vine', label: 'Ranken', shape: 'vine', category: 'nature', color: '#3f6b1e', kind: 'cutout' },
   { id: 'short_grass', label: 'Gras', shape: 'plant', category: 'nature', color: '#6e9a44', kind: 'cutout' },
   { id: 'fern', label: 'Farn', shape: 'plant', category: 'nature', color: '#5f8a3a', kind: 'cutout' },
+  { id: 'tall_grass', label: 'Hohes Gras', shape: 'tall_plant', category: 'nature', color: '#6e9a44', kind: 'cutout' },
+  { id: 'large_fern', label: 'Großer Farn', shape: 'tall_plant', category: 'nature', color: '#5f8a3a', kind: 'cutout' },
   { id: 'azalea', label: 'Azalee', shape: 'plant', category: 'nature', color: '#5d7a2c', kind: 'cutout' },
   { id: 'flowering_azalea', label: 'Blühende Azalee', shape: 'plant', category: 'nature', color: '#6f7a3a', kind: 'cutout' },
   { id: 'poppy', label: 'Mohn', shape: 'plant', category: 'nature', color: '#c0251b', kind: 'cutout' },

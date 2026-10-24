@@ -1,4 +1,5 @@
 import { OPPOSITE, type HorizontalDirection } from '@/core/blocks/directions';
+import { isFaceFull } from '@/core/blocks/faces';
 import { blockState, definitionOf } from '@/core/blocks/registry';
 import { Priority } from '@/core/generator/geometry';
 import type { RoofSectionSpec } from '@/core/generator/roof/roofEngine';
@@ -465,4 +466,84 @@ export function buildTowerDrum(ctx: Ctx, mass: Mass): void {
     builder.setBlock(cx, y0 + 1, cz, blocks.fixed('iron_chain', { axis: 'y' }), Priority.DECOR);
     builder.setBlock(cx, y0, cz, blocks.fixed(plan.input.lantern, { hanging: 'true' }), Priority.DECOR);
   }
+}
+
+/**
+ * Ivy (research 15 T12, 19 T12: green on the house): one or two strips climbing the outside
+ * chimney (3–7 high) and up to two strips on full stretches of the ground-storey walls (2–4
+ * high), always in front of a full face and two columns away from glass and doors. Only without
+ * a theme, from detail level 2, never on modern and Japanese houses.
+ */
+export function buildVines(ctx: Ctx, masses: readonly Mass[], stack: ReadonlyMap<string, number>, chimneySide: HorizontalDirection | null, reserved: ReadonlySet<string>): number {
+  const { builder, plan, rng } = ctx;
+  const style = plan.input.styleId;
+  if (plan.input.theme !== 'none' || plan.input.detailLevel < 2 || style === 'modern' || style === 'japanese' || style === 'cherry') return 0;
+  const r = rng.fork('vines');
+  const vine = (wallSide: HorizontalDirection) => blockState('vine', { [wallSide]: 'true' });
+  const free = (x: number, y: number, z: number) => builder.inside(x, y, z) && builder.isAir(x, y, z) && !reserved.has(`${x},${y},${z}`);
+  let placed = 0;
+  // Chimney: the shaft columns (highest top) on the side facing away from the house.
+  if (chimneySide && stack.size > 0) {
+    const top = Math.max(...stack.values());
+    const shaft = [...stack.entries()].filter(([, t]) => t === top).map(([k]) => k.split(',').map(Number) as [number, number]);
+    const [ox, , oz] = [chimneySide === 'east' ? 1 : chimneySide === 'west' ? -1 : 0, 0, chimneySide === 'south' ? 1 : chimneySide === 'north' ? -1 : 0];
+    const strips = r.shuffle(shaft).slice(0, r.chance(0.5) ? 2 : 1);
+    for (const [x, z] of strips) {
+      const len = r.int(3, 7);
+      for (let y = 1; y <= len; y++) {
+        const vx = x + ox;
+        const vz = z + oz;
+        if (!free(vx, y, vz) || !isFaceFull(builder.getBlock(x, y, z), chimneySide)) break;
+        builder.setBlock(vx, y, vz, vine(OPPOSITE[chimneySide] as HorizontalDirection), Priority.DECOR);
+        placed++;
+      }
+    }
+  }
+  // Walls: ground storey, full face over the strip, nothing in front, no opening nearby.
+  const candidates: { f: ReturnType<typeof facadeOf>; u: number; y0: number; h: number }[] = [];
+  for (const mass of masses) {
+    if (mass.round || mass.kind === 'tower') continue;
+    const y0 = floorY(plan, 0) + 1;
+    const h = Math.min(4, floorY(plan, 1) - y0);
+    for (const side of ['north', 'east', 'south', 'west'] as const) {
+      if (mass.joins[side]) continue;
+      const f = facadeOf(storeyRect(mass, 0), side);
+      const opening = (u: number) => {
+        for (let v = u - 2; v <= u + 2; v++)
+          for (const d of [-1, 0, 1])
+            for (let y = y0; y < y0 + plan.floorHeight; y++) {
+              const p = facadePos(f, v, d);
+              const s = builder.inside(p.x, y, p.z) ? builder.getBlock(p.x, y, p.z) : 'minecraft:air';
+              if (s.includes('glass') || s.includes('_door') || s.includes('lantern')) return true;
+            }
+        return false;
+      };
+      for (let u = 1; u < f.length - 1; u++) {
+        let ok = !opening(u);
+        for (let y = y0; y < y0 + h && ok; y++) {
+          const w = facadePos(f, u, 0);
+          const p = facadePos(f, u, 1);
+          const q = facadePos(f, u, 2);
+          if (!builder.inside(p.x, y, p.z) || !isFaceFull(builder.getBlock(w.x, y, w.z), side) || !free(p.x, y, p.z) || (builder.inside(q.x, y, q.z) && !builder.isAir(q.x, y, q.z))) ok = false;
+        }
+        if (ok) candidates.push({ f, u, y0, h });
+      }
+    }
+  }
+  const wallStrips = r.int(0, 2);
+  const chosen: typeof candidates = [];
+  for (const c of r.shuffle(candidates)) {
+    if (chosen.length >= wallStrips) break;
+    if (chosen.some((o) => o.f.side === c.f.side && Math.abs(o.u - c.u) < 4)) continue;
+    chosen.push(c);
+  }
+  for (const { f, u, y0, h } of chosen) {
+    const len = r.int(2, h);
+    for (let y = y0; y < y0 + len; y++) {
+      const p = facadePos(f, u, 1);
+      builder.setBlock(p.x, y, p.z, vine(OPPOSITE[f.side] as HorizontalDirection), Priority.DECOR);
+      placed++;
+    }
+  }
+  return placed;
 }

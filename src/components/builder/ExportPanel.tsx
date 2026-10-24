@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { DEFAULT_PROFILE, getProfileForVersion } from '@/core/compat/profile';
 import { schematicFileName } from '@/core/export/schematicFileName';
-import type { VoxelModel } from '@/core/schema/voxelModel';
+import { groundLevel, type VoxelModel } from '@/core/schema/voxelModel';
 import { Button } from '@/components/ui/Button';
 import { Callout } from '@/components/ui/Callout';
 import { Icon } from '@/components/ui/Icon';
@@ -102,6 +102,7 @@ export function ExportPanel({
 }) {
   const exportedThis = !!lastExport && !!model && lastExport.hash === model.hash;
   const profile = (model && getProfileForVersion(model.spec.targetMinecraftVersion)) || DEFAULT_PROFILE;
+  const ground = model ? groundLevel(model.spec) : 0;
   const fileName = exportedThis ? lastExport.fileName : model ? schematicFileName(model) : null;
   const schemName = fileName?.replace(/\.schem$/, '') ?? '<Dateiname>';
 
@@ -166,7 +167,10 @@ export function ExportPanel({
             </Step>
             <Step n={3} title="Hinstellen">
               Stell dich an eine freie, ebene Stelle. Deine Position wird zur unteren Nordwest-Ecke des Bauwerks; es wächst nach Osten (+X), oben (+Y)
-              und Süden (+Z). Die unterste Ebene liegt auf Höhe deiner Füße.
+              und Süden (+Z).{' '}
+              {ground > 0
+                ? `Der Boden des Grundstücks liegt auf Höhe deiner Füße, das Fundament reicht ${ground} ${ground > 1 ? 'Lagen' : 'Lage'} tiefer ins Gelände.`
+                : 'Die unterste Ebene liegt auf Höhe deiner Füße.'}
             </Step>
             <Step n={4} title="Einfügen">
               <Command command="//paste" />
@@ -198,7 +202,10 @@ export function ExportPanel({
             <dt className="text-fg-subtle">WorldEdit</dt>
             <dd className="text-fg">Zielprofil {profile.worldEditTarget}</dd>
             <dt className="text-fg-subtle">Einfügepunkt</dt>
-            <dd className="text-fg">Ecke mit den kleinsten X-, Y- und Z-Werten an deiner Position</dd>
+            <dd className="text-fg">
+              Ecke mit den kleinsten X-, Y- und Z-Werten an deiner Position
+              {ground > 0 ? `, ${ground} ${ground > 1 ? 'Lagen' : 'Lage'} tiefer (Offset 0, −${ground}, 0 für das Fundament)` : ''}
+            </dd>
             <dt className="text-fg-subtle">Hash</dt>
             <dd className="min-w-0">
               <span className="font-mono text-xs break-all text-fg" data-testid="model-hash">

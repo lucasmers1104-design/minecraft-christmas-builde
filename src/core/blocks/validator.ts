@@ -105,6 +105,12 @@ function supportProblem(grid: MutableGrid, x: number, y: number, z: number, stat
       const ok = below !== AIR && !SNOW_CANNOT_SURVIVE_ON.has(blockIdOf(below)) && isFaceFull(below, 'up', 'collision');
       return ok ? null : { fix: AIR, reason: 'Schneeschicht ohne volle Oberseite darunter entfernt' };
     }
+    case 'tall_plant': {
+      if (p.half === 'upper') return blockIdOf(below) === def.id && propsOf(below).half === 'lower' ? null : { fix: AIR, reason: `${def.label}: einzelne obere Hälfte entfernt` };
+      const pair = blockIdOf(above) === def.id && propsOf(above).half === 'upper';
+      if (!DIRT_LIKE.has(blockIdOf(below))) return { fix: AIR, reason: `${def.label} braucht Erde oder Gras darunter` };
+      return pair ? null : { fix: AIR, reason: `${def.label}: obere Hälfte fehlt` };
+    }
     case 'plant':
     case 'sapling':
     case 'petals':

@@ -5,6 +5,7 @@ import { Priority, type VoxelBuilder } from '@/core/generator/geometry';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import { buildChristmasTree, treeProfile, type TreeResult } from '@/core/generator/christmasTree';
 import { decorateFestive } from '@/core/generator/festive';
+import { placeMiniFirs, roofLines } from '@/core/generator/festiveLights';
 import { festiveChoices, festiveKit } from '@/core/generator/festiveKits';
 import { buildJulbock, buildWoodpile, julbockCells, type Cell } from '@/core/generator/festiveProps';
 import { presentsAroundTree } from '@/core/generator/presents';
@@ -310,21 +311,6 @@ function placeParapetLights(b: VoxelBuilder, house: HouseResult, snow: boolean):
   return placed;
 }
 
-/** Free cells on snow ground inside the plot edge, one cell away from anything standing. */
-function snowYard(b: VoxelBuilder): Cell[] {
-  const { width: W, length: L } = b.dimensions;
-  const snow = blockState('snow_block');
-  const out: Cell[] = [];
-  for (let x = 2; x < W - 2; x++)
-    for (let z = 2; z < L - 2; z++) {
-      if (b.getBlock(x, 0, z) !== snow || !b.isAir(x, 1, z)) continue;
-      let clear = true;
-      for (let dx = -1; dx <= 1 && clear; dx++) for (let dz = -1; dz <= 1 && clear; dz++) if (!b.isAir(x + dx, 1, z + dz)) clear = false;
-      if (clear) out.push({ x, y: 1, z });
-    }
-  return out;
-}
-
 /**
  * Festive layer of a house or tower: garden tree with presents underneath, then garlands,
  * lanterns, wreaths, candles and entrance presents (`decorateFestive`), then the extras of the
@@ -338,10 +324,10 @@ export function decorateHouseFestive(
   house: HouseResult,
   gardenYard: readonly Cell[],
   anchor: readonly [number, number] | null = null,
+  gardenWoodpile = false,
 ): void {
   if (spec.theme === 'none') return;
-  // On snow ground the landscape reports no yard (it looks for grass): use the free snow cells.
-  const yard = gardenYard.length > 0 || !input.garden || !input.festive.snow ? gardenYard : snowYard(builder);
+  const yard = gardenYard;
   const kit = festiveKit(spec.style);
   const choice = festiveChoices(spec.style, spec.theme, spec.detailLevel, spec.options);
   const christmas = spec.theme === 'christmas';
@@ -353,11 +339,12 @@ export function decorateHouseFestive(
     underTree = presentsAroundTree(builder, rng.fork('treePresents'), tree, tree.cx, 1, tree.cz, kit.present, { count, big: false, stack: false });
   }
   const atDoor = !choice.presents ? 0 : tree ? (spec.detailLevel >= 3 ? 2 : 0) : 3;
+  // Doors in a niche count from the wall plane (the festive props stand in front of it).
+  const doors = house.openings.doors.map((d) => (d.niche ? { ...d, x: d.x + VECTOR[d.outward][0], z: d.z + VECTOR[d.outward][2] } : d));
   decorateFestive(
     builder,
     rng.fork('festive'),
-    // Doors in a niche count from the wall plane (the festive props stand in front of it).
-    { eaves: house.roof.eaveCells, doors: house.openings.doors.map((d) => (d.niche ? { ...d, x: d.x + VECTOR[d.outward][0], z: d.z + VECTOR[d.outward][2] } : d)), sills: [...house.openings.sills, ...windowSills(builder, house)], yard, gables: house.roof.gableCells, reserved: house.openings.reserved },
+    { eaves: house.roof.eaveCells, doors, sills: [...house.openings.sills, ...windowSills(builder, house)], yard, gables: house.roof.gableCells, reserved: house.openings.reserved, ...roofLines(builder, house.sections, house.roof) },
     {
       theme: spec.theme,
       intensity: spec.detailLevel,
@@ -373,8 +360,31 @@ export function decorateHouseFestive(
     },
   );
   const extras = kit.extras[christmas ? 'christmas' : 'winter'];
-  if (extras.includes('woodpile') && spec.detailLevel >= 2) placeWoodpile(builder, house, spec.style === 'nordic');
+  // The garden may already have its woodpile (props): one is enough.
+  if (extras.includes('woodpile') && spec.detailLevel >= 2 && !gardenWoodpile) placeWoodpile(builder, house, spec.style === 'nordic');
   if (extras.includes('julbock') && spec.size !== 'small' && spec.detailLevel >= 2) placeJulbock(builder, yard);
   if (extras.includes('parapetLights') && spec.detailLevel >= 2) placeParapetLights(builder, house, spec.options.snow === true);
+  // Festive forecourt: mini firs flanking the way to the door and at the front corners.
+  if (christmas) {
+    const lawn = new Set(yard.map((c) => `${c.x},${c.z}`));
+    const keep = new Set(house.openings.reserved);
+    for (const d of doors)
+      for (const dist of [1, 2, 3])
+        for (const dy of [0, 1, 2]) keep.add(`${d.x + VECTOR[d.outward][0] * dist},${d.y + dy},${d.z + VECTOR[d.outward][2] * dist}`);
+    const main = house.plan.masses[0]!;
+    placeMiniFirs(builder, rng.fork('miniFirs'), {
+      door: doors[0],
+      corners: [
+        { x: main.rect.x0 - 1, y: 1, z: main.rect.z0 - 1 },
+        { x: main.rect.x1 + 1, y: 1, z: main.rect.z0 - 1 },
+      ],
+      size: spec.size,
+      style: spec.style,
+      intensity: spec.detailLevel,
+      snow: spec.options.snow === true,
+      open: (x, y, z) => builder.inside(x, y, z) && builder.isAir(x, y, z) && !keep.has(`${x},${y},${z}`),
+      lawn: (x, z) => lawn.has(`${x},${z}`),
+    });
+  }
 }
 
