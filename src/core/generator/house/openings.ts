@@ -34,6 +34,8 @@ export interface OpeningsResult {
   templates: string[];
   /** Cells that must stay free (door clearance inside and outside). */
   reserved: Set<string>;
+  /** Door leaves and their clearance only: no fallback window may take them. */
+  doorway: Set<string>;
   /** Why door templates were rejected (diagnostics). */
   doorRejections: string[];
 }
@@ -113,12 +115,36 @@ function commit(ctx: Ctx, cells: NonNullable<ReturnType<typeof placeIfFits>>): v
   for (const c of cells) ctx.builder.setBlock(c.x, c.y, c.z, c.state, Priority.OPENING);
 }
 
-/** Simple fallback: recessed pane column with a sill (never an empty hole). */
-function plainWindow(ctx: Ctx, f: Facade, u: number, y0: number, height: number, sills: OpeningsResult['sills'], lining: Role | null = null, reserved?: Set<string>): void {
+/**
+ * Simple fallback: recessed pane column with a sill (never an empty hole). Returns false (and
+ * builds nothing) where a door or its clearance is in the way (`doorway`) or the pane would
+ * replace anything but wall or air; the lining only replaces wall or air (never a lantern or a
+ * part of another template that reaches round a corner).
+ */
+function plainWindow(ctx: Ctx, f: Facade, u: number, y0: number, height: number, sills: OpeningsResult['sills'], lining: Role | null = null, reserved?: Set<string>, doorway?: ReadonlySet<string>): boolean {
   const { builder, blocks } = ctx;
   const c = facadePos(f, u, 0);
-  if (!ctx.plan.masses[0]!.round && nearRoundTower(ctx.plan, c.x, c.z, 1)) return;
+  if (!ctx.plan.masses[0]!.round && nearRoundTower(ctx.plan, c.x, c.z, 1)) return false;
   const depth = lining ? -1 : 0;
+  if (doorway)
+    for (let dy = -1; dy <= height; dy++)
+      for (const du of [-1, 0, 1])
+        for (const d of [-1, 0]) {
+          const q = facadePos(f, u + du, d);
+          if (doorway.has(key(q.x, y0 + dy, q.z))) return false;
+        }
+  const wallOrAir = (x: number, y: number, z: number) => {
+    if (!builder.inside(x, y, z)) return false;
+    const s = builder.getBlock(x, y, z);
+    if (s === AIR) return true;
+    const shape = definitionOf(s).shape;
+    // Wall, or glass that is already there (a window round the corner shares the cell).
+    return shape === 'cube' || shape === 'pillar' || shape === 'pane';
+  };
+  for (let dy = 0; dy < height; dy++) {
+    const p = facadePos(f, u, depth);
+    if (!wallOrAir(p.x, y0 + dy, p.z)) return false;
+  }
   for (let dy = 0; dy < height; dy++) {
     const p = facadePos(f, u, depth);
     builder.setBlock(p.x, y0 + dy, p.z, blocks.pane(), Priority.OPENING);
@@ -127,21 +153,21 @@ function plainWindow(ctx: Ctx, f: Facade, u: number, y0: number, height: number,
     builder.vacate(c.x, y0 + dy, c.z);
     for (const du of [-1, 1]) {
       const q = facadePos(f, u + du, -1);
-      builder.setBlock(q.x, y0 + dy, q.z, blocks.block(lining), Priority.OPENING);
+      if (wallOrAir(q.x, y0 + dy, q.z)) builder.setBlock(q.x, y0 + dy, q.z, blocks.block(lining), Priority.OPENING);
       reserved?.add(key(q.x, y0 + dy, q.z));
     }
     reserved?.add(key(p.x, y0 + dy, p.z));
   }
   if (lining) {
     const p = facadePos(f, u, -1);
-    builder.setBlock(p.x, y0 - 1, p.z, blocks.block(lining), Priority.OPENING);
-    builder.setBlock(p.x, y0 + height, p.z, blocks.block(lining), Priority.OPENING);
+    for (const y of [y0 - 1, y0 + height]) if (wallOrAir(p.x, y, p.z)) builder.setBlock(p.x, y, p.z, blocks.block(lining), Priority.OPENING);
   }
   const s = facadePos(f, u, 1);
   if (builder.inside(s.x, y0 - 1, s.z) && builder.isAir(s.x, y0 - 1, s.z)) {
     builder.setBlock(s.x, y0 - 1, s.z, blocks.stairs('frame', OPP[f.side], 'top'), Priority.OPENING);
     sills.push({ x: s.x, y: y0 - 1, z: s.z });
   }
+  return true;
 }
 
 const OPP: Record<HorizontalDirection, HorizontalDirection> = { north: 'south', south: 'north', east: 'west', west: 'east' };
@@ -162,12 +188,22 @@ function addDoorLanterns(ctx: Ctx, f: Facade, startU: number, width: number, y: 
   };
   const door = facadePos(f, startU, 0);
   if (near(door.x, door.z)) return;
-  for (const u of [startU - 1, startU + width]) {
-    const p = facadePos(f, u, 1);
-    if (reserved.has(key(p.x, y, p.z))) continue;
-    if (![y, y + 1].every((yy) => builder.inside(p.x, yy, p.z) && builder.isAir(p.x, yy, p.z))) continue;
-    builder.setBlock(p.x, y, p.z, blocks.fence('frame'), Priority.OPENING);
-    builder.setBlock(p.x, y + 1, p.z, blocks.fixed(lantern, { hanging: 'false' }), Priority.OPENING);
+  const fits = (p: { x: number; z: number }) => !reserved.has(key(p.x, y, p.z)) && [y, y + 1].every((yy) => builder.inside(p.x, yy, p.z) && builder.isAir(p.x, yy, p.z));
+  // Right beside the door; a deep portal (template parts in d = +1) pushes the posts one block
+  // further out or to the side, so the entrance never stays dark. Both sides at the same level.
+  for (const [d, off] of [
+    [1, 1],
+    [2, 1],
+    [1, 2],
+    [2, 2],
+  ] as const) {
+    const spots = [startU - off, startU + width - 1 + off].map((u) => facadePos(f, u, d)).filter(fits);
+    if (spots.length === 0) continue;
+    for (const p of spots) {
+      builder.setBlock(p.x, y, p.z, blocks.fence('frame'), Priority.OPENING);
+      builder.setBlock(p.x, y + 1, p.z, blocks.fixed(lantern, { hanging: 'false' }), Priority.OPENING);
+    }
+    return;
   }
 }
 
@@ -316,6 +352,7 @@ export function placeDoor(
         for (const dy of [0, 1]) {
           // The leaf itself too: stairs along the back wall must not run through a back door.
           result.reserved.add(key(q.x, y + dy, q.z));
+          result.doorway.add(key(q.x, y + dy, q.z));
           if (d > 0 && ctx.builder.inside(q.x, y + dy, q.z)) ctx.builder.clear(q.x, y + dy, q.z, Priority.CLEARANCE);
         }
       }
@@ -329,7 +366,7 @@ export function placeDoor(
 }
 
 export function emptyOpenings(): OpeningsResult {
-  return { doors: [], sills: [], windows: 0, templates: [], reserved: new Set(), doorRejections: [] };
+  return { doors: [], sills: [], windows: 0, templates: [], reserved: new Set(), doorway: new Set(), doorRejections: [] };
 }
 
 /**
@@ -531,8 +568,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
             if (density !== 'many' && width < 2 && n > 3) return brace();
             if (!tryWindow(panel.u0, width, Math.min(width, width >= 4 ? 2 : width))) {
               const yBottom = rows >= 4 ? y0 + 2 : y0 + 1;
-              plainWindow(ctx, f, panel.u0 + Math.floor((width - 1) / 2), yBottom, Math.min(2, rows - 1), result.sills, lining, result.reserved);
-              result.windows++;
+              if (plainWindow(ctx, f, panel.u0 + Math.floor((width - 1) / 2), yBottom, Math.min(2, rows - 1), result.sills, lining, result.reserved, result.doorway)) result.windows++;
             }
           });
         } else {
@@ -562,8 +598,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
           }
           if (!placedAny) {
             for (const u0 of axesAround(f.length, 1, 2, density, doorSpan, covered).filter((pos) => !blocked(pos - 1, pos + 1))) {
-              plainWindow(ctx, f, u0, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills, lining, result.reserved);
-              result.windows++;
+              if (plainWindow(ctx, f, u0, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills, lining, result.reserved, result.doorway)) result.windows++;
             }
           }
         }
@@ -597,7 +632,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
             spots.push({ u: edge + side, free: side < 0 ? [edge - 2, edge - 1] : [edge + 1, edge + 2] });
             for (const { u, free } of spots) {
               if (u < 1 || u > f.length - 2 || !inPanel(u) || blocked(free[0], free[1]) || doorNear(u)) continue;
-              plainWindow(ctx, f, u, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills, lining, result.reserved);
+              if (!plainWindow(ctx, f, u, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills, lining, result.reserved, result.doorway)) continue;
               result.windows++;
               break;
             }
