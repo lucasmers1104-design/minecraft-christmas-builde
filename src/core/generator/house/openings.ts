@@ -1,10 +1,11 @@
 import type { HorizontalDirection } from '@/core/blocks/directions';
 import { AIR, definitionOf } from '@/core/blocks/registry';
 import { Priority } from '@/core/generator/geometry';
-import { floorY, joinedAt, nearRoundTower, storeyRect, type HousePlan, type Mass } from '@/core/generator/house/plan';
-import { addBraces, facadeOf, facadePos, isTimberStorey, type Ctx, type Facade, type Panel } from '@/core/generator/house/walls';
+import { doorMassOf, floorY, joinedAt, nearRoundTower, storeyRect, type HousePlan, type Mass } from '@/core/generator/house/plan';
+import { addBraces, coveredColumns, facadeOf, facadePos, isTimberStorey, type Ctx, type Facade, type Panel } from '@/core/generator/house/walls';
 import { BALCONY_TEMPLATES } from '@/core/templates/balcony';
 import { baseTemplateId, getTemplate, templateBounds, templatesByIds } from '@/core/templates/catalog';
+import { FALLBACK_DOOR } from '@/core/templates/doors';
 import { cellPosition, cellState, type FacadeFrame } from '@/core/templates/place';
 import type { FacadeTemplate } from '@/core/templates/types';
 
@@ -71,8 +72,10 @@ function placeIfFits(
       if (post && !overPosts && (FRAME_ROLES.has(cell.role) || (cell.role === 'plinth' && cell.y >= 0))) continue;
       // An oriel's little roof tucks under the main eave where they meet.
       if (overPosts && cell.role === 'roof' && (shape === 'stairs' || shape === 'slab')) continue;
+      // An entrance hood replaces a low eave cornice above the door (one-storey houses).
+      const hood = t.kind === 'door' && cell.y >= 2 && (shape === 'stairs' || shape === 'slab');
       // Below the door sill the template's step replaces the protruding plinth or porch floor.
-      if (!(post && overPosts) && !(t.kind === 'door' && cell.y < 0)) {
+      if (!(post && overPosts) && !(t.kind === 'door' && cell.y < 0) && !hood) {
         lastRejection = `${t.id}: Zelle ${cell.x},${cell.y},${cell.d} (${cell.role}) belegt von ${occupant}`;
         return null;
       }
@@ -181,6 +184,25 @@ function axesIn(from: number, to: number, width: number, gap: number, density: H
  * Window axes (leftmost column of each opening footprint) on a facade without stud grid:
  * symmetric, at least gap + 1 from the corners, and on both sides of the door (never in it).
  */
+/**
+ * Window axes on the free stretches of a facade: the door span and the columns covered by other
+ * masses are cut out, every remaining stretch gets its own evenly spaced axes.
+ */
+function axesAround(length: number, width: number, gap: number, density: HousePlan['input']['windows'], door: [number, number] | null, covered: ReadonlySet<number>): number[] {
+  if (covered.size === 0) return axesFor(length, width, gap, density, door);
+  const blockedAt = (u: number) => covered.has(u) || (door !== null && u >= door[0] && u <= door[1]);
+  const out: number[] = [];
+  let a = 0;
+  while (a < length) {
+    while (a < length && blockedAt(a)) a++;
+    let b = a;
+    while (b < length && !blockedAt(b)) b++;
+    if (b > a) out.push(...axesIn(a, b, width, gap, density, a === 0 ? 1 : gap, b === length ? 1 : gap));
+    a = b;
+  }
+  return out;
+}
+
 function axesFor(length: number, width: number, gap: number, density: HousePlan['input']['windows'], avoid: [number, number] | null): number[] {
   // The footprint already contains shutters and frames: one free column to the corner.
   if (!avoid) return axesIn(0, length, width, gap, density, 1, 1);
@@ -193,12 +215,17 @@ function axesFor(length: number, width: number, gap: number, density: HousePlan[
  * Oriel or balcony on an upper storey, centred on the facade or as close to the centre as it
  * fits. Returns the occupied columns; if nothing fits, the plan gets a note.
  */
-function placeFeature(ctx: Ctx, f: Facade, y: number, templates: readonly FacadeTemplate[], label: string, result: OpeningsResult): [number, number] | null {
-  for (const shift of [0, -1, 1, -2, 2, -3, 3])
+function placeFeature(ctx: Ctx, f: Facade, y: number, templates: readonly FacadeTemplate[], label: string, result: OpeningsResult, covered: ReadonlySet<number> = new Set()): [number, number] | null {
+  const shifts = [0];
+  for (let i = 1; i <= Math.floor(f.length / 2); i++) shifts.push(-i, i);
+  for (const shift of shifts)
     for (const t of templates) {
       const b = templateBounds(t);
       const u0 = Math.floor((f.length - t.width) / 2) + shift;
       if (u0 + b.minX < 1 || u0 + b.maxX > f.length - 2) continue;
+      let hit = false;
+      for (let u = u0 + b.minX - 1; u <= u0 + b.maxX + 1; u++) if (covered.has(u)) hit = true;
+      if (hit) continue;
       const cells = placeIfFits(ctx, t, frameAt(f, u0, y), true);
       if (!cells) continue;
       commit(ctx, cells);
@@ -206,7 +233,7 @@ function placeFeature(ctx: Ctx, f: Facade, y: number, templates: readonly Facade
       for (const c of cells) if (c.cell.d === -1 || (c.cell.role === 'air' && c.cell.d === 0)) result.reserved.add(key(c.x, c.y, c.z));
       return [u0 + b.minX - 1, u0 + b.maxX + 1];
     }
-  ctx.plan.notes.push(`${label} passt an dieser Fassade nicht – weggelassen.`);
+  void label;
   return null;
 }
 
@@ -215,8 +242,15 @@ function placeFeature(ctx: Ctx, f: Facade, y: number, templates: readonly Facade
  * fits, clearance in front and behind, lanterns beside it. Returns the occupied columns.
  */
 export function placeDoor(ctx: Ctx, f: Facade, uDoor: number, y: number, doors: readonly FacadeTemplate[], result: OpeningsResult): [number, number] | null {
-  for (const t of doors) {
+  for (const t of [...doors, FALLBACK_DOOR]) {
     const startU = uDoor - Math.floor((t.width - 1) / 2);
+    if (t === FALLBACK_DOOR) {
+      // Last resort: whatever stands right in front of the door leaf gives way.
+      for (const d of [1, 2]) for (const dy of [0, 1]) {
+        const q = facadePos(f, startU, d);
+        if (ctx.builder.inside(q.x, y + dy, q.z)) ctx.builder.clear(q.x, y + dy, q.z, Priority.CLEARANCE);
+      }
+    }
     const cells = placeIfFits(ctx, t, frameAt(f, startU, y));
     if (!cells) {
       result.doorRejections.push(lastRejection);
@@ -254,7 +288,30 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
   const result = emptyOpenings();
   const windows = templatesByIds('window', plan.input.windowTemplates);
   const doors = templatesByIds('door', plan.input.doorTemplates);
-  const doorMass = plan.masses.find((m) => m.kind === 'cross') ?? plan.masses[0]!;
+  const doorMass = doorMassOf(plan);
+
+  // Oriel and balcony on the first upper storey of the main body: on the front where they fit,
+  // else on the back or a side (research 19 T14: details on all four sides); one per facade.
+  const featureSpans = new Map<HorizontalDirection, [number, number]>();
+  const main = plan.masses[0]!;
+  if (!main.round && main.floors > 1) {
+    const rect = storeyRect(main, 1);
+    const y0 = floorY(plan, 1);
+    const rowsUp = plan.floorHeight - 1;
+    const place = (templates: readonly FacadeTemplate[], y: number, label: string) => {
+      for (const side of ['north', 'south', 'east', 'west'] as const) {
+        if (featureSpans.has(side) || joinedAt(plan, main, side, 1)) continue;
+        const span = placeFeature(ctx, facadeOf(rect, side), y, templates, label, result, coveredColumns(plan, main, side, 1));
+        if (span) {
+          featureSpans.set(side, span);
+          return;
+        }
+      }
+      plan.notes.push(`${label} passt an keiner Fassade – weggelassen.`);
+    };
+    if (plan.input.oriel) place([getTemplate('W09')], rowsUp >= 4 ? y0 + 2 : y0 + 1, 'Erker');
+    if (plan.input.balcony) place(BALCONY_TEMPLATES, y0 + 1, 'Balkon');
+  }
 
   for (const mass of plan.masses) {
     if (mass.round) continue;
@@ -267,15 +324,17 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
         if (joinedAt(plan, mass, side, k)) continue;
         const f = facadeOf(rect, side);
         const facadePanels = perStorey[k]?.get(side) ?? [];
+        // Columns in front of which another mass stands (cross gable, wing, annex): no openings.
+        const covered = coveredColumns(plan, mass, side, k);
+        const blocked = (a: number, b: number) => {
+          for (let u = a; u <= b; u++) if (covered.has(u)) return true;
+          return false;
+        };
         // Door: ground storey, front of the door mass.
         let doorSpan = k === 0 && mass === doorMass && side === 'north' ? placeDoor(ctx, f, f.origin.x - plan.door.x, y0 + 1, doors, result) : null;
         // Oriel on the front of the first upper storey, balcony on the front (or the back if
         // the front has the oriel); windows keep clear of both like of the door.
-        if (k === 1 && mass === plan.masses[0]) {
-          const rowsUp = plan.floorHeight - 1;
-          if (plan.input.oriel && side === 'north') doorSpan = placeFeature(ctx, f, rowsUp >= 4 ? y0 + 2 : y0 + 1, [getTemplate('W09')], 'Erker', result);
-          if (plan.input.balcony && side === (plan.input.oriel ? 'south' : 'north')) doorSpan = placeFeature(ctx, f, y0 + 1, BALCONY_TEMPLATES, 'Balkon', result);
-        }
+        if (k === 1 && mass === main) doorSpan = featureSpans.get(side) ?? doorSpan;
         // Windows: in stud-grid panels, or on symmetric axes for plain walls.
         const density = plan.input.windows;
         const candidates = windows.filter((t) => t.height <= rows - 1 || (rows <= 3 && t.height <= rows));
@@ -297,9 +356,11 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
           }
           return false;
         };
-        if (mass.frames && facadePanels.length > 1) {
+        if (mass.frames && facadePanels.length > 1 && facadePanels.some((p) => !blocked(p.u0 - 1, p.u1 + 1))) {
           const timber = isTimberStorey(ctx, mass, k);
-          const n = facadePanels.length;
+          // Panels with another mass in front are no facade: the rhythm counts the free ones.
+          const free = facadePanels.filter((p) => !blocked(p.u0 - 1, p.u1 + 1));
+          const n = free.length;
           // Rhythm instead of a window in every panel (research 08/19/20): the corner panels
           // of a timber facade stay closed and carry braces, the windows sit in the middle
           // panels. Always from five panels on; on smaller side and back facades for most
@@ -307,15 +368,15 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
           // window axes of all storeys line up.
           const rhythm =
             density !== 'many' && n >= 3 && (n >= 5 || (side !== 'north' && ctx.rng.fork(`rhythm:${mass.id}:${side}`).chance(0.65)));
-          facadePanels.forEach((panel, i) => {
+          free.forEach((panel, i) => {
             const width = panel.u1 - panel.u0 + 1;
             const brace = () => {
               if (timber) addBraces(ctx, f, panel, y0, floorY(plan, k + 1));
             };
             if (doorSpan && panel.u1 >= doorSpan[0] && panel.u0 <= doorSpan[1]) return;
             if (rhythm && (i === 0 || i === n - 1)) return brace();
-            if (density === 'few' && i % 2 === 1 && facadePanels.length > 2) return brace();
-            if (density !== 'many' && width < 2 && facadePanels.length > 3) return brace();
+            if (density === 'few' && i % 2 === 1 && n > 2) return brace();
+            if (density !== 'many' && width < 2 && n > 3) return brace();
             if (!tryWindow(panel.u0, width, Math.min(width, width >= 4 ? 2 : width))) {
               const yBottom = rows >= 4 ? y0 + 2 : y0 + 1;
               plainWindow(ctx, f, panel.u0 + Math.floor((width - 1) / 2), yBottom, Math.min(2, rows - 1), result.sills);
@@ -330,7 +391,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
             const b = templateBounds(t);
             const outer = b.maxX - b.minX + 1;
             const gap = Math.max(1, t.spacing);
-            const axes = axesFor(f.length, outer, gap, density, doorSpan);
+            const axes = axesAround(f.length, outer, gap, density, doorSpan, covered).filter((pos) => !blocked(pos - 1, pos + outer));
             if (axes.length === 0) continue;
             const yBottom = rows >= t.height + 2 ? y0 + 2 : y0 + 1;
             const placements = axes.map((pos) => placeIfFits(ctx, t, frameAt(f, pos - b.minX, yBottom)));
@@ -346,7 +407,7 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
             break;
           }
           if (!placedAny) {
-            for (const u0 of axesFor(f.length, 1, 2, density, doorSpan)) {
+            for (const u0 of axesAround(f.length, 1, 2, density, doorSpan, covered).filter((pos) => !blocked(pos - 1, pos + 1))) {
               plainWindow(ctx, f, u0, rows >= 4 ? y0 + 2 : y0 + 1, Math.min(2, rows - 1), result.sills);
               result.windows++;
             }
@@ -365,5 +426,5 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
 
 /** Mass helper for callers. */
 export function isDoorMass(plan: HousePlan, mass: Mass): boolean {
-  return (plan.masses.find((m) => m.kind === 'cross') ?? plan.masses[0]) === mass;
+  return doorMassOf(plan) === mass;
 }

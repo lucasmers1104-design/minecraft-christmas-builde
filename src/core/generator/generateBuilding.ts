@@ -8,7 +8,7 @@ import { GeometryError, Priority, VoxelBuilder } from '@/core/generator/geometry
 import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRandom';
 import { buildHouseV2, type HouseResult } from '@/core/generator/house/buildHouse';
 import { resolveHouseInput, type HouseWishes } from '@/core/generator/house/resolveInput';
-import type { HouseInput } from '@/core/generator/house/plan';
+import { doorMassOf, type HouseInput } from '@/core/generator/house/plan';
 import { decorateHouseFestive, decorateTreePlot, gardenTreeFootprint, TREE_PLOT_HEIGHT, treePlotHalf } from '@/core/generator/festiveLayer';
 import { festiveChoices } from '@/core/generator/festiveKits';
 import { buildLandscape } from '@/core/generator/landscape';
@@ -17,6 +17,8 @@ import { buildMarket } from '@/core/generator/marketStall';
 import { buildStation } from '@/core/generator/station';
 import { buildTower, towerDiameter } from '@/core/generator/tower';
 import { getStyle } from '@/core/style/styles';
+import { COMPOSITION_LABELS } from '@/core/style/compositions';
+import { compositionFitsStyle } from '@/core/generator/house/composition';
 import type { Role } from '@/core/style/palettes';
 
 export class NotImplementedBuildingError extends Error {
@@ -35,6 +37,7 @@ export class BuildLimitError extends Error {
 }
 
 const HOUSE_OPTIONS: readonly (keyof BuildOptions)[] = [
+  'composition',
   'width',
   'depth',
   'floors',
@@ -80,6 +83,7 @@ export const APPLICABLE_OPTIONS: Record<BuildingType, readonly (keyof BuildOptio
 const OPTION_LABELS: Partial<Record<keyof BuildOptions, string>> = {
   width: 'Breite',
   depth: 'Tiefe',
+  composition: 'Bauform',
   floors: 'Geschosse',
   roofType: 'Dachform',
   roofProfile: 'Dachprofil',
@@ -132,8 +136,8 @@ function houseInput(spec: BuildSpec, rng: SeededRandom, overrides: HouseWishes =
 
 function finishHouse(spec: BuildSpec, input: HouseInput, house: HouseResult, rng: SeededRandom): VoxelBuilder {
   const { builder, plan } = house;
-  const main = plan.masses[0]!;
-  const doorZ = main.rect.z0 - (main.frames ? 3 : 2);
+  const doorMass = doorMassOf(plan);
+  const doorZ = doorMass.rect.z0 - (doorMass.frames ? 3 : 2);
   // The landscape keeps a spot of the right size free for the festive garden tree.
   const tree = festiveChoices(spec.style, spec.theme, spec.detailLevel, spec.options).tree;
   const footprint = gardenTreeFootprint(spec);
@@ -193,14 +197,14 @@ function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult
         const floors = spec.options.floors ?? { small: 3, medium: 4, large: 6, huge: 10 }[spec.size];
         const d = towerDiameter(spec.size);
         const roofType = spec.options.roofType === 'flat' ? 'flat' : 'gable';
-        const input = houseInput(spec, rng, { width: d, depth: d, floors, roofType, wings: 'none', annex: 'none', tower: 'none', porch: false, dormers: 0, chimney: false, jetty: false });
+        const input = houseInput(spec, rng, { width: d, depth: d, floors, roofType, wings: 'none', annex: 'none', tower: 'none', porch: false, dormers: 0, chimney: false, jetty: false, composition: 'none' });
         const house = buildTower(input, d, rng.fork('tower'), spec.options.roofProfile !== undefined);
         return { builder: finishHouse(spec, input, house, rng), house };
       }
       case 'tree':
         return { builder: buildTreePlot(spec, rng) };
       case 'market_stall': {
-        const input = houseInput(spec, rng);
+        const input = houseInput(spec, rng, { composition: 'none' });
         const { builder } = buildMarket(
           {
             style: spec.style,
@@ -228,7 +232,7 @@ function generate(spec: BuildSpec): { builder: VoxelBuilder; house?: HouseResult
         // No chimney unless wished: the hall's outside stack would stand on the platform.
         const floorHeight = spec.options.floorHeight ?? 6;
         const chimney = spec.options.chimney ?? false;
-        const input = houseInput(spec, rng, { width, depth, floorHeight, chimney, wings: 'none', annex: 'none', porch: false, dormers: 0 });
+        const input = houseInput(spec, rng, { width, depth, floorHeight, chimney, wings: 'none', annex: 'none', porch: false, dormers: 0, composition: 'none' });
         const { builder, layout } = buildStation(input, rng.fork('station'));
         return { builder, house: layout.house };
       }
@@ -286,6 +290,10 @@ export function generationNotes(input: BuildSpec): string[] {
   const applicable = APPLICABLE_OPTIONS[spec.kind];
   const ignored = (Object.keys(spec.options) as (keyof BuildOptions)[]).filter((key) => spec.options[key] !== undefined && !applicable.includes(key));
   if (ignored.length > 0) notes.push(`Für diesen Bauwerkstyp ohne Wirkung: ${ignored.map((k) => OPTION_LABELS[k] ?? k).join(', ')}.`);
+  const comp = spec.options.composition;
+  if (spec.kind === 'house' && comp && comp !== 'auto' && !compositionFitsStyle(comp, spec.style)) {
+    notes.push(`Die Bauform „${COMPOSITION_LABELS[comp]}“ ist für den Stil „${getStyle(spec.style).label}“ ungewöhnlich – sie wird trotzdem gebaut.`);
+  }
   if (spec.options.palette && !getStyle(spec.style).palettes.includes(spec.options.palette)) {
     notes.push(`Palette „${spec.options.palette}“ gehört nicht zum Stil – der Stil wählt selbst.`);
   }

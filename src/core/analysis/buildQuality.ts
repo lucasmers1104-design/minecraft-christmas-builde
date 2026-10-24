@@ -3,8 +3,9 @@ import { AIR, blockIdOf, definitionOf, propsOf } from '@/core/blocks/registry';
 import type { ShapeClass } from '@/core/blocks/shapes';
 import type { HouseResult } from '@/core/generator/house/buildHouse';
 import { floorY, joinedAt, storeyRect, wallTopOf, type MassKind } from '@/core/generator/house/plan';
-import { facadeOf, facadePos } from '@/core/generator/house/walls';
+import { coveredColumns, facadeOf, facadePos } from '@/core/generator/house/walls';
 import type { SizeClass, StyleId } from '@/core/style/styles';
+import type { CompositionId } from '@/core/style/compositions';
 import { listMaterials } from '@/core/style/materials';
 import { blockAt, type VoxelModel } from '@/core/schema/voxelModel';
 
@@ -225,6 +226,7 @@ function sampleFacades(model: VoxelModel, house: HouseResult): FacadeSample[] {
       for (const side of HORIZONTAL) {
         if (joinedAt(plan, mass, side, k)) continue;
         const f = facadeOf(rect, side);
+        const covered = coveredColumns(plan, mass, side, k);
         const levels: [number, number, number, number] = [0, 0, 0, 0];
         const glass = new Set<string>();
         let cells = 0;
@@ -232,6 +234,7 @@ function sampleFacades(model: VoxelModel, house: HouseResult): FacadeSample[] {
         let doors = 0;
         for (let u = 0; u < f.length; u++)
           for (let y = y0; y <= y1; y++) {
+            if (covered.has(u)) continue;
             let level: number | null = null;
             for (let d = 2; d >= -1; d--) {
               const p = facadePos(f, u, d);
@@ -662,10 +665,10 @@ const ROOF_SHARE: Readonly<Record<StyleId, Range>> = {
   fantasy: [0.42, 0.62],
   rustic: [0.38, 0.56],
   nordic: [0.44, 0.64],
-  japanese: [0.3, 0.52],
-  cherry: [0.3, 0.52],
-  mediterranean: [0.12, 0.36],
-  modern: [0, 0.2],
+  japanese: [0.3, 0.58],
+  cherry: [0.3, 0.58],
+  mediterranean: [0.12, 0.4],
+  modern: [0, 0.35],
 };
 
 /**
@@ -673,7 +676,7 @@ const ROOF_SHARE: Readonly<Record<StyleId, Range>> = {
  * builds). Small houses may stay one mass; from medium on a house is a cascade (≥ 2 masses,
  * ≥ 2 eave heights), main facades show three depth levels, every side carries detail.
  */
-export function qualityTargets(style: StyleId, size: SizeClass): QualityTargets {
+export function qualityTargets(style: StyleId, size: SizeClass, composition?: CompositionId): QualityTargets {
   const formal = style === 'modern' || style === 'mediterranean';
   const big = size === 'large' || size === 'huge';
   const cascade = size !== 'small';
@@ -682,10 +685,12 @@ export function qualityTargets(style: StyleId, size: SizeClass): QualityTargets 
     relief: formal ? [0.15, 0.6] : [0.25, 0.7],
     minLevelsGable: [2, 4],
     masses: [cascade ? 2 : 1, size === 'huge' ? 6 : 5],
-    eaveHeights: [cascade ? 2 : 1, 5],
+    // Research 19 L3: from large on at least two eave heights (a Zwerchhaus keeps the main eave).
+    eaveHeights: [big ? 2 : 1, 5],
     ridgeHeights: [cascade && style !== 'modern' ? 2 : 1, 6],
     accents: [style === 'modern' ? 0 : 1, big ? 6 : 4],
-    roofShare: ROOF_SHARE[style],
+    // A chalet carries a wide, shallow roof (research 13: 25–35 % of the height).
+    roofShare: composition === 'chalet' ? [0.22, 0.42] : ROOF_SHARE[style],
     dominant: [0.2, 0.55],
     materials: [3, 7],
     density: style === 'modern' ? [0.03, 0.18] : [0.08, 0.35],

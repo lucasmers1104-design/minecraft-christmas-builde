@@ -3,10 +3,10 @@ import { buildRoofs, housePitch, irimoyaSections, planRoofs, slopeColumns, type 
 import { ladderRise } from '@/core/generator/roof/profiles';
 import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRandom';
 import { Blocks } from '@/core/generator/house/materials';
-import { nearRoundTower, planHouse, roofSection, storeyRect, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
+import { doorMassOf, floorY, nearRoundTower, planHouse, roofSection, storeyRect, wallTopOf, type HouseInput, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { buildRoundTower, roundTowerTop } from '@/core/generator/house/roundTower';
-import { buildPassages, buildPlinth, buildStairs, buildStorey, buildStringCourses, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
-import { buildChimney, buildDormer, buildEaveLanterns, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
+import { buildPassages, buildPlinth, buildStairs, buildStorey, buildStringCourses, buildTierDecks, buildTop, type Ctx, type Panel } from '@/core/generator/house/walls';
+import { buildChimney, buildDormer, buildEaveLanterns, buildEngawa, buildPorch, buildRoofChimney, planDormers, porchSection } from '@/core/generator/house/components';
 import { buildOpenings, type OpeningsResult } from '@/core/generator/house/openings';
 import { buildGables } from '@/core/generator/house/gables';
 import { buildInteriorLight } from '@/core/generator/house/interiorLight';
@@ -55,10 +55,12 @@ function bounds(plan: HousePlan, sections: RoofSectionSpec[]): { minX: number; m
   let maxZ = -Infinity;
   for (const m of plan.masses) {
     const g = (m.frames ? 1 : 0) + 2 + (m.jetty.north || m.jetty.south || m.jetty.east || m.jetty.west ? 1 : 0);
-    minX = Math.min(minX, m.rect.x0 - g);
-    maxX = Math.max(maxX, m.rect.x1 + g);
-    minZ = Math.min(minZ, m.rect.z0 - g);
-    maxZ = Math.max(maxZ, m.rect.z1 + g);
+    for (const r of m.upper ? [m.rect, m.upper] : [m.rect]) {
+      minX = Math.min(minX, r.x0 - g);
+      maxX = Math.max(maxX, r.x1 + g);
+      minZ = Math.min(minZ, r.z0 - g);
+      maxZ = Math.max(maxZ, r.z1 + g);
+    }
   }
   for (const s of sections) {
     minX = Math.min(minX, s.x0 - s.overhang);
@@ -95,7 +97,7 @@ export function prepareHouse(input: HouseInput, rng: SeededRandom, plan?: HouseP
 export function shiftPlan(plan: HousePlan, dx: number, dz: number): HousePlan {
   return {
     ...plan,
-    masses: plan.masses.map((m): Mass => ({ ...m, rect: shiftRect(m.rect, dx, dz) })),
+    masses: plan.masses.map((m): Mass => ({ ...m, rect: shiftRect(m.rect, dx, dz), ...(m.upper ? { upper: shiftRect(m.upper, dx, dz) } : {}) })),
     door: { ...plan.door, x: plan.door.x + dx },
   };
 }
@@ -113,20 +115,57 @@ export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRand
   const dormers = planDormers(probe, main, sections[0]!, input.dormers).filter(
     (d) => ![d.section.x0, d.section.x1].some((x) => [d.section.z0, d.section.z1].some((z) => nearRoundTower(plan, x, z, 2))),
   );
-  const porch = input.porch ? porchSection(probe, main, plan.door.x) : null;
+  // Engawa decks need no roof of their own: the wide eave covers them.
+  const porch = input.porch && input.porchKind !== 'engawa' ? porchSection(probe, doorMassOf(plan), plan.door.x, input.porchKind) : null;
+  // Roof rings below stepped-in upper storeys (pagoda tiers) and terraces beside a shifted upper
+  // cube: a lower layer around the storey above, never over it.
+  for (const m of squareMasses(plan)) {
+    if (!m.setback && !m.upper) continue;
+    const f = m.frames ? 1 : 0;
+    for (let k = 1; k < m.floors; k++) {
+      const below = storeyRect(m, k - 1);
+      const above = storeyRect(m, k);
+      const base = roofSection(plan, m, input.materials);
+      sections.push({
+        ...base,
+        id: `${m.id}-tier${k}`,
+        x0: below.x0 - f,
+        z0: below.z0 - f,
+        x1: below.x1 + f,
+        z1: below.z1 + f,
+        wallTop: floorY(plan, k),
+        type: m.upper || m.roofType === 'flat' ? 'flat' : 'hip',
+        profile: 'shallow',
+        overhang: m.upper ? 0 : m.overhang,
+        hole: { x0: above.x0 - f, z0: above.z0 - f, x1: above.x1 + f, z1: above.z1 + f },
+        layer: 1,
+        maxRise: 2,
+        gables: false,
+      });
+    }
+  }
   // One pitch for the whole house: wings, cross gable and annex follow the main roof. Where the
   // style's minimum pitch needs more height than the cap, the cap grows (taller, not flatter).
   const minPitch = input.style.proportions.roofRise.minPitch;
   const pitch = housePitch(sections[0]!, minPitch);
   if (pitch)
     for (const s of sections) {
-      if (s.type === 'shed' || s.type === 'flat') continue;
+      if (s.type === 'shed' || s.type === 'flat' || s.id.includes('-tier')) continue;
       s.pitch = pitch;
       s.maxRise = Math.max(s.maxRise ?? 7, ladderRise(pitch, slopeColumns(s)));
       // The planned rise incl. ridge piece and eave lift is the real height; keep the cap honest.
       const rise = planRoofs([s]).topY - s.wallTop;
       if (rise > s.maxRise + 1) s.maxRise = rise - 1;
     }
+  // Hierarchy (research 19 T1/L2): no wing, cross gable or annex reaches the main ridge. Where
+  // the shared pitch would let it (a capped main roof), its own cap comes down step by step.
+  const mainIds = new Set([main.id, `${main.id}-gable`]);
+  const mainTop = planRoofs(sections.filter((s) => mainIds.has(s.id))).topY;
+  for (const s of sections) {
+    const m = plan.masses.find((x) => x.id === s.id);
+    if (!m || m === main || m.kind === 'tower' || s.type === 'flat') continue;
+    for (let guard = 0; guard < 10 && planRoofs([s]).topY >= mainTop && (s.maxRise ?? 7) > 2; guard++) s.maxRise = (s.maxRise ?? 7) - 1;
+  }
   sections.push(...dormers.map((d) => d.section), ...(porch ? [porch] : []));
   return { sections, dormers, porch };
 }
@@ -148,6 +187,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
     const perStorey: Map<HorizontalDirection, Panel[]>[] = [];
     for (let k = 0; k < mass.floors; k++) perStorey.push(buildStorey(ctx, mass, k).panels);
     buildTop(ctx, mass);
+    buildTierDecks(ctx, mass);
     panels.set(mass.id, perStorey);
   }
   const main = plan.masses[0]!;
@@ -155,7 +195,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
 
   for (const d of dormers) buildDormer(ctx, d);
   const roof = buildRoofs(builder, sections);
-  if (porch) buildPorch(ctx, porch);
+  if (porch) buildPorch(ctx, porch, plan.door.x);
   let chimney: { x: number; z: number } | null = null;
   if (input.chimney && main.roofType !== 'flat') {
     const tower = plan.masses.find((m) => m.round);
@@ -169,6 +209,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
     else buildChimney(ctx, main, roof.ridgeY[main.id] ?? wallTopOf(plan, main), side, roof.surface);
   }
   const openings = buildOpenings(ctx, panels);
+  if (input.porch && input.porchKind === 'engawa') buildEngawa(ctx, main, plan.door.x, openings.reserved);
   buildStringCourses(ctx, squareMasses(plan));
   // Gable fields (timber, windows) and ridge finials, after the chimney so nothing hides behind it.
   openings.windows += buildGables(ctx, roof, sections, opts.plainGables ?? []).windows;

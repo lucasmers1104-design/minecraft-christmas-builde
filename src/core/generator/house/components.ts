@@ -2,7 +2,7 @@ import { OPPOSITE, type HorizontalDirection } from '@/core/blocks/directions';
 import { blockState } from '@/core/blocks/registry';
 import { Priority } from '@/core/generator/geometry';
 import type { RoofSectionSpec } from '@/core/generator/roof/roofEngine';
-import { floorY, storeyRect, wallTopOf, type Mass } from '@/core/generator/house/plan';
+import { floorY, occupiedByOther, storeyRect, wallTopOf, type Mass } from '@/core/generator/house/plan';
 import { facadeOf, facadePos, type Ctx } from '@/core/generator/house/walls';
 import { rightOf } from '@/core/templates/place';
 
@@ -114,17 +114,22 @@ export function buildDormer(ctx: Ctx, d: Dormer): void {
   // The back of the dormer stays open into the attic.
 }
 
-/** Porch roof over the entrance: a shallow shed roof on two posts. */
-export function porchSection(ctx: Ctx, mass: Mass, doorX: number): RoofSectionSpec {
+/**
+ * Porch roof in front of the entrance: a shallow shed roof. `canopy` spans the door (5 wide, 3
+ * deep, on two posts); `veranda` runs along the whole front of the door mass on a row of posts
+ * (log cabin, research 13 T09). Both are a lower roof layer, so they continue under the eave.
+ */
+export function porchSection(ctx: Ctx, mass: Mass, doorX: number, kind: 'canopy' | 'veranda' = 'canopy'): RoofSectionSpec {
   const { plan } = ctx;
   const rect = mass.rect;
   const f = mass.frames ? 1 : 0;
   const z1 = rect.z0 - 1 - f;
   const doorTop = floorY(plan, 0) + 3;
+  const veranda = kind === 'veranda';
   return {
     id: 'porch',
-    x0: doorX - 2,
-    x1: doorX + 2,
+    x0: veranda ? rect.x0 - f : doorX - 2,
+    x1: veranda ? rect.x1 + f : doorX + 2,
     z0: z1 - 2,
     z1,
     wallTop: doorTop,
@@ -143,28 +148,91 @@ export function porchSection(ctx: Ctx, mass: Mass, doorX: number): RoofSectionSp
     ridgeStyle: 'none',
     soffit: false,
     maxRise: 2,
+    layer: 1,
   };
 }
 
-/** Porch posts, floor and steps (after the roof). */
-export function buildPorch(ctx: Ctx, section: RoofSectionSpec): void {
+/**
+ * Porch posts, floor and steps (after the roof). A canopy stands on two fence posts; a veranda
+ * on log posts every three to four blocks with a fence railing between them, open at the steps.
+ */
+export function buildPorch(ctx: Ctx, section: RoofSectionSpec, doorX: number = Math.round((section.x0 + section.x1) / 2)): void {
   const { builder, blocks, plan } = ctx;
   const yFloor = floorY(plan, 0);
+  const veranda = section.x1 - section.x0 + 1 > 5;
   for (let x = section.x0; x <= section.x1; x++)
     for (let z = section.z0; z <= section.z1; z++) {
       builder.setBlock(x, yFloor, z, blocks.slab('floor', 'top'), Priority.STRUCTURE);
       for (let y = 1; y < yFloor; y++) builder.setBlock(x, y, z, blocks.block('plinth'), Priority.STRUCTURE);
     }
-  for (const x of [section.x0, section.x1]) {
-    for (let y = yFloor + 1; y <= section.wallTop; y++) builder.setBlock(x, y, section.z0, blocks.fence('frame'), Priority.STRUCTURE);
+  const stepX0 = veranda ? doorX - 1 : section.x0 + 1;
+  const stepX1 = veranda ? doorX + 1 : section.x1 - 1;
+  if (!veranda) {
+    for (const x of [section.x0, section.x1]) for (let y = yFloor + 1; y <= section.wallTop; y++) builder.setBlock(x, y, section.z0, blocks.fence('frame'), Priority.STRUCTURE);
+  } else {
+    // Posts at both ends and evenly every 3–4 blocks, never in front of the steps.
+    const span = section.x1 - section.x0;
+    const n = Math.max(1, Math.round(span / 4));
+    const posts = new Set<number>();
+    for (let i = 0; i <= n; i++) posts.add(section.x0 + Math.round((i * span) / n));
+    for (const x of [...posts]) if (x >= stepX0 - 1 && x <= stepX1 + 1 && x !== section.x0 && x !== section.x1) posts.delete(x);
+    for (const x of posts) for (let y = yFloor + 1; y <= section.wallTop; y++) builder.setBlock(x, y, section.z0, blocks.log('frame', 'y'), Priority.STRUCTURE);
+    for (let x = section.x0; x <= section.x1; x++) {
+      if (posts.has(x) || (x >= stepX0 && x <= stepX1)) continue;
+      builder.setBlock(x, yFloor + 1, section.z0, blocks.fence('frame'), Priority.STRUCTURE);
+    }
   }
   // Steps down to the path in front of the porch: one stair per plinth row, half a block rise
   // each, filled underneath, so a high plinth is walked up instead of jumped (research 04 R1).
   for (let k = 0; k < yFloor; k++) {
     const z = section.z0 - 1 - k;
     const y = yFloor - k;
-    for (let x = section.x0 + 1; x <= section.x1 - 1; x++) {
+    for (let x = stepX0; x <= stepX1; x++) {
       if (!builder.inside(x, y, z)) continue;
+      builder.setBlock(x, y, z, blocks.stairs('plinth', 'south', 'bottom'), Priority.STRUCTURE);
+      for (let yy = 1; yy < y; yy++) builder.setBlock(x, yy, z, blocks.block('plinth'), Priority.STRUCTURE);
+    }
+  }
+}
+
+/**
+ * Engawa (research 11 T09/T10, 20 T8): a wooden deck around the house at floor level, one block
+ * wide on small houses and two otherwise, under the wide eave; posts at the deck edge carry the
+ * overhang, steps lead down in front of the entrance. Parts covered by other masses and the
+ * door clearance are left out.
+ */
+export function buildEngawa(ctx: Ctx, mass: Mass, doorX: number, reserved: ReadonlySet<string>): void {
+  const { builder, blocks, plan } = ctx;
+  const P = plan.plinth;
+  const width = plan.input.width <= 9 ? 1 : 2;
+  const f = mass.frames ? 1 : 0;
+  const r = mass.rect;
+  const outer = { x0: r.x0 - f - width, x1: r.x1 + f + width, z0: r.z0 - f - width, z1: r.z1 + f + width };
+  const inside = (x: number, z: number) => x >= r.x0 - f && x <= r.x1 + f && z >= r.z0 - f && z <= r.z1 + f;
+  const free = (x: number, y: number, z: number) => builder.inside(x, y, z) && builder.isAir(x, y, z) && !reserved.has(`${x},${y},${z}`);
+  for (let x = outer.x0; x <= outer.x1; x++)
+    for (let z = outer.z0; z <= outer.z1; z++) {
+      if (inside(x, z) || occupiedByOther(plan, mass, x, z, 0) || !free(x, P, z)) continue;
+      builder.setBlock(x, P, z, blocks.slab('floor', 'top'), Priority.STRUCTURE);
+      // Posts on the outer corners and every three blocks along the edge, up to the roof.
+      const edgeX = x === outer.x0 || x === outer.x1;
+      const edgeZ = z === outer.z0 || z === outer.z1;
+      const along = edgeZ ? x - outer.x0 : z - outer.z0;
+      const corner = edgeX && edgeZ;
+      if (!(corner || ((edgeX || edgeZ) && along % 3 === 0)) || (z < r.z0 && Math.abs(x - doorX) <= 2)) continue;
+      let top = P + 1;
+      while (top < builder.dimensions.height - 1 && free(x, top, z)) top++;
+      // Only where the roof actually covers the post (never a free-standing pole).
+      if (top >= builder.dimensions.height - 1 || builder.isAir(x, top, z) || top - P < 3) continue;
+      for (let y = P - 1; y >= 1; y--) if (builder.isAir(x, y, z)) builder.setBlock(x, y, z, blocks.block('plinth'), Priority.STRUCTURE);
+      for (let y = P + 1; y < top; y++) builder.setBlock(x, y, z, blocks.log('frame', 'y'), Priority.STRUCTURE);
+    }
+  // Steps in front of the entrance down to the ground.
+  for (let k = 1; k <= P; k++) {
+    const y = P + 1 - k;
+    const z = outer.z0 - k;
+    for (let x = doorX - 1; x <= doorX + 1; x++) {
+      if (!builder.inside(x, y, z) || !builder.isAir(x, y, z)) continue;
       builder.setBlock(x, y, z, blocks.stairs('plinth', 'south', 'bottom'), Priority.STRUCTURE);
       for (let yy = 1; yy < y; yy++) builder.setBlock(x, yy, z, blocks.block('plinth'), Priority.STRUCTURE);
     }

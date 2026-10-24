@@ -139,7 +139,8 @@ describe('Haus: Bauteile und Feinparameter wirken', () => {
   });
 
   it('Mittelalter: Obergeschoss kragt auf Konsolen aus (Jetty)', () => {
-    const r = generateBuildingWithReport(spec({ style: 'medieval', size: 'medium', seed: 1 }, { floors: 2, jetty: true }));
+    // A cross gable in front stops the jetty on that side, so the plain body is checked here.
+    const r = generateBuildingWithReport(spec({ style: 'medieval', size: 'medium', seed: 1 }, { floors: 2, jetty: true, composition: 'simple' }));
     const main = r.house!.plan.masses[0]!;
     const lower = storeyRect(main, 0);
     const upper = storeyRect(main, 1);
@@ -230,7 +231,8 @@ describe('Leistung', () => {
 
 describe('Giebelfelder und Firstzier', () => {
   const gableHouse = (style: BuildSpec['style'], over: Partial<BuildSpec> = {}) =>
-    generateBuildingWithReport(spec({ style, size: 'large', seed: 3, ...over }, { roofType: 'gable', chimney: false }));
+    // The plain body (composition 'simple'): both gables free, no tower or cross gable in front.
+    generateBuildingWithReport(spec({ style, size: 'large', seed: 3, ...over }, { roofType: 'gable', chimney: false, composition: 'simple' }));
 
   it('Fachwerkgiebel: zurückgesetzte Füllung, davor Firstständer und Kehlbalken, Fenster neben dem Ständer', () => {
     const r = gableHouse('medieval');
@@ -326,10 +328,15 @@ describe('Modern: versetzte Baukörper', () => {
     for (const size of ['medium', 'large'] as const)
       for (const seed of [1, 2, 3]) {
         const r = generateBuildingWithReport(spec({ style: 'modern', size, seed }));
-        const masses = r.house!.plan.masses;
-        expect(masses.length, `${size} ${seed}`).toBeGreaterThanOrEqual(2);
-        const [main, annex] = [masses[0]!, masses.find((m) => m.kind === 'annex')!];
-        expect(annex.rect.z0).toBeLessThan(main.rect.z0); // steps forward
+        const plan = r.house!.plan;
+        const [main, ...others] = plan.masses;
+        // A second cube beside or in front (annex, entrance cube, wing) or a shifted upper cube.
+        const volumes = others.length + (main!.upper ? 1 : 0);
+        expect(volumes, `${size} ${seed}`).toBeGreaterThanOrEqual(1);
+        const offset = others.some((m) => m.rect.z0 !== main!.rect.z0 || m.rect.z1 !== main!.rect.z1) || (main!.upper !== undefined && main!.upper.x0 !== main!.rect.x0);
+        expect(offset, `${size} ${seed}`).toBe(true);
+        const heights = new Set([...plan.masses.map((m) => m.floors), ...(main!.upper ? [1] : [])]);
+        expect(heights.size, `${size} ${seed}`).toBeGreaterThanOrEqual(2);
         expect(r.repairs).toEqual([]);
         expect(lintHouse(r.model, r.house!)).toEqual([]);
       }

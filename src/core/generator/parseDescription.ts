@@ -13,6 +13,7 @@ import type { BuildingType, BuildSize, DetailLevel } from '@/core/schema/buildSp
 import { getMaterial, hasMaterial } from '@/core/style/materials';
 import { PALETTES } from '@/core/style/palettes';
 import { STYLE_IDS, STYLE_LABELS, STYLES, THEME_LABELS, type StyleId, type Theme } from '@/core/style/styles';
+import { COMPOSITION_INFO, COMPOSITION_LABELS, COMPOSITIONS } from '@/core/style/compositions';
 
 /**
  * Rule-based German free-text interpretation (BuildSpec v2). It never invents geometry: it
@@ -1585,7 +1586,26 @@ function unknownClauseWarnings(text: string, consumed: (i: number) => boolean): 
 // ---------------------------------------------------------------------------------------------
 // Main
 
-const RULES_BEFORE_BUILDINGS: readonly Rule[] = [...UNSUPPORTED_RULES, JETTY_RULE, ...NUMBER_RULES, ...OPENING_RULES, ...ROOF_RULES, ...MATERIAL_RULES, ...FEATURE_RULES];
+/**
+ * Compositions (archetypes) from their keywords: recorded, but the word stays unclaimed, so the
+ * same keyword still sets the building type and votes for the style ("Pagode", "Langhaus").
+ */
+const COMPOSITION_RULES: readonly Rule[] = COMPOSITIONS.flatMap((id): Rule[] => {
+  if (id === 'auto') return [];
+  const words = COMPOSITION_INFO[id].keywords;
+  if (words.length === 0) return [];
+  return [
+    {
+      re: rx(words.map((w) => w.replace(/\s+/g, String.raw`\s+`) + TAIL).join('|'), 'start'),
+      apply: (ctx, m) => {
+        if (!ctx.negated(m) && ctx.setWeak('composition', id)) ctx.rec(m, `Bauform: ${COMPOSITION_LABELS[id]}`);
+        return null;
+      },
+    },
+  ];
+});
+
+const RULES_BEFORE_BUILDINGS: readonly Rule[] = [...COMPOSITION_RULES, ...UNSUPPORTED_RULES, JETTY_RULE, ...NUMBER_RULES, ...OPENING_RULES, ...ROOF_RULES, ...MATERIAL_RULES, ...FEATURE_RULES];
 const RULES_AFTER_BUILDINGS: readonly Rule[] = [...styleRules(), ...THEME_RULES, ...SIZE_RULES, ...DETAIL_RULES];
 
 function resolveStyle(ctx: Ctx): void {

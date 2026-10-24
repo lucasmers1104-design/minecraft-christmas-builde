@@ -3,7 +3,7 @@ import { AIR, blockIdOf, definitionOf, propsOf } from '@/core/blocks/registry';
 import { PaletteGrid, resolveStates } from '@/core/blocks/stateResolver';
 import type { HouseResult } from '@/core/generator/house/buildHouse';
 import { floorY, joinedAt, storeyRect } from '@/core/generator/house/plan';
-import { facadeOf, facadePos } from '@/core/generator/house/walls';
+import { coveredColumns, facadeOf, facadePos } from '@/core/generator/house/walls';
 import { planRoofs } from '@/core/generator/roof/roofEngine';
 import { blockAt, type VoxelModel } from '@/core/schema/voxelModel';
 
@@ -113,6 +113,8 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
       for (const side of ['north', 'east', 'south', 'west'] as const) {
         if (joinedAt(plan, mass, side, k)) continue;
         const f = facadeOf(rect, side);
+        // Parts with another mass in front (cross gable, wing, annex) are no facade.
+        const covered = coveredColumns(plan, mass, side, k);
         const depth: string[][] = [];
         for (let u = 0; u < f.length; u++) {
           const column: string[] = [];
@@ -120,6 +122,7 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
           depth.push(column);
         }
         for (let u = 0; u + 6 <= f.length; u++) {
+          if ([0, 1, 2, 3, 4, 5].some((i) => covered.has(u + i))) continue;
           const first = depth[u]![0];
           const flat = depth.slice(u, u + 6).every((col) => col.every((d) => d === first));
           if (flat) {
@@ -154,6 +157,8 @@ export function lintHouse(model: VoxelModel, house: HouseResult): LintIssue[] {
       }
   }
 
+  // A house without a door (all templates rejected) is a fault, not a style.
+  if (openings.doors.length === 0) issues.push({ rule: 'eingang', message: 'Keine Tür gesetzt' });
   // Doors: both halves present, free in front (2) and behind (1).
   for (const d of openings.doors) {
     const lower = blockAt(model, d.x, d.y, d.z);

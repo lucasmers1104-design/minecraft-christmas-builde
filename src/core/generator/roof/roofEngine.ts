@@ -64,6 +64,14 @@ export interface RoofSectionSpec {
   /** Fill the gable triangles (default true for gable-like types). */
   gables?: boolean;
   priority?: PriorityValue;
+  /** Columns inside this rect are left out (roof rings around a stepped-in upper storey, terraces). */
+  hole?: { x0: number; z0: number; x1: number; z1: number };
+  /**
+   * Build layer: where a section of a higher layer number loses a column to a higher roof of
+   * another layer, its pieces below that roof are built as well (a lean-to or porch roof runs on
+   * under the main eave instead of leaving a gap; pagoda rings under the tier above).
+   */
+  layer?: number;
 }
 
 interface Column {
@@ -81,6 +89,7 @@ interface Column {
   /** Column outside the walls on an eave side. */
   eave: boolean;
   lowest: number;
+  layer: number;
 }
 
 export interface EaveCell {
@@ -343,6 +352,7 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
   const ridgeStyle = s.ridgeStyle ?? 'slab';
   for (let x = X0; x <= X1; x++)
     for (let z = Z0; z <= Z1; z++) {
+      if (s.hole && x >= s.hole.x0 && x <= s.hole.x1 && z >= s.hole.z0 && z <= s.hole.z1) continue;
       const l = layoutAt(s, x, z);
       if (!l) continue;
       const outside = x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1;
@@ -409,6 +419,7 @@ function sectionColumns(s: RoofSectionSpec, index: number): { columns: Map<strin
         verge: l.verge,
         eave: outside && !l.verge,
         lowest: Math.min(...pieces.map((p) => p.y)),
+        layer: s.layer ?? 0,
       });
     }
   return { columns, base };
@@ -478,6 +489,20 @@ export function buildRoofs(builder: VoxelBuilder, sections: readonly RoofSection
     const [x, z] = k.split(',').map(Number) as [number, number];
     const priority = sections[under.section]!.priority ?? Priority.ROOF;
     for (const p of under.pieces) if (builder.inside(x, p.y, z)) builder.setBlock(x, p.y, z, p.state, priority);
+  }
+
+  // Lower layers under a higher roof of another layer: the pieces below its lowest piece.
+  for (const [k, w] of winners) {
+    let under: Column | undefined;
+    for (const { columns } of all) {
+      const c = columns.get(k);
+      if (!c || c === w || c.layer <= w.layer) continue;
+      if (!under || c.top > under.top) under = c;
+    }
+    if (!under) continue;
+    const [x, z] = k.split(',').map(Number) as [number, number];
+    const priority = sections[under.section]!.priority ?? Priority.ROOF;
+    for (const p of under.pieces) if (p.y < w.lowest && builder.inside(x, p.y, z)) builder.setBlock(x, p.y, z, p.state, priority);
   }
 
   // Soffits: cornice under the eaves, boards under the verges.

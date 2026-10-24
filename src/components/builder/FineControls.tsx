@@ -11,6 +11,7 @@ import { sourceOf, type SettingPath } from "@/core/schema/resolveSpec";
 import { getMaterial, hasOwnForm, listMaterials, type MaterialFamily } from "@/core/style/materials";
 import { getPalette } from "@/core/style/palettes";
 import { STYLES, type RoofProfile, type RoofType } from "@/core/style/styles";
+import { COMPOSITION_INFO, COMPOSITION_LABELS, stylesCompositions } from "@/core/style/compositions";
 import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Field";
 import { Icon } from "@/components/ui/Icon";
@@ -121,6 +122,8 @@ function automaticValue(spec: BuildSpec, path: SettingPath): string {
     case "overhang":
     case "dormers":
       return String(input[key]);
+    case "composition":
+      return input.composition ? COMPOSITION_LABELS[input.composition.id] : "Standard";
     case "roofType":
       return ROOF_TYPE_LABELS[input.roofType];
     case "roofProfile":
@@ -213,7 +216,8 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
   const summary = useMemo(() => {
     if (spec.kind !== "house") return "Optionen für diesen Bauwerkstyp";
     const input = resolveHouseInput(spec.style, spec.theme, spec.size, spec.detailLevel, spec.seed, spec.targetMinecraftVersion, { ...spec.options, materials: undefined } as never, createSeededRandom(spec.seed));
-    return `${input.width} × ${input.depth} Grundfläche, ${input.floors} Geschoss${input.floors > 1 ? "e" : ""}, ${ROOF_TYPE_LABELS[input.roofType]}`;
+    const form = input.composition ? `${COMPOSITION_LABELS[input.composition.id]}, ` : "";
+    return `${form}${input.width} × ${input.depth} Grundfläche, ${input.floors} Geschoss${input.floors > 1 ? "e" : ""}, ${ROOF_TYPE_LABELS[input.roofType]}`;
   }, [spec]);
 
   const legend = (text: string) => <legend className="mb-2 text-sm font-semibold text-fg">{text}</legend>;
@@ -266,6 +270,13 @@ export function FineControls({ binding }: { binding: SettingsBinding }) {
           {shows("wings") ? (
             <fieldset className={grid}>
               {legend("Form & Bauteile")}
+              {shows("composition")
+                ? field(
+                    "options.composition",
+                    "Bauform",
+                    stylesCompositions(spec.style).map((id) => ({ value: id, label: COMPOSITION_INFO[id].label })),
+                  )
+                : null}
               {enumField("symmetry", "Symmetrie")}
               {enumField("wings", "Flügel")}
               {enumField("annex", "Anbau")}

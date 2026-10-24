@@ -53,6 +53,12 @@ function frame(w: number, top: number): Cells[] {
 
 const steps = (x0: number, x1: number, d = 1) => span(x0, x1).map((x) => step(x, -1, d));
 
+/**
+ * Fallback entrance when no template fits (tight eaves, posts): only the door leaf, the plinth row
+ * below it and the clearance – never a house without a door. Not part of the catalogue.
+ */
+export const FALLBACK_DOOR: FacadeTemplate = doorTemplate('T00', 'Schlichte Tür (Rückfall)', 1, [doorway(1)], 'Rückfall, wenn keine Türvorlage an die Fassade passt.');
+
 // ---------------------------------------------------------------------------------------------
 
 /** T01: frame, slab hood in d=+1 with two lanterns hanging under its ends, step. */

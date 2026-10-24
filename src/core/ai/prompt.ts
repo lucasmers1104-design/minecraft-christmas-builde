@@ -6,6 +6,7 @@ import { BUILD_SIZES } from '@/core/schema/buildSpec';
 import { getMaterial } from '@/core/style/materials';
 import { PALETTES } from '@/core/style/palettes';
 import { ROOF_PROFILES, ROOF_TYPES, STYLE_IDS, STYLES } from '@/core/style/styles';
+import { COMPOSITION_INFO, stylesCompositions } from '@/core/style/compositions';
 
 /**
  * Prompt for the local planner: the style catalogue with the style descriptions as
@@ -29,7 +30,10 @@ export function styleCatalogText(): string {
   return STYLE_IDS.map((id) => {
     const s = STYLES[id];
     const palettes = s.palettes.map((p) => `"${p}" (${PALETTES.find((x) => x.id === p)?.label ?? p})`).join(', ');
-    return `- "${id}" – ${s.label}: ${s.llm.description} Stichworte: ${s.llm.keywords.slice(0, 8).join(', ')}. Paletten: ${palettes}.`;
+    const forms = stylesCompositions(id)
+      .map((c) => `"${c}"`)
+      .join(', ');
+    return `- "${id}" – ${s.label}: ${s.llm.description} Stichworte: ${s.llm.keywords.slice(0, 8).join(', ')}. Paletten: ${palettes}. Bauformen: ${forms}.`;
   }).join('\n');
 }
 
@@ -48,6 +52,9 @@ export function planSchemaText(): string {
 - theme: "auto", "none" (ausdrücklich ohne Thema), "winter" (winterlich, verschneit, im Schnee), "christmas" (weihnachtlich, Advent, Weihnachtsmarkt).
 - size: "auto" oder ${values('size', BUILD_SIZES)}.
 - detailLevel: null oder 1 (schlicht), 2 (normal), 3 (festlich, viele Details).
+- composition: Bauform (Anordnung der Baukörper), nur bei Häusern: "auto" oder ${Object.values(COMPOSITION_INFO)
+    .map((c) => `"${c.id}" (${c.label}: ${c.summary})`)
+    .join(', ')}. Nur setzen, wenn der Wunsch eine Bauform nennt oder klar nahelegt ("Stadthaus", "Kapelle", "Pagode", "Hexenhaus", "Blockhütte", "Langhaus" …).
 - floors: null oder Geschosse ${range('floors')} (zweistöckig = 2).
 - width, depth: null oder Grundfläche in Blöcken, ungerade, ${range('width')}. Nur bei ausdrücklichen Maßen („15 x 11“ = width 15, depth 11).
 - roofType: "auto" oder ${values('roofType', ROOF_TYPES)}. Kein Pultdach im Katalog.

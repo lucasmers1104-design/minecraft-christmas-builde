@@ -208,7 +208,7 @@ export function designRoundTower(plan: Pick<HousePlan, 'plinth' | 'floorHeight' 
   } else if (spec.roof === 'cone' && look.cone === 'witch') {
     // Witch hat (report 09 T7): slab brim, hat band, concave cone, usually a bent tip.
     const layers = witchHatLayers(d, rng.fork('witch').chance(0.8));
-    helm = { ...none, kind: 'witch', layers: layers.map((l) => ({ mask: circle(l.d), shift: l.shift })), brim: 0, band: 1, finial: [look.finial === 'end_rod' ? 'end_rod' : 'rod'] };
+    helm = { ...none, kind: 'witch', layers: layers.map((l) => ({ mask: circle(l.d), shift: l.shift })), brim: 0, band: 1, finial: [look.finial === 'end_rod' && !plan.input.festive.snow ? 'end_rod' : 'rod'] };
   } else if (spec.roof === 'cone') {
     // Kicked cone (report 16 T9): eave of slabs two in front of the wall, slender tip.
     const h = Math.max(3, Math.round((d + 2) * spec.slope));

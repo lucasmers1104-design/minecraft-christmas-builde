@@ -4,7 +4,7 @@ import { AIR } from '@/core/blocks/registry';
 import { Priority, type VoxelBuilder } from '@/core/generator/geometry';
 import type { SeededRandom } from '@/core/generator/seededRandom';
 import type { Blocks } from '@/core/generator/house/materials';
-import { floorY, joinedAt, storeyRect, wallTopOf, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
+import { doorMassOf, floorY, joinedAt, nearRoundTower, occupiedByOther, storeyRect, wallTopOf, type HousePlan, type Mass, type Rect } from '@/core/generator/house/plan';
 import { rightOf } from '@/core/templates/place';
 import type { Role } from '@/core/style/palettes';
 import { getMaterial } from '@/core/style/materials';
@@ -68,6 +68,22 @@ export interface Panel {
   u1: number;
 }
 
+/**
+ * Facade columns (u, including the corner columns −1 and length) in front of which another mass
+ * stands at storey k: a cross gable, a wing or an annex covering part of the wall. No windows,
+ * posts or details there – that part of the wall is a passage or the other mass's wall.
+ */
+export function coveredColumns(plan: HousePlan, mass: Mass, side: HorizontalDirection, k: number): Set<number> {
+  const f = facadeOf(storeyRect(mass, k), side);
+  const out = new Set<number>();
+  for (let u = -1; u <= f.length; u++) {
+    const p = facadePos(f, u, 1);
+    // An attached round tower replaces the wall around it (it is built last, over the house).
+    if (occupiedByOther(plan, mass, p.x, p.z, k) || (!mass.round && nearRoundTower(plan, p.x, p.z, 1))) out.add(u);
+  }
+  return out;
+}
+
 /** Panels (between posts) on a facade; posts are at u = stud − 1 (corners at −1 and length). */
 export function facadePanels(f: Facade, framed: boolean): { posts: number[]; panels: Panel[] } {
   if (!framed) return { posts: [-1, f.length], panels: [{ u0: 0, u1: f.length - 1 }] };
@@ -82,6 +98,8 @@ export function facadePanels(f: Facade, framed: boolean): { posts: number[]; pan
 }
 
 function wallRole(mass: Mass, storey: number, plan: HousePlan): Role {
+  // Towers are masonry from top to bottom (stone or brick of the wall, else the plinth stone).
+  if (mass.kind === 'tower') return isMasonry(plan.input.materials.wall) ? 'wall' : 'plinth';
   const timberStorey = mass.timber && (plan.input.timber === 'all' || storey > 0);
   if (timberStorey) return 'infill';
   return storey === 0 ? 'wall' : 'upperWall';
@@ -113,15 +131,17 @@ export function buildPlinth(ctx: Ctx, mass: Mass): void {
     }
   // Apron of stairs on the ground row, full side against the plinth – only at the corners and
   // around the entrance; a skirt all round makes small houses look heavy (research 15/20).
-  const doorMass = plan.masses.find((m) => m.kind === 'cross') ?? plan.masses[0]!;
+  const doorMass = doorMassOf(plan);
   for (const side of SIDES) {
     if (mass.joins[side]) continue;
     const f = facadeOf(r, side);
+    const covered = coveredColumns(plan, mass, side, 0);
     const doorU = mass === doorMass && side === plan.door.side ? f.origin.x - plan.door.x : null;
     for (let u = -2; u <= f.length + 1; u++) {
       const corner = u <= 0 || u >= f.length - 1;
       if (!corner && (doorU === null || Math.abs(u - doorU) > 2)) continue;
       const p = facadePos(f, u, 2);
+      if (covered.has(Math.max(-1, Math.min(f.length, u))) || occupiedByOther(plan, mass, p.x, p.z, 0)) continue;
       if (!builder.inside(p.x, 1, p.z) || !builder.isAir(p.x, 1, p.z)) continue;
       set(ctx, p.x, 1, p.z, blocks.stairs('plinth', OPPOSITE[side] as HorizontalDirection, 'bottom'), Priority.DECOR);
     }
@@ -168,6 +188,7 @@ export function buildStorey(ctx: Ctx, mass: Mass, storey: number): { panels: Map
         const side: HorizontalDirection = axis === 'x' ? (x === rect.x0 ? 'west' : 'east') : z === rect.z0 ? 'north' : 'south';
         if (joinedAt(plan, mass, side, storey)) continue;
         const [dx, , dz] = VECTOR[side];
+        if (occupiedByOther(plan, mass, x + dx, z + dz, storey)) continue;
         set(ctx, x + dx, y, z + dz, blocks.log(role, axis));
       }
 
@@ -185,13 +206,18 @@ export function buildStorey(ctx: Ctx, mass: Mass, storey: number): { panels: Map
     // Log courses carry themselves: no posts or beams in front of them.
     if (!framed || logWall) continue;
     const axis: 'x' | 'z' = side === 'north' || side === 'south' ? 'x' : 'z';
-    const postSet = framePosts(posts, timber);
+    const covered = coveredColumns(plan, mass, side, storey);
+    // The entrance gets a clear bay: no stud right beside the door (its jambs and lanterns stand there).
+    const doorU = storey === 0 && side === plan.door.side && mass === doorMassOf(plan) ? f.origin.x - plan.door.x : null;
+    const nearDoor = (u: number) => doorU !== null && u >= doorU - 1 && u <= doorU + 2 && u !== -1 && u !== f.length;
+    const postSet = framePosts(posts, timber).filter((u) => !covered.has(u) && !nearDoor(u));
     for (const u of postSet) {
       const p = facadePos(f, u, 1);
       for (let y = y0 + 1; y < y1; y++) set(ctx, p.x, y, p.z, blocks.log('frame', 'y'), Priority.STRUCTURE + 1);
     }
     // Beams: the floor line of this storey (above the plinth for storey 0) and the top line.
     for (let u = -1; u <= f.length; u++) {
+      if (covered.has(u)) continue;
       const p = facadePos(f, u, 1);
       const isPost = postSet.includes(u);
       if (storey > 0 || plan.plinth === 0) set(ctx, p.x, y0, p.z, isPost ? blocks.wood('beam') : blocks.log('beam', axis), Priority.STRUCTURE + 1);
@@ -205,7 +231,9 @@ export function buildStorey(ctx: Ctx, mass: Mass, storey: number): { panels: Map
     for (const side of SIDES) {
       if (!mass.jetty[side] || mass.joins[side]) continue;
       const f = facadeOf(rect, side);
+      const covered = coveredColumns(plan, mass, side, storey);
       for (const u of framePosts(facadePanels(f, framed && mass.timber).posts, timber)) {
+        if (covered.has(u)) continue;
         const p = facadePos(f, u, framed ? 1 : 0);
         set(ctx, p.x, y0 - 1, p.z, blocks.stairs('beam', OPPOSITE[side] as HorizontalDirection, 'top'), Priority.STRUCTURE);
       }
@@ -268,12 +296,21 @@ export function buildPassages(ctx: Ctx, mass: Mass, other: Mass): void {
   for (let k = 0; k < floors; k++) {
     const y0 = floorY(plan, k) + 1;
     const y1 = floorY(plan, k + 1) - 1;
-    // Clear the shared wall except its two end columns (they carry the corners).
-    const alongX = x1 - x0 >= z1 - z0;
-    for (let x = alongX ? x0 + 1 : x0; x <= (alongX ? x1 - 1 : x1); x++)
-      for (let z = alongX ? z0 : z0 + 1; z <= (alongX ? z1 : z1 - 1); z++)
-        for (let y = y0; y <= y1; y++) if (builder.inside(x, y, z)) builder.clear(x, y, z, Priority.OPENING);
-    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) if (k > 0 || true) set(ctx, x, floorY(plan, k), z, ctx.blocks.block('floor'), Priority.OPENING);
+    const clear = (x: number, z: number) => {
+      for (let y = y0; y <= y1; y++) if (builder.inside(x, y, z)) builder.clear(x, y, z, Priority.OPENING);
+    };
+    if (x0 === x1 || z0 === z1) {
+      // A shared wall: cleared except its two end columns (they carry the corners).
+      const alongX = x1 - x0 >= z1 - z0;
+      for (let x = alongX ? x0 + 1 : x0; x <= (alongX ? x1 - 1 : x1); x++) for (let z = alongX ? z0 : z0 + 1; z <= (alongX ? z1 : z1 - 1); z++) clear(x, z);
+    } else {
+      // Overlapping corners (a tower standing over the corner of the house): every cell inside
+      // one of the two masses opens up; only the outer corners of the union keep their walls,
+      // so no closed, dark pocket stays between the two walls.
+      const inside = (r: Rect, x: number, z: number) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1;
+      for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) if (inside(a, x, z) || inside(b, x, z)) clear(x, z);
+    }
+    for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) set(ctx, x, floorY(plan, k), z, ctx.blocks.block('floor'), Priority.OPENING);
   }
 }
 
@@ -331,6 +368,11 @@ function ladderSpot(ctx: Ctx, inner: Rect, y0: number, y1: number, avoid: (x: nu
   return null;
 }
 
+/** Stone, brick and render: materials a tower can be built of. */
+export function isMasonry(materialId: string): boolean {
+  return ['stone', 'brick', 'plaster'].includes(getMaterial(materialId).family);
+}
+
 /** Log and stem materials (laid as courses instead of upright blocks). */
 export function isLogMaterial(materialId: string): boolean {
   return getMaterial(materialId).family === 'log';
@@ -353,11 +395,33 @@ export function buildStringCourses(ctx: Ctx, masses: readonly Mass[]): void {
       for (const side of SIDES) {
         if (joinedAt(plan, mass, side, k) || joinedAt(plan, mass, side, k - 1)) continue;
         const f = facadeOf(rect, side);
+        const covered = new Set([...coveredColumns(plan, mass, side, k), ...coveredColumns(plan, mass, side, k - 1)]);
         for (let u = -1; u <= f.length; u++) {
+          if (covered.has(u)) continue;
           const p = facadePos(f, u, 1);
           if (builder.inside(p.x, y, p.z) && builder.isAir(p.x, y, p.z)) set(ctx, p.x, y, p.z, blocks.stairs('plinth', OPPOSITE[side] as HorizontalDirection, 'top'), Priority.STRUCTURE);
         }
       }
     }
+  }
+}
+
+/**
+ * Decks between stepped storeys (pagoda tiers, a shifted upper cube): where a lower storey
+ * reaches beyond the storey above, its ceiling layer is closed – a ring of beams (or wall
+ * blocks) at its edge and floor planks inside. Only empty cells are filled.
+ */
+export function buildTierDecks(ctx: Ctx, mass: Mass): void {
+  const { plan, blocks, builder } = ctx;
+  if (!mass.setback && !mass.upper) return;
+  for (let k = 1; k < mass.floors; k++) {
+    const r = storeyRect(mass, k - 1);
+    const y = floorY(plan, k);
+    for (let x = r.x0; x <= r.x1; x++)
+      for (let z = r.z0; z <= r.z1; z++) {
+        if (!builder.inside(x, y, z) || !builder.isAir(x, y, z)) continue;
+        const edge = x === r.x0 || x === r.x1 || z === r.z0 || z === r.z1;
+        set(ctx, x, y, z, edge ? (mass.frames ? blocks.log('beam', x === r.x0 || x === r.x1 ? 'z' : 'x') : blocks.block(wallRole(mass, k - 1, plan))) : blocks.block('floor'));
+      }
   }
 }

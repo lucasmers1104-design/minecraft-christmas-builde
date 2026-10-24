@@ -104,6 +104,15 @@ export const PLAN_TESTSET: readonly PlanTestCase[] = [
   { wish: 'Haus mit Keller und Möbeln', expect: { kind: 'house', unsupported: ['Keller', 'Möbel'] } },
   { wish: 'Wohnhaus mit Kaminzimmer und Bibliothek', expect: { kind: 'house', chimney: null, unsupported: ['Kaminzimmer', 'Bibliothek'] } },
   { wish: 'Haus mit Schornstein', expect: { chimney: true, wallMaterial: 'auto', style: 'auto' } },
+  // Compositions (archetypes of the masses).
+  { wish: 'Schmales Stadthaus mit Fachwerk und spitzem Giebel', expect: { kind: 'house', style: 'medieval', composition: 'town_house' } },
+  { wish: 'Kleine Kapelle aus Holz mit Glockenturm', expect: { kind: 'house', composition: 'chapel' } },
+  { wish: 'Rustikale Blockhütte mit Kamin', expect: { kind: 'house', style: 'rustic', composition: 'log_cabin', chimney: true } },
+  { wish: 'Japanisches Wohnhaus mit Engawa', expect: { style: 'japanese', composition: 'engawa_house' } },
+  { wish: 'Moderne Villa aus versetzten Kuben mit Dachterrasse', expect: { style: 'modern', composition: 'offset_cubes' } },
+  { wish: 'Fachwerkhaus mit Zwerchgiebel über dem Eingang', expect: { style: 'medieval', composition: 'cross_gable' } },
+  { wish: 'Toskanisches Winkelhaus mit rotem Dach', expect: { style: 'mediterranean', composition: 'cross_wing' } },
+  { wish: 'Einfaches Haus mit Satteldach', expect: { roofType: 'gable', composition: 'auto' } },
 ];
 
 const norm = (s: string) => s.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss');

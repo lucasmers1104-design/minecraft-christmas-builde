@@ -180,7 +180,10 @@ export function decorateFestive(b: VoxelBuilder, rng: SeededRandom, t: FestiveTa
   const motifFacades = new Set<HorizontalDirection>();
   if (christmas && o.intensity >= 2) {
     const wreathDoors = o.intensity >= 3 ? doors : doors.slice(0, 1);
-    if (kit.wreath) for (const d of wreathDoors) if (placeDoorWreath(b, d, kit, leaves, open)) motifFacades.add(d.outward);
+    // The eave row belongs to the garland: a wreath hangs below it, never in it.
+    const eaveRow = new Set(t.eaves.map((c) => key(c.x, c.y, c.z)));
+    const wreathOpen = (x: number, y: number, z: number) => open(x, y, z) && !eaveRow.has(key(x, y, z)) && !eaveRow.has(key(x, y + 1, z));
+    if (kit.wreath) for (const d of wreathDoors) if (placeDoorWreath(b, d, kit, leaves, wreathOpen)) motifFacades.add(d.outward);
     if (extras.includes('shimekazari')) for (const d of doors.slice(0, 1)) placeShimekazari(b, d, open);
     if (kit.wreath && o.intensity >= 3 && o.size !== 'small' && t.gables) placeGableWreath(b, t.gables, motifFacades, kit, leaves, open);
   }

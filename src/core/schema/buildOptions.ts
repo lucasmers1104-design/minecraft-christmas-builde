@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { hasMaterial } from '@/core/style/materials';
 import { ROOF_PROFILES, ROOF_TYPES } from '@/core/style/styles';
+import { COMPOSITIONS } from '@/core/style/compositions';
 
 /**
  * Fine-grained, optional building parameters (BuildSpec v2). Every field is optional:
@@ -42,6 +43,8 @@ export const buildOptionsSchema = z
     depth: oddInt(FOOTPRINT_LIMITS.depth, 'Tiefe muss ungerade sein (mittiger First)').optional(),
     floors: int(FOOTPRINT_LIMITS.floors).optional(),
     floorHeight: int(FOOTPRINT_LIMITS.floorHeight).optional(),
+    /** Archetype of the masses (src/core/style/compositions.ts); 'auto' = the style decides. */
+    composition: z.enum(COMPOSITIONS).optional(),
     roofType: z.enum(ROOF_TYPES).optional(),
     roofProfile: z.enum(ROOF_PROFILES).optional(),
     overhang: int(FOOTPRINT_LIMITS.overhang).optional(),
