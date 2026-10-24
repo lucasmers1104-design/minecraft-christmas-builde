@@ -50,6 +50,6 @@ Test gegen die echte Minecraft-Client-Datei: Umgebungsvariable `MCB_MINECRAFT_JA
 ## Umgebung des Nutzers
 
 - **PC:** Windows, RTX 5060 Ti (16 GB), 32 GB RAM, Node.js 24.
-- **Minecraft:** Java 1.21.11 über **CurseForge**. Die Client-Datei liegt meist unter `C:\Users\Luca\curseforge\minecraft\Install\versions\1.21.11\1.21.11.jar`. WorldEdit 7.3.18+ oder 7.4.x.
+- **Minecraft:** Java 1.21.11 über die **Modrinth App**. Die Client-Datei liegt unter `C:\Users\Luca\AppData\Roaming\ModrinthApp\meta\versions\1.21.11-0.19.3\1.21.11-0.19.3.jar` (der Ordnername trägt die App-Version); die App findet sie automatisch. WorldEdit 7.3.18+ oder 7.4.x.
 - **Virenschutz:** **Avast**. Er hat schon `start-windows.cmd` in Quarantäne geschoben und eine native `.node`-Datei (lightningcss) blockiert. Bei rätselhaften `Cannot find module …*.node`-Fehlern zuerst an Avast denken; der Projektordner sollte dort als Ausnahme eingetragen sein.
 - **Optional:** KI-Planung über OpenRouter (API-Schlüssel des Nutzers) oder Ollama mit `qwen3:14b`, eingerichtet in der App unter „KI einrichten“ (gespeichert in `.mcb-local/ai-settings.json`, gitignored) oder über `.env.local`; siehe `docs/KI.md`. Der OpenRouter-Schlüssel darf nie geloggt, in Fehlermeldungen übernommen oder an den Browser geschickt werden. Echte OpenRouter-Aufrufe nur auf dem Haupt-PC (Testset: `MCB_AI_TESTSET=1`).
