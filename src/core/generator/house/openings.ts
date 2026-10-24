@@ -8,6 +8,8 @@ import type { Role } from '@/core/style/palettes';
 import { BALCONY_TEMPLATES } from '@/core/templates/balcony';
 import { baseTemplateId, getTemplate, templateBounds, templatesByIds } from '@/core/templates/catalog';
 import { FALLBACK_DOOR } from '@/core/templates/doors';
+import { EMPTY_KIT_LIBRARY, kitTemplates, type KitQuery } from '@/core/kits/library';
+import type { FacadeKitPart, KitSide } from '@/core/kits/types';
 import { cellPosition, cellState, type FacadeFrame } from '@/core/templates/place';
 import type { FacadeTemplate } from '@/core/templates/types';
 
@@ -407,11 +409,18 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
   const variants = templatesByIds('window', [...new Set(prefer.map(baseTemplateId))]);
   const preferred = prefer.map((id) => variants.find((t) => t.id === id)).filter((t): t is FacadeTemplate => t !== undefined);
   const windows = [...preferred, ...templatesByIds('window', plan.input.windowTemplates).filter((t) => !prefer.includes(t.id))];
-  const doors = templatesByIds('door', plan.input.doorTemplates);
+  // Detail kits of the creative director come first wherever they fit (no explicit family
+  // wish); placeIfFits rejects a kit that does not fit and the procedural templates follow.
+  const kits = ctx.kits ?? EMPTY_KIT_LIBRARY;
+  const style = plan.input.styleId;
+  const version = plan.input.minecraftVersion;
+  const sideOf = (s: HorizontalDirection): KitSide => (s === 'north' ? 'front' : s === 'south' ? 'back' : 'side');
+  const kitsOf = (part: FacadeKitPart, wish: readonly string[], query: KitQuery) => (wish.length > 0 ? [] : kitTemplates(kits, part, style, { ...query, minecraftVersion: version }));
+  const doors = [...kitsOf('door', plan.input.doorWish, { storey: 'ground', side: 'front' }), ...templatesByIds('door', plan.input.doorTemplates)];
   const doorMass = doorMassOf(plan);
   const back = withBackDoor ? chooseBackDoor(ctx, panels, stack) : null;
   // The back door is the plain one of the style (narrowest template first).
-  const backDoors = [...doors].sort((a, b) => a.width - b.width);
+  const backDoors = [...kitsOf('door', plan.input.doorWish, { storey: 'ground', side: back ? sideOf(back.side) : 'back' }), ...[...templatesByIds('door', plan.input.doorTemplates)].sort((a, b) => a.width - b.width)];
 
   // Oriel and balcony on the first upper storey of the main body: on the front where they fit,
   // else on the back or a side (research 19 T14: details on all four sides); one per facade.
@@ -421,11 +430,11 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
     const rect = storeyRect(main, 1);
     const y0 = floorY(plan, 1);
     const rowsUp = plan.floorHeight - 1;
-    const place = (templates: readonly FacadeTemplate[], y: number, label: string) => {
+    const place = (templatesFor: (side: HorizontalDirection, f: Facade) => readonly FacadeTemplate[], y: number, label: string) => {
       for (const side of ['north', 'south', 'east', 'west'] as const) {
         if (featureSpans.has(side) || joinedAt(plan, main, side, 1)) continue;
         const f = facadeOf(rect, side);
-        const span = placeFeature(ctx, f, y, templates, label, result, new Set([...coveredColumns(plan, main, side, 1), ...behindStack(f, y0, stack)]));
+        const span = placeFeature(ctx, f, y, templatesFor(side, f), label, result, new Set([...coveredColumns(plan, main, side, 1), ...behindStack(f, y0, stack)]));
         if (span) {
           featureSpans.set(side, span);
           return;
@@ -433,8 +442,8 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
       }
       plan.notes.push(`${label} passt an keiner Fassade – weggelassen.`);
     };
-    if (plan.input.oriel) place([getTemplate('W09')], rowsUp >= 4 ? y0 + 2 : y0 + 1, 'Erker');
-    if (plan.input.balcony) place(BALCONY_TEMPLATES, y0 + 1, 'Balkon');
+    if (plan.input.oriel) place(() => [getTemplate('W09')], rowsUp >= 4 ? y0 + 2 : y0 + 1, 'Erker');
+    if (plan.input.balcony) place((side, f) => [...kitsOf('balcony', [], { storey: 'upper', side: sideOf(side), facadeLength: f.length }), ...BALCONY_TEMPLATES], y0 + 1, 'Balkon');
   }
 
   for (const mass of plan.masses) {
@@ -466,7 +475,10 @@ export function buildOpenings(ctx: Ctx, panels: Map<string, Map<HorizontalDirect
         // Towers: a window on every second storey from the top (a slender shaft, not a lattice).
         if (mass.kind === 'tower' && f.length < 6 && (mass.floors - 1 - k) % 2 === 1) continue;
         const density = mass.kind === 'tower' ? 'few' : plan.input.windows;
-        const candidates = windows.filter((t) => t.height <= rows - 1 || (rows <= 3 && t.height <= rows));
+        // Window kits for this storey and side first (rotated by the seed when several fit).
+        const kitWindows = kitsOf('window', plan.input.windowWish, { storey: k === 0 ? 'ground' : 'upper', side: sideOf(side), facadeLength: f.length });
+        const turn = kitWindows.length > 1 ? ctx.rng.fork(`kit:window:${mass.id}:${side}`).int(0, kitWindows.length - 1) : 0;
+        const candidates = [...kitWindows.slice(turn), ...kitWindows.slice(0, turn), ...windows].filter((t) => t.height <= rows - 1 || (rows <= 3 && t.height <= rows));
         // Centred in the panel by the template's own width (research 03: centring by the panel
         // width left narrower windows hugging the left post).
         // Reveal: glass one block deep with a lining of the storey's wall material (research 01 T2).

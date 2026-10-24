@@ -5,7 +5,10 @@ import { Priority } from '@/core/generator/geometry';
 import type { RoofSectionSpec } from '@/core/generator/roof/roofEngine';
 import { floorY, nearRoundTower, occupiedByOther, storeyRect, wallTopOf, type Mass } from '@/core/generator/house/plan';
 import { facadeOf, facadePos, isMasonry, type Ctx } from '@/core/generator/house/walls';
-import { rightOf } from '@/core/templates/place';
+import { placeTemplate, rightOf } from '@/core/templates/place';
+import { templateBounds } from '@/core/templates/catalog';
+import { EMPTY_KIT_LIBRARY, kitsFor, kitTemplates } from '@/core/kits/library';
+import { kitCells } from '@/core/kits/kitTemplate';
 
 /**
  * Building parts on top of the masses: dormers and porch roofs are extra roof sections (the
@@ -107,8 +110,18 @@ export function buildDormer(ctx: Ctx, d: Dormer): void {
       builder.clear(c.x, y, c.z, Priority.ANNEX);
     }
   }
-  // Front: a wall block as parapet, the window pane above, a beam across the top, a sill.
+  // A dormer-front kit of the creative director (1 wide, fitting between the cheeks) wins.
   const f = at(d.along, 0);
+  const { plan } = ctx;
+  const kit = kitTemplates(ctx.kits ?? EMPTY_KIT_LIBRARY, 'dormer_front', plan.input.styleId, { storey: 'upper', minecraftVersion: plan.input.minecraftVersion }).find((t) => {
+    const b = templateBounds(t);
+    return t.width === 1 && b.minX >= -1 && b.maxX <= 1 && b.maxY <= d.section.wallTop - d.y - 1;
+  });
+  if (kit) {
+    placeTemplate(builder, kit, { origin: { x: f.x, y: d.y + 1, z: f.z }, outward: d.side }, plan.input.materials, plan.input.minecraftVersion, Priority.OPENING);
+    return;
+  }
+  // Front: a wall block as parapet, the window pane above, a beam across the top, a sill.
   builder.setBlock(f.x, d.y, f.z, blocks.block('upperWall'), Priority.OPENING);
   for (let y = d.y + 1; y < d.section.wallTop; y++) builder.setBlock(f.x, y, f.z, blocks.pane(), Priority.OPENING);
   builder.setBlock(f.x, d.section.wallTop, f.z, blocks.log('beam', beamAxis), Priority.OPENING);
@@ -242,7 +255,6 @@ export function buildEngawa(ctx: Ctx, mass: Mass, doorX: number, reserved: Reado
   }
 }
 
-/** Chimney: exterior flue on a gable wall (or through the roof), lit campfire on top. */
 /**
  * Chimney through the roof slope, for roofs without a gable on that side (hip, pyramid,
  * mansard): a flue inside the house near the side wall, two blocks above the highest roof
@@ -257,7 +269,7 @@ export function buildRoofChimney(ctx: Ctx, mass: Mass, surface: ReadonlyMap<stri
   for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) roofTop = Math.max(roofTop, surface.get(`${x + dx},${z + dz}`) ?? 0);
   const yTop = Math.min(builder.dimensions.height - 4, roofTop + 2);
   for (let y = 1; y < yTop; y++) builder.setBlock(x, y, z, blocks.weathered('chimney', x, y, z, { height: y - 1 }), Priority.CHIMNEY);
-  chimneyHead(ctx, [{ x, z }], yTop);
+  chimneyHead(ctx, [{ x, z }], yTop, side);
   return { x, z };
 }
 
@@ -266,8 +278,22 @@ export function buildRoofChimney(ctx: Ctx, mass: Mass, surface: ReadonlyMap<stri
  * the top, then a ring around the flue at fire level, so the campfire sits sunk into a crown
  * that is wider than the shaft and is not seen from the side; the smoke rises freely above.
  */
-function chimneyHead(ctx: Ctx, flue: readonly { x: number; z: number }[], yTop: number): void {
-  const { builder, blocks } = ctx;
+function chimneyHead(ctx: Ctx, flue: readonly { x: number; z: number }[], yTop: number, outward: HorizontalDirection = 'north'): void {
+  const { builder, blocks, plan } = ctx;
+  // A chimney-head kit of the creative director (single flue): its lowest row replaces the
+  // corbel row; the smoke column above stays free.
+  const kit = flue.length === 1 ? kitsFor(ctx.kits ?? EMPTY_KIT_LIBRARY, 'chimney_head', plan.input.styleId, { minecraftVersion: plan.input.minecraftVersion })[0] : undefined;
+  if (kit) {
+    const base = { x: flue[0]!.x, y: yTop - 1, z: flue[0]!.z };
+    let top = base.y;
+    for (const c of kitCells(kit, outward, false, plan.input.minecraftVersion)) {
+      const p = { x: base.x + c.x, y: base.y + c.y, z: base.z + c.z };
+      if (builder.inside(p.x, p.y, p.z)) builder.setBlock(p.x, p.y, p.z, c.state, Priority.CHIMNEY);
+      top = Math.max(top, p.y);
+    }
+    for (let y = top + 1; y < Math.min(builder.dimensions.height, top + 4); y++) builder.clear(base.x, y, base.z, Priority.CHIMNEY);
+    return;
+  }
   const inFlue = (x: number, z: number) => flue.some((c) => c.x === x && c.z === z);
   const ring = new Map<string, { x: number; z: number; toward: HorizontalDirection | null }>();
   for (const c of flue)
@@ -333,7 +359,7 @@ export function buildChimney(ctx: Ctx, mass: Mass, ridgeY: number, side: Horizon
     builder.setBlock(q.x, baseTop + 1, q.z, blocks.stairs('chimney', toward, 'bottom'), Priority.CHIMNEY);
     footprint.set(`${q.x},${q.z}`, baseTop + 1);
   }
-  chimneyHead(ctx, shaft, yTop);
+  chimneyHead(ctx, shaft, yTop, f.side);
   return footprint;
 }
 

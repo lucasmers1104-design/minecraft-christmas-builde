@@ -30,7 +30,8 @@ function lining(cells: TemplateCell[], taken: Set<string>, role: Role, x: number
 
 /** The window with its panes in d = −1, open wall plane in front, lining around (or itself). */
 export function revealWindow(t: FacadeTemplate, role: Role): FacadeTemplate {
-  if (t.kind !== 'window' || FLUSH_WINDOWS.test(t.id)) return t;
+  // Detail kits are placed exactly as the creative director built them.
+  if (t.kind !== 'window' || FLUSH_WINDOWS.test(t.id) || t.id.startsWith('kit:')) return t;
   const k = `${t.id}|${role}`;
   const hit = cache.get(k);
   if (hit) return hit;
@@ -69,7 +70,7 @@ export function revealWindow(t: FacadeTemplate, role: Role): FacadeTemplate {
  * wall plane in front open, lining beside and above it; the way in stays free inside (d = −2).
  */
 export function nicheDoor(t: FacadeTemplate, role: Role): FacadeTemplate {
-  if (t.kind !== 'door' || FLUSH_DOORS.test(t.id)) return t;
+  if (t.kind !== 'door' || FLUSH_DOORS.test(t.id) || t.id.startsWith('kit:')) return t;
   const k = `${t.id}|${role}`;
   const hit = cache.get(k);
   if (hit) return hit;

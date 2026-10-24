@@ -1,4 +1,5 @@
 import { GeometryError, VoxelBuilder } from '@/core/generator/geometry';
+import type { KitLibrary } from '@/core/kits/library';
 import { buildRoofs, housePitch, irimoyaSections, planRoofs, slopeColumns, type RoofResult, type RoofSectionSpec } from '@/core/generator/roof/roofEngine';
 import { ladderRise } from '@/core/generator/roof/profiles';
 import { createSeededRandom, type SeededRandom } from '@/core/generator/seededRandom';
@@ -182,10 +183,10 @@ export function planSections(plan: HousePlan, input: HouseInput, rng: SeededRand
  * `plainGables` ("sectionId:side") keeps gable fields free of windows and timber, e.g. for the
  * station clock in the hall gable.
  */
-export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: HouseInput, rng: SeededRandom, opts: { plainGables?: readonly string[]; cornerLanterns?: boolean; backDoor?: boolean } = {}): HouseResult {
+export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: HouseInput, rng: SeededRandom, opts: { plainGables?: readonly string[]; cornerLanterns?: boolean; backDoor?: boolean; kits?: KitLibrary } = {}): HouseResult {
   const { sections, dormers, porch } = planSections(plan, input, rng);
   const blocks = new Blocks(input.materials, input.minecraftVersion, input.seed);
-  const ctx: Ctx = { builder, plan, blocks, rng };
+  const ctx: Ctx = { builder, plan, blocks, rng, ...(opts.kits ? { kits: opts.kits } : {}) };
 
   // Masses: plinth, storeys, top beam ring and ceiling.
   const panels = new Map<string, Map<HorizontalDirection, Panel[]>[]>();
@@ -252,7 +253,7 @@ export function buildHouseInto(builder: VoxelBuilder, plan: HousePlan, input: Ho
   return { builder, plan, roof, sections, panels, ctx, openings };
 }
 
-export function buildHouseV2(input: HouseInput): HouseResult {
+export function buildHouseV2(input: HouseInput, opts: { kits?: KitLibrary } = {}): HouseResult {
   const rng = createSeededRandom(input.seed).fork('house');
   const { plan: local, bounds: b } = prepareHouse(input, rng);
   const { side: margin, front } = plotMargins(input);
@@ -268,5 +269,5 @@ export function buildHouseV2(input: HouseInput): HouseResult {
   if (dims.width > MAX_DIMENSIONS.width || dims.length > MAX_DIMENSIONS.length || dims.height > MAX_DIMENSIONS.height) {
     throw new GeometryError(`Haus ${dims.width}×${dims.height}×${dims.length} passt nicht in die Grenzen`);
   }
-  return buildHouseInto(new VoxelBuilder(dims), plan, input, rng);
+  return buildHouseInto(new VoxelBuilder(dims), plan, input, rng, opts);
 }

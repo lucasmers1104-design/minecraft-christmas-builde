@@ -14,7 +14,9 @@ import { kitCells, kitTemplate } from '@/core/kits/kitTemplate';
 import { createKitLibrary, EMPTY_KIT_LIBRARY, kitsFor, kitTemplates } from '@/core/kits/library';
 import { parseKit, type KitFileInput } from '@/core/kits/parseKit';
 import type { DetailKit } from '@/core/kits/types';
-import { DEFAULT_HOUSE_SPEC } from '@/core/schema/buildSpec';
+import { DEFAULT_HOUSE_SPEC, type BuildSpec } from '@/core/schema/buildSpec';
+import { lintHouse } from '@/core/analysis/buildingLints';
+import { generateBuilding, generateBuildingWithReport, generateSelectedVariants } from '@/core/generator/generateBuilding';
 import { blockAt, createVoxelModel, type VoxelModel } from '@/core/schema/voxelModel';
 import { PALETTES, ROLES } from '@/core/style/palettes';
 import { templateBounds } from '@/core/templates/catalog';
@@ -541,5 +543,64 @@ describe('Detail-Kits: Laden vom Server (MCB_KITS_DIR)', () => {
     expect(second).not.toBe(first);
     expect(second.library.kits.map((k) => k.id)).toEqual(['kit:alle/tuer', 'kit:rustic/fenster']);
     expect(second.problems.map((p) => p.file)).toEqual(['barock/', 'rustic/einzeln.schem']);
+  });
+});
+
+describe('Detail-Kits im Generator: Vorrang vor der prozeduralen Variante', () => {
+  const windowKit = mustParse(input(kitModel(WINDOW_SIZE, WINDOW_BLOCKS), WINDOW_JSON, {}, 'rustic', 'fenster'));
+  const doorKit = mustParse(input(kitModel(DOOR_SIZE, DOOR_BLOCKS), DOOR_JSON, {}, 'rustic', 'tuer'));
+  const chimneyKit = mustParse(input(kitModel([3, 3, 3], CHIMNEY_BLOCKS), json({ part: 'chimney_head' }), { offset: [-1, 0, -1] }, 'rustic', 'kamin'));
+  const kits = createKitLibrary([windowKit, doorKit, chimneyKit]);
+  const house = (over: Partial<BuildSpec> = {}) => ({ ...DEFAULT_HOUSE_SPEC, style: 'rustic' as const, size: 'medium' as const, seed: 3, theme: 'none' as const, options: {}, ...over });
+
+  it('ohne Kits bleibt jedes Bauwerk bitgleich', () => {
+    for (const seed of [1, 2]) expect(generateBuilding(house({ seed }), { kits: EMPTY_KIT_LIBRARY }).hash).toBe(generateBuilding(house({ seed })).hash);
+  });
+
+  it('Fenster-, Tür- und Kamin-Kit werden eingesetzt, ohne Reparatur und ohne Lint-Befund', () => {
+    const r = generateBuildingWithReport(house(), { kits });
+    expect(r.repairs).toEqual([]);
+    expect(lintHouse(r.model, r.house!)).toEqual([]);
+    const used = r.house!.openings.templates;
+    expect(used).toContain('kit:rustic/fenster');
+    expect(used).toContain('kit:rustic/tuer');
+    // The window kit's bracket block appears once per placed kit window.
+    const brackets = r.model.indices.filter((i) => blockIdOf(r.model.palette[i]!) === 'minecraft:pale_oak_planks').length;
+    expect(brackets).toBe(used.filter((id) => id === 'kit:rustic/fenster').length);
+    // The front door is the kit's oak door.
+    const d = r.house!.openings.doors[0]!;
+    expect(blockIdOf(blockAt(r.model, d.x, d.y, d.z))).toBe('minecraft:oak_door');
+    // The chimney head: brick walls of the kit around a lit campfire.
+    expect(r.model.palette.some((st) => blockIdOf(st) === 'minecraft:brick_wall')).toBe(true);
+  });
+
+  it('gleiche Kits → gleiches Bauwerk; andere Kits → anderer Fingerabdruck und anderes Bauwerk', () => {
+    const a = generateBuilding(house(), { kits });
+    expect(generateBuilding(house(), { kits }).hash).toBe(a.hash);
+    const onlyDoor = createKitLibrary([doorKit]);
+    expect(onlyDoor.fingerprint).not.toBe(kits.fingerprint);
+    expect(generateBuilding(house(), { kits: onlyDoor }).hash).not.toBe(a.hash);
+  });
+
+  it('in 1.21.1: Blöcke mit Ersatz werden übersetzt, Kits mit Blöcken ohne Ersatz fallen weg', () => {
+    const r = generateBuildingWithReport(house({ targetMinecraftVersion: '1.21.1' }), { kits });
+    expect(r.repairs).toEqual([]);
+    // Pale oak planks have a stand-in in 1.21.1: the window kit is still used, without pale oak.
+    expect(r.house!.openings.templates).toContain('kit:rustic/fenster');
+    expect(r.model.palette.some((st) => st.includes('pale_oak'))).toBe(false);
+    const leafy = mustParse(input(kitModel(WINDOW_SIZE, [...WINDOW_BLOCKS, [3, 0, 0, s('pale_oak_leaves')]]), WINDOW_JSON, {}, 'rustic', 'laub'));
+    const old = generateBuildingWithReport(house({ targetMinecraftVersion: '1.21.1' }), { kits: createKitLibrary([leafy]) });
+    expect(old.house!.openings.templates).not.toContain('kit:rustic/laub');
+    expect(old.repairs).toEqual([]);
+  });
+
+  it('ein ausdrücklicher Fenster- oder Türwunsch geht vor den Kits', () => {
+    const r = generateBuildingWithReport(house({ options: { windowFamily: 'arched', doorFamily: 'double' } }), { kits });
+    expect(r.house!.openings.templates.filter((id) => id.startsWith('kit:'))).toEqual([]);
+  });
+
+  it('Variantenauswahl mit Kits: die gezeigten Modelle entsprechen der frischen Generierung', () => {
+    const { models } = generateSelectedVariants(house({ seed: 5 }), 3, { kits });
+    for (const m of models) expect(m.hash).toBe(generateBuilding({ ...house({ seed: 5 }), seed: m.spec.seed }, { kits }).hash);
   });
 });

@@ -4,6 +4,7 @@ import { countMaterials } from '@/core/analysis/materialCounts';
 import { getProfileForVersion } from '@/core/compat/profile';
 import { BuildLimitError, generateSelectedVariants, generationNotes, NotImplementedBuildingError, VARIANT_COUNT } from '@/core/generator/generateBuilding';
 import { buildSpecSchema } from '@/core/schema/buildSpec';
+import { loadKits } from '@/lib/kits/loadKits';
 import { jsonError, readJsonBody, RequestBodyError } from '@/lib/http/apiResponses';
 import { encodeVoxelTransport, type VoxelTransport } from '@/lib/serialization/voxelTransport';
 
@@ -66,7 +67,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!profile) return jsonError(400, `Minecraft-Version ${spec.targetMinecraftVersion} wird nicht unterstützt`);
 
   try {
-    const { models, selection } = generateSelectedVariants(spec, variants);
+    // The creative director's detail kits (kits/ or MCB_KITS_DIR); none = procedural parts only.
+    const { library: kits, problems: kitProblems } = await loadKits();
+    const { models, selection } = generateSelectedVariants(spec, variants, { kits });
     const response: GenerateResponse = {
       generator: 'rule-based',
       profile: {
@@ -82,7 +85,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         model: encodeVoxelTransport(model),
       })),
       selection: { candidates: selection.candidates, scores: selection.scores },
-      warnings: generationNotes(spec),
+      warnings: [...generationNotes(spec), ...kitProblems.map((p) => `Detail-Kit ${p.file} nicht verwendet: ${p.problems.join(' ')}`)],
     };
     return NextResponse.json(response, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {

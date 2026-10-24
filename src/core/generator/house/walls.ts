@@ -1,4 +1,5 @@
 import { OPPOSITE, VECTOR, type HorizontalDirection } from '@/core/blocks/directions';
+import type { KitLibrary } from '@/core/kits/library';
 import { isFaceFull } from '@/core/blocks/faces';
 import { AIR } from '@/core/blocks/registry';
 import { Priority, type VoxelBuilder } from '@/core/generator/geometry';
@@ -22,6 +23,8 @@ export interface Ctx {
   plan: HousePlan;
   blocks: Blocks;
   rng: SeededRandom;
+  /** The creative director's detail kits (kits/<style>/); none = the procedural parts only. */
+  kits?: KitLibrary;
 }
 
 export const SIDES: readonly HorizontalDirection[] = ['north', 'east', 'south', 'west'];

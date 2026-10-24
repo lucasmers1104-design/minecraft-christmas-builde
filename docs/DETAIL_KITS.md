@@ -4,8 +4,8 @@ Ein **Detail-Kit** ist ein kleines Bauteil, das du selbst in Minecraft baust, zu
 
 > **Stand dieser Etappe (Phase 6):**
 >
-> - **Fertig und getestet:** Kits einlesen, prüfen (Blockliste, Version, Größe, Anker, Türen), nach Süden drehen, auf alle vier Hausseiten drehen und spiegeln, für 1.21.1 umschreiben. Die Tests bauen ihre Kits selbst; Ergebnis im Bericht zur Phase 6.
-> - **Noch nicht drin:** Ob der Generator deine Kits schon beim Hausbau einsetzt, hängt von der Einbindung ab, die getrennt erfolgt (siehe Bericht zur Phase 6). Auch wo die App dir Fehlermeldungen zu Kits anzeigt, steht dort.
+> - **Fertig und getestet:** Kits einlesen, prüfen (Blockliste, Version, Größe, Anker, Türen), nach Süden drehen, auf alle vier Hausseiten drehen und spiegeln, für 1.21.1 umschreiben – und **beim Hausbau einsetzen**: Fenster, Haustür, Hintertür, Balkon, Gaubenfront und Kaminkopf (siehe „Was beim Einsetzen passiert“). Die Tests bauen ihre Kits selbst.
+> - **Meldungen:** Ein Kit, das nicht eingelesen werden kann, erscheint nach dem Generieren als Hinweis über der Vorschau („Detail-Kit … nicht verwendet: …“).
 > - **Nicht geprüft:** ein echter Export aus Minecraft mit WorldEdit. Wie WorldEdit den Standpunkt speichert, ist aus dem WorldEdit-Quellcode abgeleitet (siehe „Was nicht geprüft ist“).
 
 Ohne Kits ändert sich nichts: Der Generator baut genau wie vorher.
@@ -207,7 +207,15 @@ Was die App dabei **anpasst** (und als Hinweis am Kit vermerkt): Wasser in Blöc
 
 ## Was beim Einsetzen passiert
 
-So ist es gebaut und getestet; ab wann der Generator es beim Hausbau nutzt, steht im Bericht zur Phase 6.
+Die App liest den Ordner `kits/` (oder den Ordner aus der Umgebungsvariable `MCB_KITS_DIR`) bei jedem Generieren; geänderte Dateien werden erkannt. Eingesetzt wird bei **Häusern** (nicht bei Turm, Bahnhof, Marktstand und Baum):
+
+- **Fenster:** je Geschoss und Hausseite zuerst deine passenden Kits (bei mehreren wechselt der Seed die Reihenfolge), danach die eingebauten Fenster.
+- **Haustür und Hintertür:** zuerst deine Tür-Kits (Haustür: `sides` mit `front`, Hintertür: `back` oder `side`).
+- **Balkon:** zuerst deine Balkon-Kits, danach die eingebauten.
+- **Gaubenfront:** ein Kit mit 1 Block breiter Öffnung, das zwischen die Gaubenwangen passt.
+- **Kaminkopf:** bei Kaminen mit einem Rauchzug; die unterste Kit-Reihe ersetzt den Kragstein-Ring.
+- Hast du in den Feinparametern eine **Fensterform** oder **Türform** ausdrücklich gewählt, gilt diese Wahl vor deinen Kits.
+- Deine Kits bekommen keine Laibung und keine Türnische: Sie werden genau so eingesetzt, wie du sie gebaut hast.
 
 - Fenster, Türen, Balkone und Gaubenfronten laufen über denselben Weg wie die eingebauten Vorlagen (W01–W18, T01–T10): Die App dreht das Kit auf die Hausseite, spiegelt es bei Bedarf und setzt es nur ein, wenn vor der Wand alles frei ist. Passt es nicht, nimmt der Generator die nächste Vorlage.
 - Laternen in deinem Kit bleiben genau so, wie du sie gebaut hast (der Stil tauscht sie nicht gegen Seelenlaternen).
@@ -219,5 +227,5 @@ So ist es gebaut und getestet; ab wann der Generator es beim Hausbau nutzt, steh
 - **Echter Export aus Minecraft:** Auf dem Arbeits-Laptop gibt es kein Minecraft und kein Java. Getestet ist mit Kits, die die Tests selbst schreiben (mit dem Sponge-v3-Schreiber der App, bei Bedarf so verändert, wie WorldEdit Offset und Herkunft speichert). Eine echte WorldEdit-Datei wurde noch nicht eingelesen.
 - **Standplatz und Anker:** Dass WorldEdit beim `//copy` deine Fußposition als Bezugspunkt speichert (`Offset` = kleinste Ecke minus Standplatz), ist aus dem Quellcode von WorldEdit 7.3.18 und 7.4.6 abgelesen, nicht im Spiel ausprobiert.
 - **`//copy -m !white_wool`** (Hilfswand abwählen): nicht im Spiel ausprobiert.
-- **Einsatz im Generator:** siehe Bericht zur Phase 6 – dort steht, ob und wo der Generator Kits schon verwendet und wo Meldungen angezeigt werden.
+- **Einsatz im Generator mit echten Kits:** getestet mit selbst geschriebenen Fenster-, Tür- und Kamin-Kits (ohne Reparaturen, ohne Befunde der Bau-Prüfungen). Mit deinen eigenen Kits aus Minecraft ist es noch nicht ausprobiert.
 - Gedrehtes Einfügen mit WorldEdit (`//rotate`) spielt für Kits keine Rolle: Baue sie einfach nach Norden.
